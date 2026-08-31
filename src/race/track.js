@@ -527,8 +527,11 @@ const DISTRICT = {
   // of what you can see, which is the entire point of the place.
   stone(c, sec) {
     for (const side of [-1, 1])
-      for (let s = sec.from + 60, i = 0; s < sec.to - 80; s += 88, i++)
+      for (let s = sec.from + 60, i = 0; s < sec.to - 80; s += 88, i++) {
         c.blit(s, side * (SET + 26), i % 2 ? c.pr.stoneB : c.pr.stoneA);
+        if (i % 2) c.put(s, side * (SET + 42), (x, z, ff, gy) => c.anchors.stacks.push([x, gy + 78, z]));
+        c.put(s + 22, side * (SET + 12), (x, z, ff, gy) => c.anchors.tvs.push([x, gy + 38, z]));
+      }
   },
 
   market(c, sec) {
@@ -556,8 +559,11 @@ const DISTRICT = {
 
   mews(c, sec) {
     for (const side of [-1, 1])
-      for (let s = sec.from + 90, i = 0; s < sec.to - 90; s += 96, i++)
+      for (let s = sec.from + 90, i = 0; s < sec.to - 90; s += 96, i++) {
         c.blit(s, side * (SET + 30), i % 3 === 1 ? c.pr.mews : (i % 2 ? c.pr.stoneB : c.pr.stoneA));
+        if (i % 2 === 0) c.put(s, side * (SET + 46), (x, z, ff, gy) => c.anchors.stacks.push([x, gy + 78, z]));
+        c.put(s + 26, side * (SET + 16), (x, z, ff, gy) => c.anchors.tvs.push([x, gy + 38, z]));
+      }
   },
 
   // ============================================================= THE DOCKS
@@ -585,8 +591,11 @@ const DISTRICT = {
   },
 
   sheds(c, sec) {
-    for (let s = sec.from + 140, i = 0; s < sec.to - 160; s += 200, i++)
-      c.blit(s, (i % 2 ? 1 : -1) * (SET + 46), c.pr.shed);
+    for (let s = sec.from + 140, i = 0; s < sec.to - 160; s += 200, i++) {
+      const side = i % 2 ? 1 : -1;
+      c.blit(s, side * (SET + 46), c.pr.shed);
+      c.put(s + 30, side * (SET + 40), (x, z, ff, gy) => c.anchors.stacks.push([x, gy + 62, z]));
+    }
     c.run(sec.from, sec.to, SET + 190, 240, (x, z, ff, gy, s) => {
       const [bx, bz] = c.back(ff, x, z, 30);
       D2.containers(c.w, bx, gy, bz, 1, 2, 3, Math.round(s));
@@ -640,6 +649,7 @@ const DISTRICT = {
 
   services(c, sec) {
     c.blit(sec.from + 220, SET + 90, c.pr.services);
+    c.put(sec.from + 220, SET + 74, (x, z, ff, gy) => c.anchors.tvs.push([x, gy + 16, z]));
     const ax = legAxis(c.path, sec, c.f);
     for (const side of [-1, 1])
       c.run(sec.from, sec.to, side * (PAVE_BACK + 4), 40, (x, z, ff, gy) => {

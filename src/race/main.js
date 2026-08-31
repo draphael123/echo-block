@@ -173,7 +173,10 @@ const keys = new Set();
 // Weather. One number, and it moves the look, the grip and the sight line
 // together -- which is the cheapest content this track can be given, because it
 // asks the same questions as a dry lap and hands you less to answer them with.
-let wet = 0, wetWant = 0;
+// A track can be wet BY DEFAULT, and the Docks is: it was designed around a
+// surface you cannot trust and shipped bone dry, because the spec carried a
+// `wet` field that nothing ever read. X still toggles it anywhere.
+let wet = track.spec.wet || 0, wetWant = wet;
 function setWeather(v) {
   wetWant = Math.max(0, Math.min(1, v));
   hud.msg.textContent = wetWant > 0.5 ? 'rain' : 'the road is drying';
