@@ -199,6 +199,22 @@ export class VoxWorld {
     return { x0, z0, w, d, floor, blocked };
   }
 
+  // Sort every voxel into a square column of the world, once. Chunking has to
+  // start here: meshing each chunk by scanning the whole map would be O(chunks
+  // x voxels) and slower than the single mesh it is meant to replace.
+  bucket(size) {
+    const cells = new Map();
+    for (const k of this.v.keys()) {
+      const z = (k % SPAN) - OFF;
+      const x = Math.floor(k / (SPAN * SPAN)) - OFF;
+      const id = Math.floor(x / size) * 100000 + Math.floor(z / size);
+      let list = cells.get(id);
+      if (!list) cells.set(id, (list = []));
+      list.push(k);
+    }
+    return cells;
+  }
+
   // solidBelow  — treat everything under this height as filled. Gives props
   //               correct contact AO where they meet the ground slab.
   // noFloorBelow — drop every downward-facing quad at or below this height.
@@ -210,15 +226,21 @@ export class VoxWorld {
   // the scene) and a glow geometry (unlit, feeds the bloom pass). They must be
   // separate: three's emissive is a per-MATERIAL uniform, so one mesh cannot
   // have some voxels emit and others not.
+  // `only` is a list of voxel keys to emit faces FOR. Neighbour tests still run
+  // against the whole world, so a chunk meshed this way has no faces along its
+  // seams and no gaps either — it is exactly the slice of the single mesh that
+  // falls inside it. That is the whole trick behind chunking this world.
   build(palette, opts) {
-    const { solidBelow = -Infinity, noFloorBelow = -Infinity } = opts || {};
+    const { solidBelow = -Infinity, noFloorBelow = -Infinity, only = null } = opts || {};
     const out = {
       matte: { pos: [], nrm: [], col: [], ind: [] },
       glow:  { pos: [], nrm: [], col: [], ind: [] },
     };
     const solid = (x, y, z) => y < solidBelow || this.v.has(key(x, y, z));
 
-    for (const [k, name] of this.v) {
+    for (const k of (only || this.v.keys())) {
+      const name = this.v.get(k);
+      if (name === undefined) continue;
       const z = (k % SPAN) - OFF;
       const y = (Math.floor(k / SPAN) % SPAN) - OFF;
       const x = Math.floor(k / (SPAN * SPAN)) - OFF;
@@ -282,9 +304,30 @@ export class VoxWorld {
 // Build the mesh pair for a world. Matte is a standard material driven
 // entirely by vertex colour; glow is unlit and deliberately allowed past 1.0
 // so the bloom pass has something to catch.
+// The same world as meshWorld, but as one mesh per square column.
+//
+// A single 5-million-voxel mesh is always drawn in full: three frustum-culls per
+// OBJECT, so one object means no culling at all, and the whole circuit went
+// through the vertex stage every frame no matter which way the car was facing.
+// Chunks give the renderer something to throw away — on a 500-metre lap with a
+// chase camera that is most of the world, every frame.
+//
+// It also un-blocks the things chunking was always really for: a bigger world,
+// more than one track, and rebuilding a piece without rebuilding all of it.
+export function meshChunks(world, palette, opts) {
+  const { size = 320, name = 'vox', ...rest } = opts || {};
+  const group = new THREE.Group();
+  group.name = name + ':chunks';
+  for (const keys of world.bucket(size).values()) {
+    const m = meshWorld(world, palette, { ...rest, name, only: keys });
+    if (m.children.length) group.add(m);
+  }
+  return group;
+}
+
 export function meshWorld(world, palette, opts) {
-  const { shadows = true, name = 'vox', solidBelow, noFloorBelow } = opts || {};
-  const { matte, glow } = world.build(palette, { solidBelow, noFloorBelow });
+  const { shadows = true, name = 'vox', solidBelow, noFloorBelow, only } = opts || {};
+  const { matte, glow } = world.build(palette, { solidBelow, noFloorBelow, only });
   const group = new THREE.Group();
   group.name = name;
   if (matte) {

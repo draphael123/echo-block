@@ -13,7 +13,7 @@
 // slabs painted in the backdrop colour — walls with a window, which is exactly
 // what they looked like.
 import * as THREE from 'three';
-import { VoxWorld, meshWorld, hash3 } from '../voxel.js';
+import { VoxWorld, meshWorld, meshChunks, hash3 } from '../voxel.js';
 import { PALETTE } from '../palette.js';
 import { FLOOR_MAX, HEAD, STEP_UP, Ground } from '../walk.js';
 import { house } from '../block.js';
@@ -762,8 +762,9 @@ export function buildTrack() {
   // noFloorBelow only culls undersides down there too, so a raised stretch
   // keeps its underside and reads as an embankment instead of a hole to the sky.
   group.add(surround(path));
-  group.add(meshWorld(w, PALETTE, {
-    name: 'track', solidBelow: ELEV_MIN - 2, noFloorBelow: ELEV_MIN + GROUND_Y - 1,
+  group.add(meshChunks(w, PALETTE, {
+    name: 'track', size: 320,
+    solidBelow: ELEV_MIN - 2, noFloorBelow: ELEV_MIN + GROUND_Y - 1,
   }));
 
   let bx0 = 1e9, bx1 = -1e9, bz0 = 1e9, bz1 = -1e9;
@@ -839,6 +840,7 @@ export function buildTrack() {
 
   return {
     group, path, field, anchors, hazards: HAZARDS, elev, grade: +worst.toFixed(3),
+    chunks: group.children.filter(c => c.name === 'track:chunks').reduce((n, g) => n + g.children.length, 0),
     start: { x: start.x, z: start.z, heading: Math.atan2(start.tx, start.tz) },
     voxels: w.size,
     buildMs: Math.round(performance.now() - t0),
