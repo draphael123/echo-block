@@ -72,24 +72,28 @@ export class Ground {
   }
 
   // Can a body currently standing on floor `from` occupy (x,z)?
-  canStand(x, z, from, scale = 1) {
+  // stepUp is a parameter because a CAR is not a person. A traffic cone is
+  // nine voxels tall — over a person's 4-voxel step and therefore a wall to
+  // them, which is right — but a car flattens cones, and treating one as a
+  // kerb it cannot climb is how you end up permanently stopped by a cone.
+  canStand(x, z, from, scale = 1, stepUp = STEP_UP) {
     for (const [ox, oz] of ring(scale)) {
       const px = x + ox, pz = z + oz;
       const h = this.floorAt(px, pz);
       if (h === OUT) return false;               // the edge of the world
       if (h === VOID) continue;                  // a pinhole; step over it
       if (this.isBlocked(px, pz)) return false;
-      if (h - from > STEP_UP) return false;
+      if (h - from > stepUp) return false;
     }
     return true;
   }
 
   // Move with wall-sliding: try the whole step, then each axis alone. Without
   // the per-axis retry you stick to every hedge you brush against.
-  move(pos, dx, dz, blockers, scale = 1) {
+  move(pos, dx, dz, blockers, scale = 1, stepUp = STEP_UP) {
     let from = this.floorAt(pos.x, pos.z);
     if (from === VOID || from === OUT) from = this.ceilingAt(pos.x, pos.z, scale);
-    const free = (x, z) => this.canStand(x, z, from, scale) && !(blockers && blockers(x, z));
+    const free = (x, z) => this.canStand(x, z, from, scale, stepUp) && !(blockers && blockers(x, z));
 
     if (free(pos.x + dx, pos.z + dz)) { pos.x += dx; pos.z += dz; }
     else if (free(pos.x + dx, pos.z)) pos.x += dx;

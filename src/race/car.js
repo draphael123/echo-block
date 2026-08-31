@@ -43,12 +43,17 @@ const DRIFT_SCRUB = 165;               // speed bled per second at full slip
 const SLIP_ON = 5.0, SLIP_OFF = 3.2;   // how fast the angle builds and recovers
 const CAR_PROBE = 2.6;                 // ~18 voxels across, against a 26-wide car
 
-// The wheels bottom out at local y = -1 and a floor voxel's TOP is one above
-// the value the field reports, so the body rides two above the floor. Without
-// this the car sat a voxel INTO the tarmac on the flat -- and, because move()
-// clamps the ground it reports to a minimum of zero, floated 1.7 metres over
-// the road in the hollow on the long dark. Ask the field directly instead.
-const RIDE = 2;
+// A voxel at height y fills the cell from y to y+1, so a floor voxel's top
+// face is at y+1. The tyre is a disc of radius 7 centred at local 6: its lowest
+// FULL row is local 0, with a single voxel poking to -1. Sitting the body at
+// floor+2 therefore left the tyres hanging a voxel clear with only that one
+// voxel reaching down — which is precisely what "the car floats" looks like.
+const RIDE = 1;
+
+// What the car will climb. A cone is 9 voxels, a kerb is 3, a barrier is 12, a
+// skip is 15 and a parked car is 14 — so at 10 you flatten cones and mount
+// kerbs, and everything you SHOULD be stopped by still stops you.
+const CAR_STEP = 10;
 
 // OFF THE TARMAC.
 //
@@ -238,10 +243,18 @@ export function buildCar(paint = 0) {
     if (ground) {
       const bx = state.x, bz = state.z;
       const p = { x: state.x, y: 0, z: state.z };
-      ground.move(p, dx, dz, null, CAR_PROBE);
+      ground.move(p, dx, dz, null, CAR_PROBE, CAR_STEP);
       state.x = p.x; state.z = p.z;
-      const fl = ground.ceilingAt(state.x, state.z, CAR_PROBE);
-      if (fl > -900) state.y = fl + RIDE;
+      // Sampled at the CENTRE, not across the whole footprint. ceilingAt takes
+      // the highest floor under the probe ring, so with the car-sized ring a
+      // single cone or kerb under one corner lifted the entire car onto it.
+      const fl = ground.ceilingAt(state.x, state.z, 1);
+      if (fl > -900) {
+        // Riding up over something costs you: cones scatter, you lose speed,
+        // you keep going. That is the whole point of letting the car climb.
+        if (fl - state.y + RIDE > 4 && Math.abs(state.speed) > 40) impact(0.22, false);
+        state.y = fl + RIDE;
+      }
       // How much of the motion the world refused. A glancing scrape along a
       // kerb costs you a little; driving square into a wall stops you. Squaring
       // it makes the difference between those two big, which is what a racing
@@ -259,12 +272,16 @@ export function buildCar(paint = 0) {
     // against a wall. Rather than add a reverse gear for this one case, being
     // stuck IS a crash — the recovery path already knows how to undo one, and
     // a player who beaches the car wants the same answer the harness does.
-    // The last-resort reset, and it is now genuinely last-resort: you can back
-    // out of anything, so this only fires if you have held the throttle into
-    // something for four seconds without ever trying reverse.
-    if (throttle > 0 && Math.abs(state.speed) < 8) {
+    // THE GUARANTEE: you can never be permanently stuck.
+    //
+    // This counts any input at all, forwards or back. If you are asking the car
+    // to move in some direction and it has not moved for two and a half
+    // seconds, then both ways out are blocked and no amount of patience will
+    // help — so you get put back on the road. Holding nothing does not count,
+    // because sitting still on purpose is allowed.
+    if (throttle !== 0 && Math.abs(state.speed) < 6) {
       state.stuck += dt;
-      if (state.stuck > 4) { state.stuck = 0; state.wedged = true; }
+      if (state.stuck > 2.5) { state.stuck = 0; state.wedged = true; }
     } else state.stuck = 0;
     return state;
   }

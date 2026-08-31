@@ -172,13 +172,20 @@ export function silo(w, x, y, z, r, h) {
   for (let k = 4; k < h; k += 3) w.box(x + r, y + k, z - 1, 1, 1, 3, 'metalDark');
 }
 
+// Sparse enough to read as mesh, CONTINUOUS enough to be a fence.
+//
+// The first version wrote its wires only on every second column and its top
+// rail at 22 — above the 19-voxel head height the collision field checks — so
+// half the columns contained nothing it could catch and you could drive a car
+// straight between the wires. It looked like a fence and behaved like a row of
+// posts. Every column now carries two rails low enough to count.
 export function chainFence(w, x, y, z, len, dir, h = 22) {
   for (let i = 0; i < len; i++) {
     const px = dir === 'x' ? x + i : x, pz = dir === 'x' ? z : z + i;
-    if (i % 22 === 0) w.box(px, y, pz, 2, h + 3, 2, 'metalDark');
-    else if (i % 2 === 0) {                       // sparse mesh: solid reads as a wall
-      for (let k = 3; k < h; k += 4) w.set(px, y + k, pz, 'metal');
-    }
+    if (i % 22 === 0) { w.box(px, y, pz, 2, h + 3, 2, 'metalDark'); continue; }
+    w.set(px, y + 3, pz, 'metalDark');            // bottom rail, every column
+    w.set(px, y + 13, pz, 'metalDark');           // mid rail, every column
+    if (i % 2 === 0) for (let k = 5; k < h; k += 4) w.set(px, y + k, pz, 'metal');
     w.set(px, y + h, pz, 'metalDark');            // top rail
   }
 }

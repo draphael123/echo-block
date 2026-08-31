@@ -71,6 +71,7 @@ export function buildLife(path, spots, ground, elev) {
       recover: 0,
       lx: 0, lz: 0,
       fy: null,                    // the height their feet are at, once known
+      u0: spot.u,                  // the line down the footway they belong on
       baulked: 0,                  // times this beat has run into something
       since: 0,                    // seconds walked cleanly since the last one
     });
@@ -185,7 +186,22 @@ export function buildLife(path, spots, ground, elev) {
       // through one used to be walked through. Turn round instead — and if this
       // end of the beat keeps being blocked, cross to the other side, which is
       // what a person does and gives us jaywalkers for free.
-      const fy = step(w, tmp.x, tmp.z);
+      let fy = step(w, tmp.x, tmp.z);
+      if (fy === null) {
+        // GO ROUND IT. Turning back was the first version, and on a beat with a
+        // lamp post in the middle of it that is an infinite loop you can watch:
+        // walk into the pole, turn, walk to the far end, turn, walk into the
+        // same pole. A person steps aside. The footway is 4.2 metres wide, so
+        // there is room to — try further and further out, keeping the same
+        // heading, and only give up and turn if the whole width is blocked.
+        for (const du of [9, -9, 18, -18, 27, -27]) {
+          const uu = w.u + du;
+          if (Math.abs(uu - w.u0) > 30) continue;
+          path.place(w.s, uu + w.side * flinch, tmp);
+          const alt = step(w, tmp.x, tmp.z);
+          if (alt !== null) { w.u = uu; fy = alt; break; }
+        }
+      }
       if (fy === null) {
         w.s -= w.dir * w.pace * dt;
         w.dir = -w.dir;
@@ -199,6 +215,13 @@ export function buildLife(path, spots, ground, elev) {
         w.fy = fy;
         w.since += dt;
         if (w.since > 5) { w.baulked = 0; w.since = 0; }
+        // drift back to their own line once the obstacle is behind them
+        if (w.u !== w.u0) {
+          const back = w.u + Math.sign(w.u0 - w.u) * Math.min(Math.abs(w.u0 - w.u), 7 * dt);
+          path.place(w.s, back + w.side * flinch, tmp);
+          if (step(w, tmp.x, tmp.z) !== null) w.u = back;
+          else path.place(w.s, w.u + w.side * flinch, tmp);
+        }
       }
       w.p.root.position.set(tmp.x, w.fy === null ? groundAt(tmp.x, tmp.z) : w.fy, tmp.z);
       // Somebody waiting faces the road, not the way they last walked.

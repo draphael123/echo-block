@@ -676,6 +676,74 @@ export function lifeSpots() {
   ];
 }
 
+// --------------------------------------------------------------- surround
+// The land beyond the built plate.
+//
+// The voxel ribbon stops about 190 voxels either side of the centreline, and
+// past that there was NOTHING — so every wide shot had a hard horizontal edge
+// with a void under it, and the far houses and trees stood on the end of the
+// world with black underneath them. Fog does not help: fog fades things TOWARD
+// a colour, and there was no geometry there to fade.
+//
+// This is two thin meshes rather than more voxels, because it is a shape nobody
+// will ever drive on or collide with: an apron sweeping outward from the plate
+// edge, and a fill across the middle of the loop. Both follow elev(s), so they
+// meet the plate at the right height all the way round, and both sit a voxel
+// low so the built ground always wins the depth test.
+const OUT_REACH = 1100, OUT_FALL = 34, SUR_STEP = 24;
+
+function surround(path) {
+  const f = frame();
+  const edge = ROAD_HALF + KERB + PAVE + VERGE + APRON;
+
+  // Which side is the infield? Ask, rather than deriving it from the turn
+  // direction — a reversed corner would silently turn the world inside out.
+  let cx = 0, cz = 0;
+  const n = path.points.length / 2;
+  for (let i = 0; i < path.points.length; i += 2) { cx += path.points[i]; cz += path.points[i + 1]; }
+  cx /= n; cz /= n;
+  path.place(0, edge, f);
+  const dPlus = (f.x - cx) ** 2 + (f.z - cz) ** 2;
+  path.place(0, -edge, f);
+  const inSide = ((f.x - cx) ** 2 + (f.z - cz) ** 2) < dPlus ? -1 : 1;
+
+  const pos = [], idx = [];
+  const push = (x, y, z) => { pos.push(x, y, z); return pos.length / 3 - 1; };
+
+  const steps = Math.ceil(path.total / SUR_STEP);
+  const inner = [], outer = [], infield = [];
+  for (let i = 0; i < steps; i++) {
+    const s = (i / steps) * path.total;
+    const gy = GROUND_Y + elev(s) - 1;
+    path.place(s, -inSide * edge, f);
+    inner.push(push(f.x, gy, f.z));
+    path.place(s, -inSide * (edge + OUT_REACH), f);
+    outer.push(push(f.x, gy - OUT_FALL, f.z));
+    path.place(s, inSide * edge, f);
+    infield.push(push(f.x, gy, f.z));
+  }
+  const mid = push(cx, GROUND_Y + elev(0) - 2, cz);
+
+  for (let i = 0; i < steps; i++) {
+    const j = (i + 1) % steps;
+    idx.push(inner[i], outer[i], outer[j], inner[i], outer[j], inner[j]);   // the apron
+    idx.push(infield[i], mid, infield[j]);                                  // the middle
+  }
+
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  const m = new THREE.MeshStandardMaterial({
+    color: 0x232a20, roughness: 1, metalness: 0, side: THREE.DoubleSide, flatShading: true,
+  });
+  const mesh = new THREE.Mesh(g, m);
+  mesh.name = 'surround';
+  mesh.receiveShadow = false;
+  mesh.castShadow = false;
+  return mesh;
+}
+
 // ---------------------------------------------------------------- assemble
 export function buildTrack() {
   const t0 = performance.now();
@@ -693,6 +761,7 @@ export function buildTrack() {
   // solidBelow gives contact AO at the LOWEST point the ground reaches;
   // noFloorBelow only culls undersides down there too, so a raised stretch
   // keeps its underside and reads as an embankment instead of a hole to the sky.
+  group.add(surround(path));
   group.add(meshWorld(w, PALETTE, {
     name: 'track', solidBelow: ELEV_MIN - 2, noFloorBelow: ELEV_MIN + GROUND_Y - 1,
   }));
