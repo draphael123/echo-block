@@ -9,9 +9,11 @@ import { buildSky } from '../lights.js';
 import { Post } from '../post.js';
 import { Ground } from '../walk.js';
 import { buildTrack, sectionAt, safeSpot, lifeSpots, ROAD_HALF } from './track.js';
-import { buildCar } from './car.js';
+import { buildCar, V_MAX } from './car.js';
 import { buildLife, buildTraffic } from './life.js';
 import { buildRival } from './rival.js';
+import { createAudio } from './audio.js';
+import * as Garage from './garage.js';
 import { compare, run } from './sim.js';
 
 const canvas = document.getElementById('view');
@@ -75,7 +77,8 @@ const LIVE_LAMPS = 7;
 
 // ------------------------------------------------------------------- cast
 const paint = +(localStorage.getItem('dynamo.paint') || 0) || 0;
-const car = buildCar(paint);
+const savefile = Garage.load();
+const car = buildCar(paint, Garage.tuneOf(savefile));
 scene.add(car.root);
 car.state.x = track.start.x;
 car.state.z = track.start.z;
@@ -141,13 +144,19 @@ resize();
 
 // ------------------------------------------------------------------ input
 const keys = new Set();
+// Browsers will not start an AudioContext without a gesture, so the whole
+// sound engine waits for the first key press rather than failing quietly.
+const audio = createAudio();
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
+  audio.start();
+  if (k === 'm') { const m = audio.mute(); hud.msg.textContent = m ? 'sound off' : 'sound on'; msgUntil = time + 1.2; }
   if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
   keys.add(k);
   if (k === 'r') reset();
   if (k === 'v') camYawWant = camYawWant ? 0 : Math.PI;   // latched look-back
   if (k === 'h') hud.help.classList.toggle('hidden');
+  if (k === 'g') toggleGarage();
   if (k === 'c') { localStorage.setItem('dynamo.paint', String((paint + 1) % 4)); location.reload(); }
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
@@ -244,10 +253,20 @@ function tick() {
     splits.push(t);
     if (!best || t < best) { best = t; localStorage.setItem('dynamo.lap', String(t)); }
     lap++;
+    audio.beep();
     lapTime = 0;
     if (lap >= LAPS) {
       done = true;
-      hud.msg.innerHTML = `<b>${splits.map(x => x.toFixed(2)).join(' &middot; ')}</b>`
+      const won = !rival.done || (lap * track.path.total + s) >= rival.progress;
+      const paid = Garage.purse({
+        won, laps: LAPS, seconds: splits.reduce((a, b) => a + b, 0), crashes, struck,
+      });
+      savefile.money += paid;
+      savefile.races++;
+      Garage.save(savefile);
+      paintGarage();
+      hud.msg.innerHTML = `<b>${won ? 'WON' : 'LOST'} &middot; ${paid} earned</b>`
+        + `<span class="dim">${splits.map(x => x.toFixed(2)).join(' &middot; ')}</span><br>`
         + `${crashes} crash${crashes === 1 ? '' : 'es'}`
         + (struck ? ` &nbsp; ${struck} pedestrian${struck === 1 ? '' : 's'}` : '')
         + ` &nbsp; <span class="dim">R to reset</span>`;
@@ -283,13 +302,14 @@ function tick() {
     const who = life.hits(car.state.x, car.state.z, car.state.heading);
     if (who && life.strike(who, car.state.x, car.state.z, car.state.speed)) {
       car.impact(0.55, false);
+      audio.thud();
       struck++;
       hud.msg.textContent = 'you hit somebody';
       msgUntil = time + 1.8;
     }
   }
   if (msgUntil && time > msgUntil && !done) { hud.msg.textContent = ''; msgUntil = 0; }
-  if (car.state.crash > 0 && !wasDown) { crashes++; downAt = s; }
+  if (car.state.crash > 0 && !wasDown) { crashes++; downAt = s; audio.impact(car.state.shake || 0.5); }
   wasDown = car.state.crash > 0;
   // Only a car that cannot get itself out gets put back on the road.
   if (car.state.wedged) {
@@ -298,6 +318,7 @@ function tick() {
     if (spot) { car.respawn(spot.x, spot.z, spot.heading, track.elev(spot.s) - 1); s = prevS = spot.s; }
   }
 
+  audio.update(car.state.speed, V_MAX, throttle, car.state.slip, car.state.offRoad);
   car.present(dt);
   rival.update(dt, LAPS);
   traffic.update(dt, track.path.total);
@@ -360,6 +381,43 @@ setInterval(() => {
   post.render(scene, camera, time);
 }, 1000);
 
+// ----------------------------------------------------------------- garage
+// Rebuilt from the savefile rather than mutated in place: it is a dozen rows
+// and it is only ever redrawn when something has actually been bought.
+const garageEl = document.getElementById('garage');
+const partsEl = document.getElementById('parts');
+const moneyEl = document.getElementById('money');
+
+function paintGarage() {
+  moneyEl.textContent = savefile.money.toLocaleString() + ' cr';
+  partsEl.innerHTML = '';
+  for (const p of Garage.PARTS) {
+    const lvl = savefile.parts[p.id] || 0;
+    const cost = Garage.nextCost(savefile, p.id);
+    const row = document.createElement('div');
+    row.className = 'row';
+    const max = p.steps.length - 1;
+    row.innerHTML = `<div><div class="nm">${p.name}</div><div class="bl">${p.blurb}</div></div>`
+      + `<div class="pips">${'■'.repeat(lvl)}${'□'.repeat(max - lvl)}</div>`;
+    const b = document.createElement('button');
+    b.textContent = cost === null ? 'MAX' : `${cost} cr`;
+    b.disabled = cost === null || savefile.money < cost;
+    b.onclick = () => {
+      if (!Garage.buy(savefile, p.id)) return;
+      paintGarage();
+      hud.msg.textContent = p.name + ' fitted — R to take it out';
+      msgUntil = time + 2.4;
+    };
+    row.appendChild(b);
+    partsEl.appendChild(row);
+  }
+}
+function toggleGarage() {
+  garageEl.classList.toggle('hidden');
+  if (!garageEl.classList.contains('hidden')) paintGarage();
+}
+paintGarage();
+
 window.DYNAMO = {
   scene, camera, renderer, post, track, car, ground, life, traffic, rival,
   reset,
@@ -377,6 +435,7 @@ window.DYNAMO = {
     car.respawn(f.x, f.z, Math.atan2(f.tx, f.tz), track.elev(atS) - 1);
     s = prevS = atS;
   },
+  save: savefile, garage: Garage, paintGarage,
   voxels: track.voxels,
   buildMs: track.buildMs,
   lapMetres: Math.round(track.lapLength * 0.08),

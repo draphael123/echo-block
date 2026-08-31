@@ -153,7 +153,21 @@ function shell(w, c) {
   return { L, W };
 }
 
-export function buildCar(paint = 0) {
+// `tune` is a set of MULTIPLIERS on the handling constants, all defaulting to
+// one. Upgrades are the only thing that sets them, which keeps the shop honest:
+// a part you buy has to move one of these numbers or it is not doing anything,
+// and the rival runs the same builder with no tune at all so a bought advantage
+// is a real advantage rather than a difficulty slider.
+export function buildCar(paint = 0, tune = {}) {
+  const T = {
+    vmax: tune.vmax || 1, accel: tune.accel || 1, brake: tune.brake || 1,
+    grip: tune.grip || 1, beam: tune.beam || 1,
+  };
+  const VMAX = V_MAX * T.vmax;
+  const ACC = ACCEL * T.accel;
+  const BRK = BRAKE * T.brake;
+  const T_SLOW = TURN_SLOW * T.grip, T_FAST = TURN_FAST * T.grip;
+  const BEAM = BEAM_REACH * T.beam;
   const c = BODIES[paint % BODIES.length];
   const w = new VoxWorld();
   const { L, W } = shell(w, c);
@@ -205,10 +219,10 @@ export function buildCar(paint = 0) {
 
   // one shadowless spot for the beam, plus a pool light so the road right in
   // front of the car is never black
-  const beam = new THREE.SpotLight(0xfff4d6, 240000, BEAM_REACH, 0.42, 0.55, 1.5);
+  const beam = new THREE.SpotLight(0xfff4d6, 240000 * (0.75 + T.beam * 0.25), BEAM, 0.42, 0.55, 1.5);
   beam.position.set(0, 11, L / 2 - 2);
   const tgt = new THREE.Object3D();
-  tgt.position.set(0, -10, BEAM_REACH * 0.8);
+  tgt.position.set(0, -10, BEAM * 0.8);
   root.add(beam, tgt);
   beam.target = tgt;
 
@@ -240,18 +254,18 @@ export function buildCar(paint = 0) {
 
     const bleed = (v, amount) => Math.sign(v) * Math.max(0, Math.abs(v) - amount);
     if (throttle > 0) {
-      if (spd < 0) state.speed = Math.min(0, spd + BRAKE * dt);     // brake out of reverse
-      else state.speed = spd + ACCEL * throttle * dt * (off ? OFF_ACCEL : 1);
+      if (spd < 0) state.speed = Math.min(0, spd + BRK * dt);       // brake out of reverse
+      else state.speed = spd + ACC * throttle * dt * (off ? OFF_ACCEL : 1);
     } else if (throttle < 0) {
-      if (spd > 0.5) state.speed = spd + BRAKE * throttle * dt;
+      if (spd > 0.5) state.speed = spd + BRK * throttle * dt;
       else if (canRev) state.speed = Math.max(-V_REV, spd - REV_ACCEL * dt);
     } else {
       state.speed = bleed(spd, DRAG * dt);
     }
     if (off) state.speed = bleed(state.speed, OFF_DRAG * dt);
-    state.speed = Math.max(canRev ? -V_REV : 0, Math.min(V_MAX, state.speed));
+    state.speed = Math.max(canRev ? -V_REV : 0, Math.min(VMAX, state.speed));
 
-    const f = Math.abs(state.speed) / V_MAX;
+    const f = Math.abs(state.speed) / VMAX;
     // Steering is referred to the direction of TRAVEL: turn the wheel one way
     // going backwards and the car rotates the other, because it is the back of
     // it that is leading.
@@ -259,7 +273,7 @@ export function buildCar(paint = 0) {
     // A car cannot pivot on the spot, but it must keep SOME authority at a
     // crawl or a nudge into a kerb is permanent — the bike taught me that.
     const sliding = drift && state.speed > 55;
-    state.turnRate = steer * (TURN_SLOW + (TURN_FAST - TURN_SLOW) * f)
+    state.turnRate = steer * (T_SLOW + (T_FAST - T_SLOW) * f)
       * (0.22 + 0.78 * Math.min(1, Math.abs(state.speed) / 30)) * way
       * (sliding ? DRIFT_TURN : 1) * (state.offRoad ? OFF_TURN : 1);
     state.heading += state.turnRate * dt;
@@ -357,7 +371,7 @@ export function buildCar(paint = 0) {
     // Body roll reads the corner for you before the tyres do — and leans HARD
     // into a slide, which is most of what sells the drift from behind.
     const want = THREE.MathUtils.clamp(
-      -state.turnRate * (state.speed / V_MAX) * 0.5 - state.slip * 0.34, -0.30, 0.30);
+      -state.turnRate * (state.speed / VMAX) * 0.5 - state.slip * 0.34, -0.30, 0.30);
     state.roll += (want - state.roll) * Math.min(1, dt * 6);
     chassis.rotation.z = state.roll;
     // A short jolt through the body, and that is the whole crash animation.
@@ -370,8 +384,8 @@ export function buildCar(paint = 0) {
   }
 
   return {
-    root, state, step, crash, impact, respawn, present, beam, length: L, width: W,
-    sightRange: () => BEAM_REACH,
+    root, state, step, crash, impact, respawn, present, beam, length: L, width: W, vmax: VMAX,
+    sightRange: () => BEAM,
   };
 }
 
