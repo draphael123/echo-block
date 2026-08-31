@@ -95,6 +95,8 @@ for (const p of folk)
 const look = { ...player.data };
 function rebuildPlayer(patch) {
   Object.assign(look, patch);
+  // the track prototype reads this, so the kid you dressed is the kid who rides
+  try { localStorage.setItem('echo-block.look', JSON.stringify(look)); } catch {}
   const keep = player.root.position.clone(), face = player.root.rotation.y;
   peopleGroup.remove(player.root);
   player.root.traverse(o => {

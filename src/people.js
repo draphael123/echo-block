@@ -271,6 +271,20 @@ export function buildPerson(spec) {
       return;
     }
 
+    if (s.pose === 'ride') {
+      // On the bike. t is the PEDAL PHASE, advanced by distance travelled by
+      // whoever is riding, so the legs stop when the bike stops.
+      hips.position.y = legH * 0.62;
+      torso.rotation.x = 0.6;
+      head.rotation.x = -0.48;
+      legL.rotation.x = Math.sin(t) * 0.8 - 0.55;
+      legR.rotation.x = -Math.sin(t) * 0.8 - 0.55;
+      armL.rotation.x = -1.32; armR.rotation.x = -1.32;
+      armL.rotation.z = 0.24; armR.rotation.z = -0.24;
+      body.position.y = 0;
+      return;
+    }
+
     if (s.pose === 'sit') {
       hips.position.y = legH * 0.55;
       legL.rotation.x = legR.rotation.x = -1.35;

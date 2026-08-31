@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DYNAMO — track prototype</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #05070d; overflow: hidden; }
+  #view { display: block; width: 100vw; height: 100vh; }
+  #ui {
+    position: fixed; inset: 0; pointer-events: none;
+    font: 12px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color: #cfd6e4; letter-spacing: .05em; text-transform: uppercase;
+    text-shadow: 0 1px 3px rgba(0,0,0,.9);
+  }
+  #ui > * { position: absolute; }
+
+  /* speed and the lamp, bottom left — the two numbers the game is about */
+  #dash { left: 24px; bottom: 22px; display: grid; gap: 8px; }
+  #speed { font-size: 46px; line-height: .9; color: #f3e6cf; letter-spacing: .02em; }
+  #speed::after { content: ' km/h'; font-size: 12px; color: #7d8799; letter-spacing: .16em; }
+  #lamp {
+    width: 190px; height: 7px; border-radius: 2px;
+    background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.12);
+    overflow: hidden;
+  }
+  #lampbar {
+    height: 100%; width: 0%; background: #ffb45c;
+    transition: width .08s linear; box-shadow: 0 0 12px rgba(255,180,92,.6);
+  }
+  #lampbar.sat { background: #fff0c4; box-shadow: 0 0 18px rgba(255,240,196,.85); }
+  #lamplabel { font-size: 10px; letter-spacing: .2em; color: #7d8799; }
+
+  #clock { right: 24px; top: 20px; text-align: right; }
+  #time { font-size: 34px; line-height: 1; color: #f3e6cf; }
+  #best { font-size: 11px; color: #7d8799; letter-spacing: .16em; }
+
+  #sect { left: 24px; top: 20px; font-size: 12px; color: #9fb0c8; letter-spacing: .18em; }
+  #sect.dark { color: #ffb45c; }
+
+  #msg {
+    left: 50%; top: 46%; transform: translate(-50%, -50%); text-align: center;
+    font-size: 15px; letter-spacing: .18em; color: #cfd6e4;
+  }
+  #msg b { color: #f3e6cf; font-size: 30px; display: block; margin-bottom: 6px; letter-spacing: .04em; }
+  #msg .pb { color: #ffb45c; }
+  #msg .dim { color: #5b657a; }
+
+  #help { right: 24px; bottom: 22px; text-align: right; opacity: .5; line-height: 1.8; }
+  #help.hidden { display: none; }
+  #help b { color: #ffd9a0; font-weight: 600; }
+  #back {
+    left: 24px; top: 48px; pointer-events: auto; color: #7d8799;
+    text-decoration: none; letter-spacing: .16em; font-size: 10px;
+  }
+  #back:hover { color: #ffd9a0; }
+
+  #boot {
+    position: fixed; inset: 0; display: grid; place-content: center; gap: 10px;
+    background: #05070d; color: #8f9bb3; text-align: center;
+    font: 13px/1.7 ui-monospace, Menlo, Consolas, monospace;
+    transition: opacity .6s ease;
+  }
+  body.booted #boot { opacity: 0; pointer-events: none; }
+  #boot small { color: #5a6379; display: block; max-width: 44ch; }
+  #boot.failed { color: #e08c74; }
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="ui">
+  <div id="sect"></div>
+  <a id="back" href="./index.html">&larr; back to the block</a>
+  <div id="dash">
+    <div id="speed">0</div>
+    <div id="lamplabel">dynamo</div>
+    <div id="lamp"><div id="lampbar"></div></div>
+  </div>
+  <div id="clock"><div id="time">0.00</div><div id="best"></div></div>
+  <div id="msg">pedal to start</div>
+  <div id="help">
+    <b>w</b> pedal &nbsp; <b>s</b> brake &nbsp; <b>a</b>/<b>d</b> steer<br>
+    <b>r</b> reset &nbsp; <b>h</b> hide<br>
+    <span style="opacity:.7">console: <b>DYNAMO.sim()</b></span>
+  </div>
+</div>
+<div id="boot"><div>building the track…</div><small id="bootmsg"></small></div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.js" } }
+</script>
+<script type="module" src="./src/race/main.js"></script>
+
+<!-- Boot watchdog. A module that fails to evaluate leaves a page that looks
+     fine and does nothing at all, with no error anywhere the user can see. -->
+<script>
+(function () {
+  var boot = document.getElementById('boot'), msg = document.getElementById('bootmsg');
+  function fail(why) {
+    boot.classList.add('failed');
+    boot.firstElementChild.textContent = 'it did not start';
+    msg.textContent = why;
+  }
+  addEventListener('error', function (e) {
+    if (!window.DYNAMO) fail((e.message || 'script error') + (e.filename ? ' — ' + e.filename.split('/').pop() : ''));
+  }, true);
+  if (location.protocol === 'file:') fail('opened over file:// — ES modules are blocked. Serve it: npm run dev');
+  setTimeout(function () { if (!window.DYNAMO) fail('module never evaluated after 10s — check the console'); }, 10000);
+})();
+</script>
+</body>
+</html>

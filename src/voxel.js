@@ -7,8 +7,22 @@
 // collapses into "generic voxel game".
 import * as THREE from 'three';
 
-const OFF = 512, SPAN = 1024;
-const key = (x, y, z) => ((x + OFF) * SPAN + (y + OFF)) * SPAN + (z + OFF);
+// The addressable world, in voxels either side of the origin. This was 512 —
+// fine for one street, and it SILENTLY CORRUPTED the moment a race track ran
+// past it: a coordinate outside the range makes the packed key borrow from the
+// next field, so voxels land on top of each other in a completely different
+// part of the world and nothing anywhere throws. 4096 is +/-327m, and the
+// bounds check below means the next time it is not enough, it says so.
+const OFF = 4096, SPAN = 8192;
+let warned = false;
+const key = (x, y, z) => {
+  if (!warned && (x < -OFF || x >= OFF || y < -OFF || y >= OFF || z < -OFF || z >= OFF)) {
+    warned = true;
+    console.error('VoxWorld: (' + x + ', ' + y + ', ' + z + ') is outside +/-' + OFF
+      + ' — raise OFF/SPAN in voxel.js. Voxels past the edge land somewhere else entirely.');
+  }
+  return ((x + OFF) * SPAN + (y + OFF)) * SPAN + (z + OFF);
+};
 
 // Deterministic per-voxel hash. Drives the value jitter that keeps big flat
 // walls from reading as untextured polygons.
@@ -112,10 +126,6 @@ export class VoxWorld {
     return this;
   }
 
-  // Face-culled mesh with per-vertex AO, split into a matte geometry (lit by
-  // the scene) and a glow geometry (unlit, feeds the bloom pass).
-  // They must be separate: three's emissive is a per-MATERIAL uniform, so one
-  // mesh cannot have some voxels emit and others not.
   // Stamp another world into this one, optionally mirrored in Z.
   //
   // Some builders only make sense written facing one way — a shopfront has a
@@ -172,6 +182,10 @@ export class VoxWorld {
   //               camera above it, and at street scale it is HALF the ground's
   //               triangles; this lets the plate be one voxel thick instead of
   //               four, which is the difference between 3M voxels and 1M.
+  // Face-culled mesh with per-vertex AO, split into a matte geometry (lit by
+  // the scene) and a glow geometry (unlit, feeds the bloom pass). They must be
+  // separate: three's emissive is a per-MATERIAL uniform, so one mesh cannot
+  // have some voxels emit and others not.
   build(palette, opts) {
     const { solidBelow = -Infinity, noFloorBelow = -Infinity } = opts || {};
     const out = {

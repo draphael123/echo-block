@@ -14,6 +14,8 @@
 // the column under a lintel is as tall as the wall beside it and you can never
 // walk through anything.
 export const STEP_UP = 4;          // ~32cm: a kerb or a porch tread
+const OUT = 999;                   // outside the field: the edge of the world
+const VOID = -999;                 // inside the field, but nothing built here
 export const FLOOR_MAX = 14;       // the highest surface that counts as a floor
 export const HEAD = 19;            // body height, in voxels
 
@@ -32,11 +34,15 @@ export class Ground {
     return i * f.d + k;
   }
 
+  // OUT and VOID are different things and conflating them cost an evening.
+  // Off the plate is the edge of the world and must stop you. A column
+  // inside the plate with nothing recorded is a one-voxel PINHOLE in a
+  // generated surface — and treating that as a wall means a bike doing
+  // 35km/h slams to a halt in the middle of an apparently clear road.
   floorAt(x, z) {
     const i = this.index(x, z);
-    if (i < 0) return 999;                       // off the plate
-    const h = this.f.floor[i];
-    return h === -999 ? 999 : h;
+    if (i < 0) return OUT;
+    return this.f.floor[i];                      // may be VOID
   }
 
   isBlocked(x, z) {
@@ -44,22 +50,27 @@ export class Ground {
     return i < 0 || this.f.blocked[i] === 1;
   }
 
-  // The tallest floor the body would be standing on at (x,z).
+  // The tallest floor the body would be standing on at (x,z), ignoring
+  // pinholes — one missing voxel must not decide where your feet are.
   ceilingAt(x, z) {
-    let top = -999;
+    let top = VOID;
     for (const [ox, oz] of PROBE) {
       const h = this.floorAt(x + ox, z + oz);
+      if (h === VOID || h === OUT) continue;
       if (h > top) top = h;
     }
-    return top;
+    return top === VOID ? 0 : top;
   }
 
   // Can a body currently standing on floor `from` occupy (x,z)?
   canStand(x, z, from) {
     for (const [ox, oz] of PROBE) {
       const px = x + ox, pz = z + oz;
+      const h = this.floorAt(px, pz);
+      if (h === OUT) return false;               // the edge of the world
+      if (h === VOID) continue;                  // a pinhole; step over it
       if (this.isBlocked(px, pz)) return false;
-      if (this.floorAt(px, pz) - from > STEP_UP) return false;
+      if (h - from > STEP_UP) return false;
     }
     return true;
   }
@@ -67,7 +78,8 @@ export class Ground {
   // Move with wall-sliding: try the whole step, then each axis alone. Without
   // the per-axis retry you stick to every hedge you brush against.
   move(pos, dx, dz, blockers) {
-    const from = this.floorAt(pos.x, pos.z);
+    let from = this.floorAt(pos.x, pos.z);
+    if (from === VOID || from === OUT) from = this.ceilingAt(pos.x, pos.z);
     const free = (x, z) => this.canStand(x, z, from) && !(blockers && blockers(x, z));
 
     if (free(pos.x + dx, pos.z + dz)) { pos.x += dx; pos.z += dz; }
