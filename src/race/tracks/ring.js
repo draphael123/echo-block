@@ -40,7 +40,7 @@ export default {
     { lit: true, name: 'the services', district: 'services' },
     { lit: false, name: 'the long right', district: 'wood' },
     { lit: true, name: 'hill tunnel', district: 'tunnel' },
-    { lit: false, name: 'the drop', district: 'motorway' },
+    { lit: false, name: 'the viaduct', district: 'viaduct', deck: -240, deckRamp: 260 },
     { lit: false, name: 'the flats', district: 'farm' },
     { lit: false, name: 'east sweep', district: 'motorway' },
     { lit: true, name: 'gate tunnel', district: 'tunnel' },
@@ -104,5 +104,12 @@ export default {
   },
 
   landmarks: { gasholder: [120, -60, 50, 140], waterTower: [-260, 220], pylons: 6 },
+  // Sodium, in the small hours. Everything orange except the sky, and the
+  // thickest fog in the city -- which does the same job as the crests do:
+  // it takes the distance away from you.
+  sky: 'sodium',
+  // The longest lap in the city at 698 metres. Three of these is a slog; two
+  // is a race with a shape.
+  laps: 2,
   wet: 0,
 };

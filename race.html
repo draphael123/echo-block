@@ -56,6 +56,16 @@
   #pos { font: 700 12px/1 sans-serif; letter-spacing: .16em; color: #9ce0a8; margin-top: 8px; }
   #pos.behind { color: #ff8a6a; }
 
+  /* The order board. Five other cars in the dark are a set of tail lights;
+     a list of names is a field you are working through. */
+  #board {
+    position: absolute; right: 22px; top: 50%; transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 3px; text-align: right;
+    font: 500 11px/1.5 Helvetica, Arial, sans-serif; letter-spacing: .1em;
+    color: #6d7688; text-transform: lowercase; pointer-events: none;
+  }
+  #board .you { color: #f6ecda; font-weight: 700; }
+
   /* where you are, top left, quiet unless the lights are out */
   #where { left: 30px; top: 24px; }
   #circuit { font-size: 10px; font-weight: 700; letter-spacing: .3em; color: #6d7688; }
@@ -69,6 +79,18 @@
   }
   #msg b { color: #f6ecda; font-size: 26px; display: block; margin-bottom: 8px; letter-spacing: .04em; }
   #msg .dim { color: #5b657a; font-weight: 500; }
+  /* The lights. Big, brief, and the only thing on screen while they are up. */
+  #msg b.light { font-size: 74px; line-height: 1; color: #ff5f47; letter-spacing: 0; }
+  #msg b.light.go { color: #7fe08a; font-size: 52px; }
+  /* The championship table. */
+  #msg .table {
+    display: inline-flex; flex-direction: column; gap: 2px; margin-top: 10px;
+    font: 500 12px/1.6 Helvetica, Arial, sans-serif; letter-spacing: .08em; color: #7d879a;
+  }
+  #msg .table span { display: flex; justify-content: space-between; gap: 26px; min-width: 170px; }
+  #msg .table span b { display: inline; font-size: 12px; margin: 0; color: #9aa5b8; }
+  #msg .table .you { color: #f6ecda; }
+  #msg .table .you b { color: #f6ecda; }
 
   /* the camera cluster, small and out of the way */
   #cam { right: 30px; bottom: 26px; display: flex; gap: 5px; pointer-events: auto; opacity: .5; transition: opacity .15s; }
@@ -115,7 +137,8 @@
   <a id="back" href="./index.html">&larr; back to the block</a>
   <div id="dash"><div id="speed">0</div><div id="gear"></div><div id="drift">drift</div></div>
   <div id="clock"><div id="time">0.00</div><div id="lap"></div><div id="best"></div><div id="pos"></div></div>
-  <div id="msg">accelerate to start</div>
+  <div id="board"></div>
+  <div id="msg"></div>
   <div id="cam">
     <button id="camL" title="look left (q)">&#9668;</button>
     <button id="camB" title="look behind (v)">&#8635;</button>

@@ -22,16 +22,22 @@ const RIDGE = new THREE.Color('#0d1322');
 // the shadows is the thing you can see.
 const MOON_DIR = new THREE.Vector3(-320, 470, -240).normalize();
 
-export function buildSky() {
+// `sky` is one entry from race/skies.js, or nothing for the hub's midnight.
+// Everything the shader draws is a uniform, so an hour of the day is data.
+const V = (hex, fallback) => new THREE.Vector3(...new THREE.Color(hex || fallback).toArray());
+
+export function buildSky(look = {}) {
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false, toneMapped: false,
     uniforms: {
-      uTop: { value: new THREE.Vector3(...SKY_TOP.toArray()) },
-      uHorizon: { value: new THREE.Vector3(...SKY_HORIZON.toArray()) },
-      uHaze: { value: new THREE.Vector3(...SODIUM_HAZE.toArray()) },
-      uBelow: { value: new THREE.Vector3(...SKY_BELOW.toArray()) },
-      uRidge: { value: new THREE.Vector3(...RIDGE.toArray()) },
-      uMoon: { value: MOON_DIR.clone() },
+      uTop: { value: V(look.top, SKY_TOP.getStyle()) },
+      uHorizon: { value: V(look.horizon, SKY_HORIZON.getStyle()) },
+      uHaze: { value: V(look.haze, SODIUM_HAZE.getStyle()) },
+      uBelow: { value: V(look.below, SKY_BELOW.getStyle()) },
+      uRidge: { value: V(look.ridge, RIDGE.getStyle()) },
+      uMoon: { value: look.sun ? new THREE.Vector3(...look.sun).normalize() : MOON_DIR.clone() },
+      uDisc: { value: new THREE.Vector3(...(look.disc || [0.86, 0.90, 1.00])) },
+      uStars: { value: look.stars === undefined ? 1 : look.stars },
     },
     vertexShader: `
       varying vec3 vDir;
@@ -42,7 +48,8 @@ export function buildSky() {
     fragmentShader: `
       varying vec3 vDir;
       uniform vec3 uTop, uHorizon, uHaze, uBelow, uRidge;
-      uniform vec3 uMoon;
+      uniform vec3 uMoon, uDisc;
+      uniform float uStars;
       float hash(vec2 p){ return fract(sin(dot(p, vec2(41.7, 289.3))) * 43758.5453); }
       void main() {
         float y = vDir.y;
@@ -68,12 +75,12 @@ export function buildSky() {
         // most of what a moon does to a night sky anyway.
         float md = dot(normalize(vDir), normalize(uMoon));
         c += vec3(0.30, 0.36, 0.52) * pow(max(md, 0.0), 160.0);
-        c += vec3(0.86, 0.90, 1.00) * smoothstep(0.99955, 0.99985, md) * 1.5;
+        c += uDisc * smoothstep(0.99955, 0.99985, md) * 1.5;
 
         // stars, thinned out toward the horizon where the haze eats them
         vec2 g = floor(vDir.xz / max(abs(vDir.y), 0.15) * 90.0);
         float s = hash(g);
-        if (s > 0.9975) c += vec3(0.5, 0.6, 0.8) * (s - 0.9975) * 400.0 * smoothstep(0.1, 0.6, h);
+        if (s > 0.9975) c += vec3(0.5, 0.6, 0.8) * (s - 0.9975) * 400.0 * smoothstep(0.1, 0.6, h) * uStars;
         gl_FragColor = vec4(c, 1.0);
       }`,
   });

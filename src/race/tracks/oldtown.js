@@ -49,7 +49,7 @@ export default {
   },
 
   legs: [
-    { lit: true, name: 'market row', district: 'market' },
+    { lit: true, name: 'market row', district: 'markethall' },
     { lit: true, name: 'the shambles', district: 'stone' },
     { lit: true, name: 'wall street', district: 'wall' },
     { lit: false, name: 'the mews', district: 'mews' },
@@ -57,7 +57,7 @@ export default {
     { lit: true, name: 'the steps', district: 'stone' },
     { lit: false, name: 'back lane', district: 'mews' },
     { lit: true, name: 'the green', district: 'park' },
-    { lit: true, name: 'gate hill', district: 'wall' },
+    { lit: true, name: 'the gatehouse', district: 'gatehouse' },
     { lit: true, name: 'the descent', district: 'stone' },
   ],
 
@@ -125,5 +125,12 @@ export default {
   },
 
   landmarks: { waterTower: [40, 20], pylons: 0 },
+  // Dusk over the medieval quarter. The narrow streets read as silhouettes cut
+  // out of a bright western sky -- which is what an old town at sunset looks
+  // like and nothing like the Parade, on the same palette and the same props.
+  sky: 'dusk',
+  // The shortest lap in the city, so it gets an extra one. Three laps of 359
+  // metres is over in ninety seconds; four makes it a race rather than a lap.
+  laps: 4,
   wet: 0,
 };

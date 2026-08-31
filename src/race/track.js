@@ -379,19 +379,28 @@ function sideStreet(c, s, side) {
 // it was exact; on a dock road running at sixty degrees a 266-voxel gantry
 // swings ninety voxels and walks diagonally across the carriageway. Seventy-two
 // crashes in a lap, all at one gantry.
+// HIGH ENOUGH TO LOOK UNDER.
+//
+// The beam sat 62 voxels up and the chase camera sits at 83, so on every
+// approach a gantry crossed the frame as a solid black bar at eye level -- a
+// letterbox with the road above and below it. Nothing was wrong with the
+// geometry; it was simply built for a driver who does not exist. At 84 the
+// camera is under it, which is where you sit in a car.
+const GANTRY_H = 84;
+
 function gantryOver(c, s, half, lift, signal) {
   for (const side of [-1, 1])
-    c.put(s, side * half, (x, z, ff, gy) => c.w.box(x - 2, gy + lift, z - 2, 5, 62, 5, 'metalDark'));
+    c.put(s, side * half, (x, z, ff, gy) => c.w.box(x - 2, gy + lift, z - 2, 5, GANTRY_H, 5, 'metalDark'));
   for (let u = -half; u <= half; u++)
     c.put(s, u, (x, z, ff, gy) => {
-      c.w.box(x - 1, gy + lift + 62, z - 1, 3, 5, 3, 'metalDark');
+      c.w.box(x - 1, gy + lift + GANTRY_H, z - 1, 3, 5, 3, 'metalDark');
       if (signal) {
-        if (Math.abs(u) % 20 < 3) c.w.box(x - 1, gy + lift + 54, z - 1, 3, 9, 3, 'metalDark');
-        if (Math.abs(u - half * 0.5) < 3) c.w.set(x, gy + lift + 58, z, 'signRed');
-        if (Math.abs(u + half * 0.5) < 3) c.w.set(x, gy + lift + 58, z, 'winWarmDim');
+        if (Math.abs(u) % 20 < 3) c.w.box(x - 1, gy + lift + GANTRY_H - 8, z - 1, 3, 9, 3, 'metalDark');
+        if (Math.abs(u - half * 0.5) < 3) c.w.set(x, gy + lift + GANTRY_H - 4, z, 'signRed');
+        if (Math.abs(u + half * 0.5) < 3) c.w.set(x, gy + lift + GANTRY_H - 4, z, 'winWarmDim');
       } else if (Math.abs(u) < half * 0.5) {
-        c.w.box(x, gy + lift + 40, z, 1, 20, 2, 'signGreen');
-        if (Math.abs(u) % 9 < 4) c.w.box(x, gy + lift + 46, z, 1, 3, 3, 'signWhite');
+        c.w.box(x, gy + lift + GANTRY_H - 22, z, 1, 20, 2, 'signGreen');
+        if (Math.abs(u) % 9 < 4) c.w.box(x, gy + lift + GANTRY_H - 16, z, 1, 3, 3, 'signWhite');
       }
     });
 }
@@ -680,6 +689,332 @@ const DISTRICT = {
     c.put(sec.from - 80, half + 90, (x, z, ff, gy) => D2.crane(c.w, x, gy, z, 150, 150));
   },
 
+  // ---------------------------------------------- SET PIECE: the gatehouse
+  // The old town already had a wall you drove PAST. This drives you THROUGH
+  // it: a stone arch the road only just fits, two drum towers either side, a
+  // portcullis hanging in the vault, and the town wall running away both ways.
+  //
+  // It is a squeeze, not a barrier. The bore is wider than the car by four
+  // lengths and its ceiling clears head height, so the collision field never
+  // calls the vault blocked -- the same trick the tunnel uses. What makes it
+  // frightening is that the SIDES come in, and you have to be straight before
+  // you arrive.
+  gatehouse(c, sec) {
+    const mid = (sec.from + sec.to) / 2;
+    // The arch springs AT THE KERB. The first version had the stone come 26
+    // voxels into the carriageway on each side, on the argument that a gate you
+    // have to be straight for is the whole set piece -- and the audit called it
+    // for what it is from the car: six points of road that are a wall. What
+    // narrows here is the FOOTWAY; the tarmac goes through untouched, and the
+    // thing you have to be straight for is a 216-voxel hole in a wall.
+    const BORE = ROAD_HALF + KERB;                 // the gap you go through
+    const WALL = BORE + 90;                        // how far out the stone runs
+    const THICK = 120, RISE = 118;
+
+    // the wall itself, marched in (s, u) because it SPANS the road
+    for (let s = mid - THICK / 2; s <= mid + THICK / 2; s += 0.8) {
+      const d = Math.abs(s - mid) / (THICK / 2);
+      for (let u = -WALL; u <= WALL; u += 0.8) {
+        const a = Math.abs(u);
+        // the arch: a semicircle over the bore, so the vault is round
+        const arch = a <= BORE ? 46 + Math.sqrt(Math.max(0, BORE * BORE - u * u)) * 0.62 : 0;
+        if (a <= BORE && arch >= RISE) continue;
+        c.put(s, u, (x, z, ff, gy) => {
+          const from = a <= BORE ? Math.round(arch) : 0;
+          for (let k = from; k < RISE; k++) {
+            const face = a > BORE - 2 || d > 0.86;
+            const m = k > RISE - 8 ? 'stoneLight'
+              : (hash3(x, k, z) > 0.90 ? 'stoneDark' : (face && (k % 9) === 0 ? 'stoneDark' : 'stone'));
+            c.w.set(x, gy + k, z, m);
+          }
+          // the wall walk, with crenellations at the outer face
+          if (a > BORE) {
+            c.w.set(x, gy + RISE, z, 'stoneLight');
+            if (d > 0.80 && (Math.round(a) % 12) < 6)
+              for (let k = 1; k < 9; k++) c.w.set(x, gy + RISE + k, z, 'stoneLight');
+          }
+        });
+      }
+    }
+
+    // drum towers, one each side, taller than the wall and round in (s, u)
+    for (const side of [-1, 1]) {
+      const R = 38;
+      for (let ds = -R; ds <= R; ds += 0.8)
+        for (let du = -R; du <= R; du += 0.8) {
+          const r = Math.hypot(ds, du);
+          if (r > R) continue;
+          const shell = r > R - 5;
+          c.put(mid + ds, side * (WALL + 6) + du, (x, z, ff, gy) => {
+            const top = RISE + 44;
+            if (shell) {
+              for (let k = 0; k < top; k++)
+                c.w.set(x, gy + k, z, hash3(x, k, z) > 0.91 ? 'stoneDark' : 'stone');
+              if ((Math.round(r * 6 + ds) % 11) < 5)
+                for (let k = 0; k < 9; k++) c.w.set(x, gy + top + k, z, 'stoneLight');
+              // arrow loops, the only light in all that stone
+              if (Math.abs(du) < 2 && (Math.round(ds) % 17) === 0)
+                for (let k = 40; k < 52; k += 4) c.w.set(x, gy + k, z, 'winWarmDim');
+            } else {
+              c.w.set(x, gy + top, z, 'stoneLight');
+            }
+          });
+        }
+    }
+
+    // the portcullis, hung in the vault well above head height
+    for (let u = -BORE + 3; u <= BORE - 3; u += 4)
+      c.put(mid, u, (x, z, ff, gy) => {
+        for (let k = 64; k < 104; k++) c.w.set(x, gy + k, z, 'metalDark');
+      });
+    for (let k = 66; k < 102; k += 8)
+      for (let u = -BORE + 3; u <= BORE - 3; u += 0.9)
+        c.put(mid, u, (x, z, ff, gy) => c.w.set(x, gy + k, z, 'metalDark'));
+
+    // lamps ON the arch, because a stone tunnel with no light in it is a hole
+    for (const side of [-1, 1])
+      for (const ds of [-THICK / 2 - 12, THICK / 2 + 12])
+        c.put(mid + ds, side * (BORE - 8), (x, z, ff, gy) => {
+          c.w.box(x - 1, gy + 40, z - 1, 3, 3, 3, 'metalDark');
+          c.w.set(x, gy + 39, z, 'lampWarm');
+          c.anchors.lamps.push([x, gy + 39, z]);
+        });
+
+    // and the town it is the gate of, set back from the wall on both sides
+    for (const side of [-1, 1]) {
+      c.blit(sec.from + 150, side * (PAVE_BACK + 30), c.pr.stoneA);
+      c.blit(sec.to - 170, side * (PAVE_BACK + 30), c.pr.stoneB);
+    }
+  },
+
+  // -------------------------------------------- SET PIECE: the market hall
+  // You drive UNDER a building. A timber market hall on stone piers straddles
+  // the road: the piers stand at the very edge of the carriageway on both
+  // sides, so the fastest line goes straight down the middle and the overtake
+  // does not exist for four seconds.
+  //
+  // The piers ARE solid -- that is the difference between this and the
+  // gatehouse. One narrows the road; the other puts things in it.
+  markethall(c, sec) {
+    const from = sec.from + 90, to = sec.to - 90;
+    // OUTSIDE the kerb, not inside it.
+    //
+    // The first version stood them at ROAD_HALF - 14 on the argument that piers
+    // in the road remove the overtake for four seconds. The carriageway audit
+    // called it immediately: fifteen points of road you cannot drive on, which
+    // is not a corridor, it is fifteen crash sites. The hall still straddles
+    // the road and you still drive under a building -- the span just clears
+    // the tarmac, which is what a real market hall does.
+    const PIER = ROAD_HALF + KERB + 8;
+    // HIGH, and LIT from underneath.
+    //
+    // At 76 the soffit filled the top third of the windscreen with an unlit
+    // black band -- the shot read as a letterbox rather than as a building over
+    // the road, because the one thing a camera cannot see is a dark ceiling.
+    // It sits at 112 now, and the floor above carries lit panels between its
+    // joists, which is both what a market hall has and the only thing that
+    // makes the underside legible at night.
+    const DECK = 112;                    // underside of the floor above
+    const step = 58;
+
+    for (let s = from; s < to; s += step)
+      for (const side of [-1, 1])
+        for (let ds = -7; ds <= 7; ds += 0.8)
+          for (let du = -7; du <= 7; du += 0.8) {
+            if (Math.abs(ds) + Math.abs(du) > 10) continue;
+            c.put(s + ds, side * PIER + du, (x, z, ff, gy) => {
+              for (let k = 0; k < DECK; k++)
+                c.w.set(x, gy + k, z, k < 4 ? 'stoneDark' : (hash3(x, k, z) > 0.9 ? 'stoneLight' : 'stone'));
+            });
+          }
+
+    // The hall above: a floor across the whole span, a storey and a roof. All
+    // of it is over head height, so none of it is in your way -- it is a LID,
+    // and the trick of the piece is that you can see the far end of it from
+    // the moment you commit.
+    for (let s = from - 8; s <= to + 8; s += 0.8) {
+      for (let u = -PIER - 12; u <= PIER + 12; u += 0.8) {
+        const a = Math.abs(u);
+        c.put(s, u, (x, z, ff, gy) => {
+          // joists, boards, and a lit panel between every pair of joists
+          const bay = Math.round(s) % 34;
+          c.w.set(x, gy + DECK, z, bay < 6 ? 'beam' : (a < PIER - 30 && bay > 12 && bay < 28 ? 'winWarmDim' : 'plank'));
+          for (let k = 1; k < 5; k++) c.w.set(x, gy + DECK + k, z, k < 2 ? 'beam' : 'plank');
+          if (a > PIER + 2) {
+            for (let k = 5; k < 40; k++) {
+              const win = k > 12 && k < 28 && (Math.round(s) % 26) < 14;
+              c.w.set(x, gy + DECK + k, z,
+                win ? (hash3(x, 0, z) > 0.45 ? 'winWarm' : 'winWarmDim')
+                  : (Math.round(s) % 26 < 3 || k > 36 ? 'beam' : 'plaster'));
+            }
+          }
+        });
+      }
+      for (let u = -PIER - 12; u <= PIER + 12; u += 0.8) {
+        const pitch = Math.round((1 - Math.abs(u) / (PIER + 12)) * 34);
+        c.put(s, u, (x, z, ff, gy) => {
+          c.w.set(x, gy + DECK + 40 + pitch, z, 'slate');
+          c.w.set(x, gy + DECK + 39 + pitch, z, 'slateDark');
+        });
+      }
+    }
+
+    // lamps hung off the piers, under the deck
+    for (let s = from + 29; s < to; s += step * 2)
+      for (const side of [-1, 1])
+        c.put(s, side * (PIER - 6), (x, z, ff, gy) => {
+          c.w.set(x, gy + DECK - 9, z, 'lampWarm');
+          c.anchors.lamps.push([x, gy + DECK - 9, z]);
+        });
+  },
+
+  // ------------------------------------------------ SET PIECE: the viaduct
+  // The exact inverse of the ship. There you were down inside something with
+  // steel either side of you; here the ground FALLS AWAY and there is nothing
+  // but a parapet and the city three hundred voxels below.
+  //
+  // It also gives the Ring Road a rhythm it never had: the tunnels take the
+  // sky off you and gave nothing back. Tunnel, open, viaduct, tunnel is a lap
+  // with a shape to it.
+  viaduct(c, sec) {
+    const DECK = ROAD_HALF + KERB + 16;
+    const DROP = 300;
+    const RAMP = 200;
+    const s0 = sec.from + RAMP, s1 = sec.to - RAMP;
+
+    for (let s = s0; s < s1; s += 0.9)
+      for (let u = -DECK; u <= DECK; u += 0.8) {
+        const a = Math.abs(u);
+        c.put(s, u, (x, z, ff, gy) => {
+          const road = gy - 3;
+          c.w.set(x, road - 1, z, 'stone');
+          c.w.set(x, road - 2, z, a > DECK - 6 ? 'stoneLight' : 'stoneDark');
+          if (a > DECK - 3) {
+            for (let k = 0; k < 3; k++) c.w.set(x, road - 3 - k, z, 'stoneLight');
+            // The parapet. Low enough to see the drop over -- a wall you
+            // cannot see over is just a corridor again -- and solid, so you
+            // cannot drive off it.
+            for (let k = 0; k < 15; k++) c.w.set(x, road + k, z, k > 12 ? 'stoneLight' : 'stone');
+          }
+        });
+      }
+
+    // Piers and arches, all of it BELOW the deck. surround() is told this leg
+    // is a structure, so the ground does not come up with it and the drop is
+    // a real drop.
+    const SPAN = 300;
+    for (let s = s0 + 40; s < s1; s += SPAN) {
+      for (let ds = -24; ds <= 24; ds += 0.8)
+        for (let u = -DECK + 10; u <= DECK - 10; u += 0.9) {
+          const a = Math.abs(u);
+          // Hollow across the WHOLE carriageway, not just its middle. The
+          // first version closed the pier back up at its own leading and
+          // trailing faces, which left two stubs of stone standing in the road
+          // at every pier. Hollow to the KERB, not to a fraction of the deck:
+          // DECK - 34 is still twelve voxels inside the carriageway, so the
+          // audit went on finding a wall there. A pier is only ever seen from
+          // its flanks anyway.
+          if (a < ROAD_HALF + KERB + 2) continue;
+          c.put(s + ds, u, (x, z, ff, gy) => {
+            const road = gy - 3;
+            for (let k = 6; k < DROP; k++) {
+              if (Math.abs(ds) > 24 - k / DROP * 7) continue;
+              c.w.set(x, road - k, z, hash3(x, k >> 2, z) > 0.90 ? 'stoneDark' : 'stone');
+            }
+          });
+        }
+      // the arch soffit spanning to the next pier
+      for (let ds = 24; ds < SPAN - 24; ds += 0.9) {
+        const sag = Math.round(Math.sin((ds - 24) / (SPAN - 48) * Math.PI) * 70);
+        for (let u = -DECK + 10; u <= DECK - 10; u += 0.9) {
+          if (Math.abs(u) < DECK - 26) continue;
+          c.put(s + ds, u, (x, z, ff, gy) => {
+            for (let k = 6; k < 20; k++) c.w.set(x, gy - 3 - k - sag, z, 'stone');
+          });
+        }
+      }
+    }
+
+    // the ramps at both ends, so you do not step onto a cliff
+    for (const [a0, a1, dir] of [[sec.from + 40, s0, 1], [s1, sec.to - 40, -1]])
+      for (let s = a0; s < a1; s += 0.9) {
+        const t = dir > 0 ? (s - a0) / (a1 - a0) : (a1 - s) / (a1 - a0);
+        const deep = Math.round(t * 64) + 3;
+        for (let u = -DECK; u <= DECK; u += 0.9)
+          c.put(s, u, (x, z, ff, gy) => {
+            const road = gy - 3;
+            // A SHELL, not a solid block.
+            //
+            // The first version filled the whole width down to the full depth,
+            // sixty-odd voxels of stone under the middle of the road -- and the
+            // walk field measures a column FROM ITS LOWEST VOXEL, so the floor
+            // came out twenty-five voxels below the tarmac and the audit called
+            // the entire cross-section undrivable. Under the carriageway the
+            // deck is five voxels thick; the depth is all in the flanks, which
+            // are the only part you can see anyway.
+            for (let k = 1; k < 6; k++) c.w.set(x, road - k, z, 'stone');
+            if (Math.abs(u) > DECK - 12)
+              for (let k = 6; k < deep; k++) c.w.set(x, road - k, z, 'stone');
+            if (Math.abs(u) > DECK - 3)
+              for (let k = 0; k < 15; k++) c.w.set(x, road + k, z, k > 12 ? 'stoneLight' : 'stone');
+          });
+      }
+
+    // the city underneath, small and far down, so the height reads
+    for (let s = s0 + 60; s < s1 - 60; s += 170)
+      for (const side of [-1, 1])
+        c.put(s, side * (DECK + 130), (x, z, ff, gy) => {
+          const h = 40 + Math.floor(hash3(x, 5, z) * 90);
+          c.w.box(x - 26, gy - DROP + 20, z - 26, 52, h, 52, 'brickDark');
+          for (let k = 8; k < h - 6; k += 11)
+            for (let dx = 4; dx < 48; dx += 9)
+              c.w.set(x - 26 + dx, gy - DROP + 20 + k, z - 26,
+                hash3(x + dx, k, z) > 0.55 ? 'winWarm' : 'winCold');
+        });
+    // lamps along the parapet, the only thing lighting it
+    for (let s = s0; s < s1; s += 150)
+      for (const side of [-1, 1])
+        c.put(s, side * (DECK - 5), (x, z, ff, gy) =>
+          c.anchors.lamps.push(P.streetLamp(c.w, x, gy - 3, z, 46, -12 * side)));
+  },
+
+  // ----------------------------------------------- SET PIECE: the mill yard
+  // The Parade's mill was a building on the verge; now the road goes THROUGH
+  // its yard -- under the conveyor bridge, between the silos. The one piece of
+  // industry on an otherwise residential circuit, and the only place on the
+  // Parade where something passes over your head.
+  millyard(c, sec) {
+    const mid = (sec.from + sec.to) / 2;
+
+    for (const at of [mid - 210, mid + 190]) {
+      for (const side of [-1, 1])
+        for (let ds = -6; ds <= 6; ds += 0.8)
+          for (let du = -6; du <= 6; du += 0.8)
+            c.put(at + ds, side * (ROAD_HALF + 20) + du, (x, z, ff, gy) => {
+              for (let k = 0; k < 78; k++) c.w.set(x, gy + k, z, k % 13 === 0 ? 'metal' : 'metalDark');
+            });
+      for (let u = -(ROAD_HALF + 20); u <= ROAD_HALF + 20; u += 0.8)
+        for (let ds = -9; ds <= 9; ds += 0.9)
+          c.put(at + ds, u, (x, z, ff, gy) => {
+            const shell = Math.abs(ds) > 7.5 || Math.abs(u) > ROAD_HALF + 18;
+            for (let k = 78; k < 96; k++)
+              c.w.set(x, gy + k, z, shell || k > 93 ? 'metal' : 'metalDark');
+            if (Math.abs(ds) < 1 && (Math.round(u) % 24) < 3) c.w.set(x, gy + 77, z, 'lampWarm');
+          });
+    }
+
+    // silos in a row, close enough to the kerb to make a wall of cylinders
+    for (let i = 0; i < 4; i++)
+      c.put(mid - 150 + i * 108, (i % 2 ? -1 : 1) * (SET + 20), (x, z, ff, gy) =>
+        D.silo(c.w, x, gy, z, 16 + (i % 2) * 5, 96 + i * 9));
+
+    c.blit(mid + 40, SET + 96, c.pr.mill);
+    c.put(mid + 40, SET + 150, (x, z, ff, gy) => c.anchors.stacks.push([x, gy + 158, z]));
+    c.put(mid - 300, -(SET + 30), (x, z, ff, gy) => D.oilDrums(c.w, x, gy, z, 11));
+    c.put(mid + 280, -(SET + 26), (x, z, ff, gy) => D.pallets(c.w, x, gy, z, 6));
+    c.run(sec.from, sec.to, SET + 190, 230, (x, z, ff, gy) => P.tree(c.w, x, gy, z, 42, 15));
+  },
+
   // ========================================================== THE RING ROAD
   motorway(c, sec) {
     const ax = legAxis(c.path, sec, c.f);
@@ -781,11 +1116,11 @@ function dress(w, path, anchors, houses) {
   // the MIDDLE of the road on the Docks, whose start straight runs along X.
   // That was the two-hundred-voxel pink streak through the middle of the frame.
   for (const side of [-1, 1])
-    put(30, side * (ROAD_HALF + 6), (x, z, ff, gy) => w.box(x - 2, gy, z - 2, 5, 66, 5, 'metalDark'));
+    put(30, side * (ROAD_HALF + 6), (x, z, ff, gy) => w.box(x - 2, gy, z - 2, 5, 88, 5, 'metalDark'));
   for (let u = -ROAD_HALF - 6; u <= ROAD_HALF + 6; u += 0.8)
     put(30, u, (x, z, ff, gy) => {
-      w.box(x - 1, gy + 60, z - 1, 3, 6, 3, 'metalDark');
-      if (Math.abs(u) < ROAD_HALF - 6) w.set(x, gy + 63, z, 'neonSign');
+      w.box(x - 1, gy + 82, z - 1, 3, 6, 3, 'metalDark');
+      if (Math.abs(u) < ROAD_HALF - 6) w.set(x, gy + 85, z, 'neonSign');
     });
   for (let u = -ROAD_HALF; u <= ROAD_HALF; u++)
     put(30, u, (x, z, ff, gy) => w.set(x, gy - 3, z, ((u >> 2) % 2) ? 'roadLine' : 'asphaltPatch'));
@@ -1015,7 +1350,19 @@ function surround(path) {
     // Without this the water follows the ship's deck thirty voxels into the air
     // and the set piece reads as a hill with containers on it.
     const sec = sectionAt(s);
-    const gy = (sec && sec.deck !== undefined ? GROUND_Y + sec.deck : GROUND_Y + elev(s)) - 1;
+    // A leg carried on a STRUCTURE also has to get ONTO it. The ship gets away
+    // with a bare step because its deck is thirty voxels down; a viaduct three
+    // hundred up would put a sheer cliff in the ground mesh at the leg
+    // boundary, which reads as the world being torn rather than as a bridge.
+    // deckRamp blends the two over the approach, matching the ramps the set
+    // piece builds in voxels.
+    let gy = GROUND_Y + elev(s) - 1;
+    if (sec && sec.deck !== undefined) {
+      const r = sec.deckRamp || 0;
+      const into = Math.min(s - sec.from, sec.to - s);
+      const t = r > 0 ? Math.max(0, Math.min(1, into / r)) : 1;
+      gy = GROUND_Y + (elev(s) * (1 - t) + sec.deck * t) - 1;
+    }
     path.place(s, -inSide * edge, f);
     inner.push(push(f.x, gy, f.z));
     path.place(s, -inSide * (edge + OUT_REACH), f);

@@ -6,14 +6,17 @@
 // different question.
 import * as THREE from 'three';
 import { buildSky } from '../lights.js';
+import { skyOf } from './skies.js';
 import { Post } from '../post.js';
 import { Ground } from '../walk.js';
 import { buildTrack, sectionAt, safeSpot, lifeSpots, ROAD_HALF } from './track.js';
-import { TRACKS, pickTrack } from './tracks/index.js';
+import { TRACKS, pickTrack, chooseTrack } from './tracks/index.js';
 import { buildCar, V_MAX, BODIES } from './car.js';
 import { buildLife, buildTraffic } from './life.js';
-import { buildRival } from './rival.js';
+import { buildField, gridSlot, FIELD_SIZE } from './field.js';
+import * as GP from './gp.js';
 import { createAudio } from './audio.js';
+import { frame as pathFrame } from './path.js';
 import { buildSmoke, neonFlicker } from '../fx.js';
 import * as Garage from './garage.js';
 import { mountGarage } from '../garage-ui.js';
@@ -27,7 +30,12 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.shadowMap.autoUpdate = false;
 renderer.toneMapping = THREE.NoToneMapping;
-renderer.setClearColor(0x141d38, 1);
+// WHAT TIME IT IS, on this circuit. See skies.js: the sky shader, the fog and
+// both lights are driven from one entry so they cannot disagree with each
+// other, which is what makes a warm sky over cold fog read as a bug.
+const SPEC = pickTrack();
+const SKY = skyOf(SPEC.sky);
+renderer.setClearColor(new THREE.Color(SKY.clear), 1);
 
 const scene = new THREE.Scene();
 // The sky is lifted; the FOG is not, and the two are different jobs. Fog is
@@ -36,11 +44,11 @@ const scene = new THREE.Scene();
 // kilometre ahead on the one stretch whose entire point is that you cannot. A
 // night sky IS brighter than the ground under it, so: bright backdrop, dark
 // fog, and the dark stays dark.
-scene.fog = new THREE.FogExp2(0x161f33, 0.00135);
-const sky = buildSky();
+scene.fog = new THREE.FogExp2(new THREE.Color(SKY.fog), SKY.fogD);
+const sky = buildSky(SKY);
 scene.add(sky);
 
-const track = buildTrack(pickTrack());
+const track = buildTrack(SPEC);
 scene.add(track.group);
 const ground = new Ground(track.field);
 
@@ -49,7 +57,7 @@ const ground = new Ground(track.field);
 // barns were black silhouettes with windows floating on them and no volume at
 // all. The reference is path-traced and its shadows carry bounce; this is the
 // cheap version of that.
-const hemi = new THREE.HemisphereLight(0x3b537f, 0x2c2119, 0.68);
+const hemi = new THREE.HemisphereLight(new THREE.Color(SKY.hemiSky), new THREE.Color(SKY.hemiGround), SKY.hemi);
 scene.add(hemi);
 
 // The important half. A hemisphere lights HORIZONTAL surfaces most, which is
@@ -59,7 +67,7 @@ scene.add(hemi);
 // dark side, and barely touches the tarmac. No shadow, because it is a fill.
 const fill = new THREE.DirectionalLight(0x7d93c4, 0.62);
 scene.add(fill, fill.target);
-const moon = new THREE.DirectionalLight(0xbdd2f2, 1.6);
+const moon = new THREE.DirectionalLight(new THREE.Color(SKY.key), SKY.keyI);
 moon.castShadow = true;
 moon.shadow.mapSize.set(2048, 2048);
 Object.assign(moon.shadow.camera, { left: -420, right: 420, top: 420, bottom: -420, near: 60, far: 1400 });
@@ -95,17 +103,21 @@ function rebuildCar() {
   Object.assign(car.state, keep);
 }
 scene.add(car.root);
-car.state.x = track.start.x;
-car.state.z = track.start.z;
-car.state.heading = track.start.heading;
+const gridFrame = pathFrame();
 
-// Somebody to race. It starts alongside you and drives its own race — no
-// rubber-banding, so if you are quicker you pull away and if you are not you
-// get to watch it do the thing you are failing to do.
-const rival = buildRival(track, ground, buildCar, {
-  paint: (savefile.paint + 3) % BODIES.length, policy: 'cautious', pace: 1, startS: 80, startU: 34,
-});
-scene.add(rival.root);
+// A grid of them. Five other drivers, each running its own race with no
+// rubber-banding — if you are quicker you pull away, and if you are not you
+// get to watch somebody do the thing you are failing to do.
+//
+// YOU START AT THE BACK, which is what makes the field worth having: a lap with
+// nothing in front of you is a time trial with scenery.
+const field = buildField(track, ground, buildCar, { playerPaint: savefile.paint });
+field.addTo(scene);
+const START = gridSlot(0);
+track.path.place(START.s, START.u, gridFrame);
+car.state.x = gridFrame.x;
+car.state.z = gridFrame.z;
+car.state.heading = Math.atan2(gridFrame.tx, gridFrame.tz);
 
 // A town where nothing moves is a model of a town. Smoke off the mill stack and
 // the lit chimneys, and a television flickering in some of the front rooms --
@@ -138,6 +150,11 @@ scene.add(traffic.group);
 // enough that the compression the whole look depends on survives.
 const camera = new THREE.PerspectiveCamera(34, innerWidth / innerHeight, 12, 2400);
 const post = new Post(renderer, innerWidth, innerHeight);
+// The bright pass and the exposure belong to the HOUR, not to the renderer. A
+// scene that is nearly all black needs a low threshold to have any bloom at
+// all; the same threshold under a dusk sky blooms the entire road.
+if (SKY.exposure) post.params.exposure = SKY.exposure;
+if (SKY.threshold) post.params.threshold = SKY.threshold;
 post.params.range = 260;
 post.params.maxBlur = 7;
 post.params.focus = 190;
@@ -189,6 +206,11 @@ addEventListener('keydown', (e) => {
   if (k === 'r') reset();
   if (k === 'v') camYawWant = camYawWant ? 0 : Math.PI;   // latched look-back
   if (k === 'h') { hud.help.classList.toggle('hidden'); hud.hint.classList.toggle('hidden'); }
+  // The championship: N takes you to the next round, G starts a season. Both
+  // reload, because a circuit is meshed once at boot and rebuilding one in
+  // place would take longer than the page does.
+  if (k === 'n' && nextRound) { chooseTrack(nextRound); location.reload(); }
+  if (k === 'g' && done) { GP.begin(savefile); chooseTrack(GP.ROUNDS[0]); location.reload(); }
   if (k === 'g') toggleGarage();
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
@@ -227,27 +249,96 @@ const hud = {
   gear: document.getElementById('gear'),
   pos: document.getElementById('pos'),
   circuit: document.getElementById('circuit'),
+  board: document.getElementById('board'),
   hint: document.getElementById('hint'),
 };
 hud.circuit.textContent = track.name;
 
-const LAPS = 3;
+// Per circuit. Three laps of the Old Town's 359 metres is over in ninety
+// seconds and two of the Ring Road's 698 is a race with a shape; one number for
+// four tracks of wildly different length was a number chosen for one of them.
+const LAPS = SPEC.laps || 3;
+
+// A standing start needs a start. Without it the race began the instant you
+// touched the throttle, which on a six-car grid means whoever's finger moved
+// first — and made the lights on the gantry a decoration.
+const GRID_HOLD = 3.2;
+let countdown = GRID_HOLD;
+
+// Are we in a championship, and is THIS its current round?
+const gp = GP.current(savefile);
+const inGP = !!gp && GP.roundTrack(gp) === track.id;
 let lapTime = 0, lap = 0, running = false, done = false;
 let s = 80, prevS = 80, crashes = 0, wasDown = false, downAt = 0;
-let struck = 0, msgUntil = 0, wasBoosting = false;
+let struck = 0, msgUntil = 0, wasBoosting = false, lastLight = 99;
 let best = +(localStorage.getItem('dynamo.lap') || 0) || null;
 const splits = [];
 
 function reset() {
-  car.respawn(track.start.x, track.start.z, track.start.heading, track.elev(80) - 1);
-  rival.reset();
+  track.path.place(START.s, START.u, gridFrame);
+  car.respawn(gridFrame.x, gridFrame.z, Math.atan2(gridFrame.tx, gridFrame.tz),
+    track.elev(START.s) - 1);
+  field.reset();
   car.state.crash = 0; car.state.dist = 0;
   lapTime = 0; lap = 0; running = false; done = false;
-  s = prevS = 80; crashes = 0; wasDown = false; struck = 0; msgUntil = 0;
+  countdown = GRID_HOLD; lastLight = 99;
+  s = prevS = START.s; crashes = 0; wasDown = false; struck = 0; msgUntil = 0;
   splits.length = 0;
-  hud.msg.textContent = 'accelerate to start';
+  hud.msg.innerHTML = inGP
+    ? `<b>round ${gp.round + 1} of ${GP.ROUNDS.length}</b><span class="dim">${track.name}</span>`
+    : '';
 }
 reset();
+
+// What happened, who scored, and whether the championship is over.
+//
+// Splitting this out of the lap counter is not tidying: it has three jobs now
+// (pay the purse, award the points, close the season) and the version that did
+// them inline inside an `if` nested in the lap check was where a bug would live.
+function finish() {
+  const mine = lap * track.path.total + s;
+  const table = field.standings(mine);
+  const place = table.findIndex(r => r.you);
+  const order = table.map(r => r.name);
+
+  const paid = Garage.purse({
+    won: place === 0, laps: LAPS, seconds: splits.reduce((a, b) => a + b, 0), crashes, struck,
+  });
+  savefile.money += paid;
+  savefile.races++;
+
+  const ORD = ['1st', '2nd', '3rd', '4th', '5th', '6th'];
+  let head = `<b>${ORD[place] || (place + 1)} &middot; ${paid} earned</b>`;
+  let body = `<span class="dim">${splits.map(x => x.toFixed(2)).join(' &middot; ')}</span><br>`
+    + `${crashes} crash${crashes === 1 ? '' : 'es'}`
+    + (struck ? ` &nbsp; ${struck} pedestrian${struck === 1 ? '' : 's'}` : '');
+
+  if (inGP) {
+    const r = GP.score(savefile, order);
+    const pts = r.awarded.you || 0;
+    head = `<b>${ORD[place] || (place + 1)} &middot; ${pts} point${pts === 1 ? '' : 's'} `
+      + `&middot; ${paid} earned</b>`;
+    body += `<div class="table">` + r.standings.map(x =>
+      `<span class="${x.you ? 'you' : ''}">${x.name}<b>${x.points}</b></span>`).join('') + `</div>`;
+    if (r.finished) {
+      const prize = GP.prize(savefile.gp);
+      savefile.money += prize;
+      const won = r.standings[0].you;
+      head = `<b>${won ? 'CHAMPION' : 'season over'} &middot; ${prize + paid} earned</b>`;
+      body += `<span class="dim">the season is done — G for a new one</span>`;
+    } else {
+      const next = GP.roundTrack(savefile.gp);
+      const nt = TRACKS.find(t => t.id === next);
+      body += `<span class="dim">next round: ${nt.name} — N to go</span>`;
+      nextRound = next;
+    }
+  }
+
+  Garage.save(savefile);
+  paintGarage();
+  hud.msg.innerHTML = head + body + ` &nbsp; <span class="dim">R to reset</span>`;
+}
+let nextRound = null;
 
 // ------------------------------------------------------------------- loop
 const clock = new THREE.Clock();
@@ -277,7 +368,26 @@ function tick() {
     if (keys.has('a') || keys.has('arrowleft')) steer = -1;
     if (keys.has('d') || keys.has('arrowright')) steer = 1;
   } else throttle = -0.6;
-  if (throttle > 0 && !running && !done) { running = true; rival.start(); hud.msg.textContent = ''; }
+  // THE LIGHTS. Nobody moves until they go out — including you, which is why
+  // the throttle is held at zero rather than merely ignored. A countdown you can
+  // creep through is not a countdown.
+  if (!running && !done) {
+    countdown -= dt;
+    const light = Math.max(0, Math.ceil(countdown));
+    if (light !== lastLight) {
+      lastLight = light;
+      if (light > 0) { audio.beep(); hud.msg.innerHTML = `<b class="light">${light}</b>`; }
+    }
+    if (countdown <= 0) {
+      running = true;
+      field.start();
+      audio.beep();
+      hud.msg.innerHTML = '<b class="light go">go</b>';
+      msgUntil = time + 1.0;
+    } else {
+      throttle = 0; steer = 0; drift = false;
+    }
+  }
 
   car.step(dt, throttle, steer, ground, drift);
   if (running && !done) lapTime += dt;
@@ -292,19 +402,7 @@ function tick() {
     lapTime = 0;
     if (lap >= LAPS) {
       done = true;
-      const won = !rival.done || (lap * track.path.total + s) >= rival.progress;
-      const paid = Garage.purse({
-        won, laps: LAPS, seconds: splits.reduce((a, b) => a + b, 0), crashes, struck,
-      });
-      savefile.money += paid;
-      savefile.races++;
-      Garage.save(savefile);
-      paintGarage();
-      hud.msg.innerHTML = `<b>${won ? 'WON' : 'LOST'} &middot; ${paid} earned</b>`
-        + `<span class="dim">${splits.map(x => x.toFixed(2)).join(' &middot; ')}</span><br>`
-        + `${crashes} crash${crashes === 1 ? '' : 'es'}`
-        + (struck ? ` &nbsp; ${struck} pedestrian${struck === 1 ? '' : 's'}` : '')
-        + ` &nbsp; <span class="dim">R to reset</span>`;
+      finish();
     }
   }
   prevS = loc.s;
@@ -315,12 +413,15 @@ function tick() {
 
   // Somebody else's car. Solid, heavy, and the hardest thing on the circuit to
   // hit -- but still a slowdown you drive out of, not a spin.
-  if (!car.state.crash && car.state.speed > 40 && rival.hits(car.state.x, car.state.z, car.state.heading)) {
-    car.impact(0.7, true);
-    rival.shunt(car.state.x, car.state.z, car.state.speed);
-    audio.impact(0.6);
-    hud.msg.textContent = 'contact';
-    msgUntil = time + 1.2;
+  if (!car.state.crash && car.state.speed > 40) {
+    const other = field.hits(car.state.x, car.state.z, car.state.heading);
+    if (other) {
+      car.impact(0.7, true);
+      other.shunt(car.state.x, car.state.z, car.state.speed);
+      audio.impact(0.6);
+      hud.msg.textContent = 'contact with ' + other.name;
+      msgUntil = time + 1.2;
+    }
   }
   if (!car.state.crash && car.state.speed > 40) {
     const t = traffic.hits(car.state.x, car.state.z, car.state.heading);
@@ -357,16 +458,16 @@ function tick() {
   }
 
   car.setWet(wet);
-  rival.car.setWet(wet);
+  field.setWet(wet);
   post.params.wet = wet * 0.85;
   post.params.rain = wet * 0.9;
-  scene.fog.density = 0.00135 + wet * 0.00055;
+  scene.fog.density = SKY.fogD + wet * 0.00055;
 
   audio.update(car.state.speed, V_MAX, throttle, car.state.slip, car.state.offRoad);
   if (car.state.boost > 0 && !wasBoosting) audio.kerb();
   wasBoosting = car.state.boost > 0;
   car.present(dt);
-  rival.update(dt, LAPS);
+  field.update(dt, LAPS);
   traffic.update(dt, track.path.total);
   life.update(time, dt, car.state.x, car.state.z);
   smoke.update(time, dt);
@@ -420,7 +521,7 @@ function tick() {
   sky.position.copy(camera.position);
   post.params.focus = camera.position.distanceTo(camAim);
   moon.target.position.set(car.state.x, car.state.yView, car.state.z);
-  moon.position.set(car.state.x - 320, car.state.yView + 470, car.state.z - 240);
+  moon.position.set(car.state.x + SKY.sun[0], car.state.yView + SKY.sun[1], car.state.z + SKY.sun[2]);
   fill.target.position.set(car.state.x, car.state.yView, car.state.z);
   fill.position.set(car.state.x + 340, car.state.yView + 110, car.state.z + 260);
 
@@ -434,14 +535,26 @@ function tick() {
   hud.time.textContent = lapTime.toFixed(2);
   hud.best.textContent = best ? `best ${best.toFixed(2)}s` : '';
   hud.lap.textContent = `lap ${Math.min(lap + 1, LAPS)}/${LAPS}`;
-  // Who is ahead, in metres of track rather than in straight-line distance —
-  // on a loop the two disagree by half a lap.
+  // Where you are in the field, in metres of TRACK rather than straight-line
+  // distance — on a loop those two disagree by half a lap.
   const mine = lap * track.path.total + s;
-  const gap = (mine - rival.progress) * 0.08;
-  hud.pos.textContent = running && !done
-    ? (gap >= 0 ? `P1  +${gap.toFixed(0)}m` : `P2  ${gap.toFixed(0)}m`)
-    : '';
-  hud.pos.classList.toggle('behind', gap < 0);
+  if (running && !done) {
+    const table = field.standings(mine);
+    const at = table.findIndex(r => r.you);
+    // The gap that matters is to whoever is immediately in front, or behind if
+    // you are leading. A gap to the leader is useless information in fourth.
+    const rel = at > 0 ? table[at - 1] : table[1];
+    const gap = rel ? (mine - rel.progress) * 0.08 : 0;
+    hud.pos.textContent = `P${at + 1}/${table.length}  ${gap >= 0 ? '+' : ''}${gap.toFixed(0)}m`;
+    hud.pos.classList.toggle('behind', at > 0);
+    // The order board. Five other cars in the dark is a set of headlights; a
+    // list of names is a field you are working through.
+    hud.board.innerHTML = table.map((r, i) =>
+      `<span class="${r.you ? 'you' : ''}">${i + 1} ${r.name}</span>`).join('');
+  } else {
+    hud.pos.textContent = '';
+    hud.board.innerHTML = '';
+  }
 
   const sec = sectionAt(s);
   hud.sect.textContent = sec.name;
@@ -467,7 +580,7 @@ const paintGarage = () => garage.paint();
 const toggleGarage = () => garage.toggle();
 
 window.DYNAMO = {
-  scene, camera, renderer, post, track, car, ground, life, traffic, rival,
+  scene, camera, renderer, post, track, car, ground, life, traffic, field, gp: GP,
   reset,
   sim: (opts) => {
     const r = compare(track, opts);

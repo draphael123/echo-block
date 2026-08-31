@@ -37,7 +37,7 @@ export default {
   legs: [
     { lit: true, name: 'the parade', district: 'parade' },
     { lit: true, name: 'chapel corner', district: 'chapel' },
-    { lit: false, name: 'mill lane', district: 'mill' },
+    { lit: false, name: 'mill lane', district: 'millyard' },
     { lit: false, name: 'the long dark', district: 'wood' },
     { lit: true, name: 'the crescent', district: 'crescent' },
     { lit: true, name: 'the top', district: 'park' },
@@ -119,6 +119,11 @@ export default {
     drains: [520, 1240, 3500, 4200, 5400],
     signs: [[1380, 1, 'stop'], [2480, -1, 'sign'], [5150, 1, 'sign'], [5790, -1, 'stop']],
   },
+
+  // 11pm. This is the circuit the sight mechanic belongs to, so its dark has
+  // to be genuinely dark; every other track moved off midnight, this one owns it.
+  sky: 'midnight',
+  laps: 3,
 
   landmarks: { gasholder: [60, -40, 46, 132], waterTower: [-210, 190], pylons: 4 },
   wet: 0,

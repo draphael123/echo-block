@@ -114,5 +114,10 @@ export default {
   },
 
   landmarks: { gasholder: [-40, 90, 52, 150], pylons: 5 },
+  // Dawn at the river, an hour before anyone else is up. The wet road is this
+  // circuit's one mechanic and at midnight it was reflecting almost nothing --
+  // a wet surface needs a BRIGHT sky to be worth having.
+  sky: 'dawn',
+  laps: 3,
   wet: 0.85,
 };
