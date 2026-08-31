@@ -11,6 +11,7 @@ import { Ground } from '../walk.js';
 import { buildTrack, sectionAt, safeSpot, lifeSpots, ROAD_HALF } from './track.js';
 import { buildCar } from './car.js';
 import { buildLife, buildTraffic } from './life.js';
+import { buildRival } from './rival.js';
 import { compare, run } from './sim.js';
 
 const canvas = document.getElementById('view');
@@ -79,6 +80,14 @@ scene.add(car.root);
 car.state.x = track.start.x;
 car.state.z = track.start.z;
 car.state.heading = track.start.heading;
+
+// Somebody to race. It starts alongside you and drives its own race — no
+// rubber-banding, so if you are quicker you pull away and if you are not you
+// get to watch it do the thing you are failing to do.
+const rival = buildRival(track, ground, buildCar, {
+  paint: (paint + 2) % 4, policy: 'cautious', pace: 1, startS: 80, startU: 34,
+});
+scene.add(rival.root);
 
 const life = buildLife(track.path, lifeSpots(), ground, track.elev);
 scene.add(life.group);
@@ -175,6 +184,7 @@ const hud = {
   lap: document.getElementById('lap'),
   drift: document.getElementById('drift'),
   gear: document.getElementById('gear'),
+  pos: document.getElementById('pos'),
 };
 
 const LAPS = 3;
@@ -186,6 +196,7 @@ const splits = [];
 
 function reset() {
   car.respawn(track.start.x, track.start.z, track.start.heading, track.elev(80) - 1);
+  rival.reset();
   car.state.crash = 0; car.state.dist = 0;
   lapTime = 0; lap = 0; running = false; done = false;
   s = prevS = 80; crashes = 0; wasDown = false; struck = 0; msgUntil = 0;
@@ -222,7 +233,7 @@ function tick() {
     if (keys.has('a') || keys.has('arrowleft')) steer = -1;
     if (keys.has('d') || keys.has('arrowright')) steer = 1;
   } else throttle = -0.6;
-  if (throttle > 0 && !running && !done) { running = true; hud.msg.textContent = ''; }
+  if (throttle > 0 && !running && !done) { running = true; rival.start(); hud.msg.textContent = ''; }
 
   car.step(dt, throttle, steer, ground, drift);
   if (running && !done) lapTime += dt;
@@ -250,6 +261,11 @@ function tick() {
 
   // Somebody else's car. Solid, heavy, and the hardest thing on the circuit to
   // hit -- but still a slowdown you drive out of, not a spin.
+  if (!car.state.crash && car.state.speed > 40 && rival.hits(car.state.x, car.state.z, car.state.heading)) {
+    car.impact(0.7, true);
+    hud.msg.textContent = 'contact';
+    msgUntil = time + 1.2;
+  }
   if (!car.state.crash && car.state.speed > 40) {
     const t = traffic.hits(car.state.x, car.state.z, car.state.heading);
     if (t) {
@@ -283,6 +299,7 @@ function tick() {
   }
 
   car.present(dt);
+  rival.update(dt, LAPS);
   traffic.update(dt, track.path.total);
   life.update(time, dt, car.state.x, car.state.z);
 
@@ -321,6 +338,15 @@ function tick() {
   hud.time.textContent = lapTime.toFixed(2);
   hud.best.textContent = best ? `best ${best.toFixed(2)}s` : '';
   hud.lap.textContent = `lap ${Math.min(lap + 1, LAPS)}/${LAPS}`;
+  // Who is ahead, in metres of track rather than in straight-line distance —
+  // on a loop the two disagree by half a lap.
+  const mine = lap * track.path.total + s;
+  const gap = (mine - rival.progress) * 0.08;
+  hud.pos.textContent = running && !done
+    ? (gap >= 0 ? `P1  +${gap.toFixed(0)}m` : `P2  ${gap.toFixed(0)}m`)
+    : '';
+  hud.pos.classList.toggle('behind', gap < 0);
+
   const sec = sectionAt(s);
   hud.sect.textContent = sec.lit ? sec.name : `${sec.name} — no lights`;
   hud.sect.classList.toggle('dark', !sec.lit);
@@ -335,7 +361,7 @@ setInterval(() => {
 }, 1000);
 
 window.DYNAMO = {
-  scene, camera, renderer, post, track, car, ground, life, traffic,
+  scene, camera, renderer, post, track, car, ground, life, traffic, rival,
   reset,
   sim: (opts) => {
     const r = compare(track, opts);

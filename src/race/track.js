@@ -566,7 +566,7 @@ const H = (f) => Math.round(ROAD_HALF * f);
 // place the lighting design and the corner design ask the same question at
 // once. Two lit ones exist so the dark ones are a contrast rather than a rule.
 export const HAZARDS = [
-  { s: 700, u: H(0.55), r: 30, kind: 'works' },        // the parade, lit
+  { s: 700, u: H(0.62), r: 30, kind: 'works' },        // the parade, lit
   { s: 2060, u: H(-0.30), r: 32, kind: 'skip' },       // mill lane, dark
   { s: 2330, u: H(0.34), r: 30, kind: 'works' },       // mill lane, dark
   { s: 2900, u: H(-0.34), r: 34, kind: 'broken' },     // the long dark, mid-corner
@@ -588,25 +588,44 @@ function hazards(w, path) {
     h.x = x; h.z = z;
     const rot = facingRot(f.nx, f.nz, Math.sign(h.u) || 1);
     if (h.kind === 'works') {
-      // Sized off the carriageway. A fixed 28-voxel barrier on a 192-voxel road
-      // is a traffic cone, and you drive past it without lifting.
-      const span = Math.round(ROAD_HALF * 0.46);
-      for (let i = -3; i <= 3; i++)
-        S.roadCone(w, x + Math.round(f.nx * i * (span / 3)), -2 + gy, z + Math.round(f.nz * i * (span / 3)));
+      // Sized off the carriageway, and sized to MATTER. At 0.46 of the half
+      // width this blocked a quarter of the road, so the driver could clear it
+      // with a twitch and the whole see-it-in-time mechanic priced at nothing.
+      // At 1.15 it takes most of one side and leaves a gap you have to aim for.
+      const span = Math.round(ROAD_HALF * 1.15);
+      for (let i = -4; i <= 4; i++)
+        S.roadCone(w, x + Math.round(f.nx * i * (span / 8)), -2 + gy, z + Math.round(f.nz * i * (span / 8)));
+      // a tapering run of cones leading in, so it reads as roadworks and gives
+      // the gap a shape rather than appearing as a wall
+      for (let i = 1; i <= 5; i++)
+        S.roadCone(w, x + Math.round(f.nx * (span / 2 - i * 9) + f.tx * i * 26), -2 + gy,
+          z + Math.round(f.nz * (span / 2 - i * 9) + f.tz * i * 26));
       const bar = new VoxWorld();
       S.barrier(bar, -(span >> 1), -1, -1, span);
       w.merge(bar, { ox: x, oz: z, oy: gy, rotY: rot });
     } else if (h.kind === 'skip') {
+      // TWO skips end to end. One is 44 voxels on a 216-voxel road: something
+      // you steer round without thinking, which is not a hazard, it is scenery.
       const sk = new VoxWorld();
       S.skip(sk, -22, -1, -10);
-      w.merge(sk, { ox: x, oz: z, oy: gy, rotY: rot });
+      for (const off of [-24, 24])
+        w.merge(sk, { ox: x + Math.round(f.nx * off), oz: z + Math.round(f.nz * off), oy: gy, rotY: rot });
+      for (let i = 1; i <= 4; i++)
+        S.roadCone(w, x + Math.round(f.nx * (48 + i * 4) + f.tx * i * 24), -2 + gy,
+          z + Math.round(f.nz * (48 + i * 4) + f.tz * i * 24));
     } else {
       // broken down, so it is pointing where it was going, not at the kerb
       w.merge(wagon, { ox: x, oz: z, oy: gy, rotY: alongRot(f.tx, f.tz) });
-      for (let i = -1; i <= 1; i++)
+      // cones fanning out behind it, which is what you actually put out and
+      // which widens the thing you have to avoid to something worth avoiding
+      for (let i = -3; i <= 3; i++)
         S.roadCone(w,
-          x + Math.round(f.nx * i * 10 + f.tx * 36), -2 + gy,
-          z + Math.round(f.nz * i * 10 + f.tz * 36));
+          x + Math.round(f.nx * i * 16 + f.tx * 40), -2 + gy,
+          z + Math.round(f.nz * i * 16 + f.tz * 40));
+      for (let i = 1; i <= 4; i++)
+        S.roadCone(w,
+          x + Math.round(f.nx * (i * 12) + f.tx * (40 + i * 22)), -2 + gy,
+          z + Math.round(f.nz * (i * 12) + f.tz * (40 + i * 22)));
     }
   }
 }
