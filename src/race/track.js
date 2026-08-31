@@ -333,6 +333,28 @@ function makeCtx(w, path, anchors, houses) {
   return { w, path, anchors, houses, pr, f, put, blit, run, along };
 }
 
+// A short street running away from the main road, closed at the far end.
+function sideStreet(c, s, side) {
+  const HALF = 26, REACH = 240;
+  const f = frame();
+  for (let u = ROAD_HALF + KERB; u <= ROAD_HALF + KERB + REACH; u += 1) {
+    c.path.place(s, side * u, f);
+    const gy = GROUND_Y + elev(s);
+    for (let a = -HALF; a <= HALF; a++) {
+      const x = Math.round(f.x + f.tx * a), z = Math.round(f.z + f.tz * a);
+      const kerb = Math.abs(a) > HALF - 3;
+      c.w.set(x, kerb ? gy : gy - 1, z, kerb ? 'curb' : (hash3(x, 0, z) > 0.88 ? 'asphaltWorn' : 'asphalt'));
+      if (!kerb && Math.abs(a) < 2 && (u % 40) < 22) c.w.set(x, gy - 1, z, 'roadLine');
+    }
+  }
+  // the shopfront that closes it, and a lamp halfway down
+  c.blit(s, side * (ROAD_HALF + KERB + REACH + 30), c.pr.terrace, 0);
+  c.path.place(s, side * (ROAD_HALF + KERB + 110), f);
+  const gy = GROUND_Y + elev(s);
+  c.anchors.lamps.push(P.streetLamp(c.w,
+    Math.round(f.x + f.tx * (HALF + 5)), gy, Math.round(f.z + f.tz * (HALF + 5)), 50, -14));
+}
+
 // -------------------------------------------------------------- districts
 const DISTRICT = {
   // The high street. Shopfronts at pavement level with flats over them, in a
@@ -340,11 +362,16 @@ const DISTRICT = {
   // street and a row of detached boxes.
   parade(c, sec) {
     for (const side of [-1, 1]) {
-      // A GAP every third block, which reads as a side road and stops the
-      // parade being one 1300-voxel wall of shopfront.
+      // A gap every third block. It used to be just absence, which reads as a
+      // missing tooth; now the gap is a SIDE STREET -- a strip of tarmac
+      // running back between the terraces with a lit shopfront closing the
+      // end of it. Costs almost nothing and gives the parade depth, because
+      // you can see down it as you go past.
       for (let s = sec.from + 150, i = 0; s < sec.to - 170; s += 196, i++) {
-        if (i % 3 === 2) continue;
+        if (i % 3 === 2) { sideStreet(c, s, side); continue; }
         c.blit(s, side * SET, i % 2 ? c.pr.terraceB : c.pr.terrace);
+        c.put(s + 40, side * (SET + 30), (x, z, ff, gy) => c.anchors.stacks.push([x, gy + 86, z]));
+        c.put(s + 92, side * (SET - 2), (x, z, ff, gy) => c.anchors.tvs.push([x, gy + 40, z]));
       }
     }
   },
@@ -368,6 +395,8 @@ const DISTRICT = {
   mill(c, sec) {
     const ax = legAxis(c.path, sec, c.f);
     c.blit(sec.from + 320, SET - 4, c.pr.mill);
+    // the stack, so something is coming out of it
+    c.put(sec.from + 320, SET + 62, (x, z, ff, gy) => c.anchors.stacks.push([x, gy + 158, z]));
     for (const [ds, r, h] of [[70, 15, 76], [112, 15, 76], [152, 13, 62]])
       c.put(sec.from + ds, SET + 30, (x, z, ff, gy) => D.silo(c.w, x, gy, z, r, h));
     for (const side of [-1, 1])
@@ -414,6 +443,9 @@ const DISTRICT = {
               z - (c.along(ff) === 'x' ? 4 : 26), 52, 8, 9 + Math.round(r * 3), c.along(ff)));
           if (r > 0.6) c.put(s + 44, side * PAVE_BACK,
             (x, z, ff, gy) => c.w.stamp(P.MAILBOX, x, gy, z));
+          // one house in three has its fire lit and its television on
+          if (r > 0.72) c.put(s, side * (SET + 34), (x, z, ff, gy) => c.anchors.stacks.push([x, gy + 74, z]));
+          if (r > 0.4) c.put(s + 20, side * (SET - 4), (x, z, ff, gy) => c.anchors.tvs.push([x, gy + 22, z]));
         } else {
           c.put(s, side * (PAVE_BACK + 14), (x, z, ff, gy) => P.tree(c.w, x, gy, z, 42, 15));
         }
@@ -550,6 +582,25 @@ function parked(w, path) {
     path.place(s, side * (ROAD_HALF + 20), f);
     const rot = (alongRot(f.tx, f.tz) + (hash3(Math.round(s), 1, 2) > 0.5 ? 180 : 0)) % 360;
     w.merge(proto, { ox: Math.round(f.x), oz: Math.round(f.z), oy: elev(s), rotY: rot });
+  }
+}
+
+// -------------------------------------------------------------- landmarks
+// Put in the middle of the loop rather than beside the road, because the
+// infield is the one part of this world you see from several places at once.
+function landmarks(w, path) {
+  let cx = 0, cz = 0;
+  const n = path.points.length / 2;
+  for (let i = 0; i < path.points.length; i += 2) { cx += path.points[i]; cz += path.points[i + 1]; }
+  cx = Math.round(cx / n); cz = Math.round(cz / n);
+  const gy = GROUND_Y + elev(0);
+  D.gasholder(w, cx + 60, gy, cz - 40, 46, 132);
+  D.waterTower(w, cx - 210, gy, cz + 190);
+  // a few pylons marching away, so the middle distance is not empty either
+  for (let i = 0; i < 4; i++) {
+    const px = cx - 340 + i * 150, pz = cz - 300 - i * 40;
+    for (const [ox] of [[-9], [9]]) for (let j = 0; j < 88; j++) w.set(px + ox, gy + j, pz, 'metalDark');
+    for (const yy of [52, 70, 86]) for (let k = -22; k <= 22; k++) w.set(px + k, gy + yy, pz, 'metalDark');
   }
 }
 
@@ -774,7 +825,7 @@ export function buildTrack() {
 
   const path = buildPath();
   const w = new VoxWorld();
-  const anchors = { lamps: [] };
+  const anchors = { lamps: [], stacks: [], tvs: [] };
   const protos = prototypes();
   mark('prototypes');
   ribbon(w, path);
@@ -783,6 +834,7 @@ export function buildTrack() {
   mark('districts');
   parked(w, path);
   hazards(w, path);
+  landmarks(w, path);
   mark('props');
 
   const group = new THREE.Group();
@@ -843,8 +895,13 @@ export function buildTrack() {
     }
   }
   if (blockers.length) {
+    // 160, not 60. Hazards grew a long tapering run of cones leading into them
+    // and the exclusion window did not grow with them, so the check started
+    // reporting the roadworks it was written to ignore. An audit whose idea of
+    // the thing it is excluding goes stale is worse than no audit, because you
+    // learn to skim its output.
     const hz = new Set(HAZARDS.map(h => Math.round(h.s / 12) * 12));
-    const rogue = blockers.filter(([s]) => ![...hz].some(h => Math.abs(h - s) < 60));
+    const rogue = blockers.filter(([s]) => ![...hz].some(h => Math.abs(h - s) < 160));
     if (rogue.length) {
       console.error('track: ' + rogue.length + ' points of the carriageway are not drivable, '
         + 'starting at s=' + rogue[0][0] + ' u=' + rogue[0][1]

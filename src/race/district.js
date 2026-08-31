@@ -386,6 +386,50 @@ export function terrace(w, x, y, z, units, dir = 'x', seed = 0) {
   }
 }
 
+// ----------------------------------------------------------- the skyline
+// A gasholder, standing in the middle of the circuit.
+//
+// You can see across the loop -- that is how the chapel spire works from the
+// parade -- so ONE object in the infield is visible from three different legs.
+// Best value per object on the whole track, and a gasholder is the right shape
+// for it: enormous, banded, and unmistakable in silhouette against a lit sky.
+export function gasholder(w, x, y, z, r, h) {
+  // the lattice frame, which is most of what reads at distance
+  for (let a = 0; a < 16; a++) {
+    const th = (a / 16) * Math.PI * 2;
+    const px = Math.round(x + Math.cos(th) * r), pz = Math.round(z + Math.sin(th) * r);
+    for (let j = 0; j < h; j++) w.set(px, y + j, pz, 'metalDark');
+    // cross-bracing between this column and the next, every other bay
+    if (a % 2 === 0) {
+      const th2 = ((a + 1) / 16) * Math.PI * 2;
+      const qx = x + Math.cos(th2) * r, qz = z + Math.sin(th2) * r;
+      for (let j = 0; j < h; j += 3) {
+        const t = (j % 24) / 24;
+        w.set(Math.round(px + (qx - px) * t), y + j, Math.round(pz + (qz - pz) * t), 'metal');
+      }
+    }
+  }
+  for (let j = 0; j < h; j += 22) cyl(w, x, y + j, z, r + 1, 2, 'metalDark', true);
+  // the vessel itself, sitting lower than the frame
+  cyl(w, x, y + 2, z, r - 3, Math.round(h * 0.62), 'rust', true);
+  for (let j = 8; j < h * 0.62; j += 14) cyl(w, x, y + j, z, r - 2, 2, 'metalDark', true);
+  cyl(w, x, y + Math.round(h * 0.62) + 2, z, r - 3, 2, 'metalDark');
+  // a red lamp on top, because it is tall enough to need one
+  w.box(x - 1, y + h, z - 1, 3, 4, 3, 'metalDark');
+  ball(w, x, y + h + 5, z, 2, 'tailLight');
+}
+
+export function waterTower(w, x, y, z) {
+  for (const [ox, oz] of [[-13, -13], [13, -13], [-13, 13], [13, 13]])
+    for (let j = 0; j < 54; j++)
+      w.set(x + ox + Math.round(j * 0.08 * Math.sign(ox)), y + j, z + oz + Math.round(j * 0.08 * Math.sign(oz)), 'wood');
+  for (let j = 12; j < 54; j += 16)
+    for (let i = -13; i <= 13; i++) { w.set(x + i, y + j, z - 13, 'wood'); w.set(x + i, y + j, z + 13, 'wood'); }
+  cyl(w, x, y + 54, z, 15, 26, 'woodPale', true);
+  for (let j = 0; j < 26; j += 7) cyl(w, x, y + 54 + j, z, 16, 1, 'metalDark', true);
+  for (let k = 0; k <= 15; k++) cyl(w, x, y + 80 + k, z, 15 - k, 1, 'shingleDark');
+}
+
 // ------------------------------------------------------------------- wood
 // The unlit sweeper. No buildings at all: whatever the headlights find, which
 // on this stretch is trunks going past and nothing behind them.

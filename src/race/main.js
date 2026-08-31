@@ -13,6 +13,7 @@ import { buildCar, V_MAX, BODIES } from './car.js';
 import { buildLife, buildTraffic } from './life.js';
 import { buildRival } from './rival.js';
 import { createAudio } from './audio.js';
+import { buildSmoke, neonFlicker } from '../fx.js';
 import * as Garage from './garage.js';
 import { mountGarage } from '../garage-ui.js';
 import { compare, run } from './sim.js';
@@ -103,6 +104,23 @@ const rival = buildRival(track, ground, buildCar, {
   paint: (savefile.paint + 3) % BODIES.length, policy: 'cautious', pace: 1, startS: 80, startU: 34,
 });
 scene.add(rival.root);
+
+// A town where nothing moves is a model of a town. Smoke off the mill stack and
+// the lit chimneys, and a television flickering in some of the front rooms --
+// both already existed for the hub and neither had ever been switched on out
+// here. Culled hard, because most of them are half a lap behind you.
+const smoke = buildSmoke(track.anchors.stacks.slice(0, 14), 14);
+scene.add(smoke.points);
+
+const tvGeo = new THREE.PlaneGeometry(11, 9);
+const tvs = track.anchors.tvs.slice(0, 26).map(([x, y, z]) => {
+  const m = new THREE.Mesh(tvGeo, new THREE.MeshBasicMaterial({
+    color: 0x79b4ff, transparent: true, opacity: 0.9, toneMapped: false, depthWrite: false,
+  }));
+  m.position.set(x, y, z);
+  scene.add(m);
+  return m;
+});
 
 const life = buildLife(track.path, lifeSpots(), ground, track.elev);
 scene.add(life.group);
@@ -354,6 +372,16 @@ function tick() {
   rival.update(dt, LAPS);
   traffic.update(dt, track.path.total);
   life.update(time, dt, car.state.x, car.state.z);
+  smoke.update(time, dt);
+  for (let i = 0; i < tvs.length; i++) {
+    const m = tvs[i];
+    const d = Math.hypot(m.position.x - car.state.x, m.position.z - car.state.z);
+    m.visible = d < 900;
+    if (!m.visible) continue;
+    m.lookAt(camera.position);
+    // each set is on a different programme
+    m.material.opacity = 0.55 * neonFlicker(time * 0.7 + i * 3.1);
+  }
 
   const near = LAMPS
     .map(l => ({ l, d: (l.x - car.state.x) ** 2 + (l.z - car.state.z) ** 2 }))
