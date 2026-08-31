@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import { buildPerson, buildDog } from '../people.js';
 import { frame } from './path.js';
+import { STEP_UP } from '../walk.js';
 
 const TMPV = new THREE.Vector3();
 
@@ -29,7 +30,11 @@ const WALKERS = [
   { skin: 'skinDeep', hair: 'hairDark', shirt: 'shirtBlue', trouser: 'trouserGrey', jacket: 'shirtGreen' },
 ];
 
-export function buildLife(path, spots) {
+// `ground` is the collision field and `elev` the road profile. Both are
+// required now: without the first the walkers stroll through benches, phone
+// boxes and each other's hedges, and without the second they walk at y = 2 into
+// a hillside.
+export function buildLife(path, spots, ground, elev) {
   const group = new THREE.Group();
   group.name = 'life';
   const folk = [];
@@ -65,6 +70,9 @@ export function buildLife(path, spots) {
       dog: null,
       recover: 0,
       lx: 0, lz: 0,
+      fy: null,                    // the height their feet are at, once known
+      baulked: 0,                  // times this beat has run into something
+      since: 0,                    // seconds walked cleanly since the last one
     });
     // one in three has a dog with them — but not the ones standing at a bus
     // stop, who would be holding it still for four minutes
@@ -79,6 +87,31 @@ export function buildLife(path, spots) {
   // — so somebody who stops at a kerb stops their legs, somebody hurrying
   // across a crossing strides faster, and nobody has to be told twice.
   const REF = 44;                     // voxels/second that counts as a full stride
+
+  // Where a person's feet actually are, and whether they can be there at all.
+  //
+  // `fy` is null until they are first placed, and goes back to null when they
+  // are culled. That matters more than it looks: the first version started it
+  // at 2, so on the parade — which climbs to +30 — every walker compared the
+  // pavement under their feet against a remembered height four metres below,
+  // decided it was an unclimbable step, and never updated. They stood buried in
+  // the hill, permanently "blocked", which then tripped the give-up-and-cross
+  // rule and turned the entire cast into jaywalkers. A remembered value needs a
+  // way to be established as well as a way to be checked.
+  const groundAt = (x, z) => {
+    if (!ground) return 2;
+    const fl = ground.ceilingAt(x, z);
+    return fl > -900 ? fl : 2;
+  };
+  // Can somebody standing at height `from` walk to (x, z)? A bench, a bin, a
+  // phone box, a lamp post or a hedge all sit ON the footway and all answer no.
+  function step(w, x, z) {
+    if (!ground) return 2;
+    const fl = groundAt(x, z);
+    if (ground.isBlocked(x, z)) return null;
+    if (w.fy !== null && Math.abs(fl - w.fy) > STEP_UP) return null;
+    return fl;
+  }
   function drive(w, dt) {
     const px = w.p.root.position.x, pz = w.p.root.position.z;
     const v = Math.hypot(px - w.lx, pz - w.lz) / Math.max(dt, 1e-4);
@@ -105,7 +138,9 @@ export function buildLife(path, spots) {
       const near = d < CULL;
       w.p.root.visible = near;
       if (w.dog) w.dog.root.visible = near;
-      if (!near) continue;
+      // Out of sight they stop being simulated, so the height they remember is
+      // stale by the time they come back. Forget it and re-establish.
+      if (!near) { w.fy = null; continue; }
 
       // While they are down, the RAGDOLL owns the root — writing a position
       // here every frame would pin them to the pavement mid-tumble, which is
@@ -127,7 +162,14 @@ export function buildLife(path, spots) {
         // alternative is a pedestrian who freezes under your bumper.
         if (d < FLINCH * 2.4) w.u += w.dir * w.pace * 2.2 * dt;
         path.place(w.s, w.u, tmp);
-        w.p.root.position.set(tmp.x, 2, tmp.z);
+        const cy = step(w, tmp.x, tmp.z);
+        if (cy === null) {
+          // something is parked across the crossing: back off the way we came
+          w.u -= w.dir * w.pace * dt;
+          w.dir = -w.dir;
+          path.place(w.s, w.u, tmp);
+        } else w.fy = cy;
+        w.p.root.position.set(tmp.x, w.fy === null ? groundAt(tmp.x, tmp.z) : w.fy, tmp.z);
         w.p.root.rotation.y = Math.atan2(tmp.nx * w.dir, tmp.nz * w.dir);
         drive(w, dt);
         w.p.update(t, dt);
@@ -137,7 +179,28 @@ export function buildLife(path, spots) {
       // step away from the kerb when something is coming
       const flinch = d < FLINCH ? (1 - d / FLINCH) * 12 : 0;
       path.place(w.s, w.u + w.side * flinch, tmp);
-      w.p.root.position.set(tmp.x, 2, tmp.z);
+
+      // Is there actually pavement there? A bench, a phone box, a bin, a lamp
+      // post or a garden hedge all sit ON the footway, and a beat that runs
+      // through one used to be walked through. Turn round instead — and if this
+      // end of the beat keeps being blocked, cross to the other side, which is
+      // what a person does and gives us jaywalkers for free.
+      const fy = step(w, tmp.x, tmp.z);
+      if (fy === null) {
+        w.s -= w.dir * w.pace * dt;
+        w.dir = -w.dir;
+        w.baulked++;
+        w.since = 0;
+        // Boxed in at BOTH ends of the beat, not merely turned round once at
+        // one of them — otherwise a single bin makes somebody cross the road.
+        if (w.baulked >= 4) { w.baulked = 0; w.cross = true; w.reach = Math.abs(w.u); }
+        path.place(w.s, w.u + w.side * flinch, tmp);
+      } else {
+        w.fy = fy;
+        w.since += dt;
+        if (w.since > 5) { w.baulked = 0; w.since = 0; }
+      }
+      w.p.root.position.set(tmp.x, w.fy === null ? groundAt(tmp.x, tmp.z) : w.fy, tmp.z);
       // Somebody waiting faces the road, not the way they last walked.
       w.p.root.rotation.y = w.idle
         ? Math.atan2(-tmp.nx * w.side, -tmp.nz * w.side)
@@ -150,7 +213,7 @@ export function buildLife(path, spots) {
         const dxx = tmp.x - (w.dlx || tmp.x), dzz = tmp.z - (w.dlz || tmp.z);
         w.dlx = tmp.x; w.dlz = tmp.z;
         w.dog.setMotion(Math.min(1, Math.hypot(dxx, dzz) / Math.max(dt, 1e-4) / REF));
-        w.dog.root.position.set(tmp.x, 2, tmp.z);
+        w.dog.root.position.set(tmp.x, groundAt(tmp.x, tmp.z), tmp.z);
         w.dog.root.rotation.y = Math.atan2(tmp.tx * w.dir, tmp.tz * w.dir);
         w.dog.update(t + w.s * 0.01, dt);
       }
@@ -188,7 +251,7 @@ export function buildLife(path, spots) {
 // not know you are racing, which is the entire point — this is the "hazards and
 // live traffic" half of the design, and it is the half that survived the switch
 // from bikes.
-export function buildTraffic(path, buildCar, lanes) {
+export function buildTraffic(path, buildCar, lanes, elev) {
   const group = new THREE.Group();
   group.name = 'traffic';
   const cars = lanes.map((lane, i) => {
@@ -213,7 +276,7 @@ export function buildTraffic(path, buildCar, lanes) {
       if (t.s > total) t.s -= total;
       if (t.s < 0) t.s += total;
       path.place(t.s, t.u, tmp);
-      t.c.root.position.set(tmp.x, 0, tmp.z);
+      t.c.root.position.set(tmp.x, elev ? elev(t.s) : 0, tmp.z);
       t.c.root.rotation.y = Math.atan2(tmp.tx * t.dir, tmp.tz * t.dir);
     }
   }

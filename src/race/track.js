@@ -15,7 +15,7 @@
 import * as THREE from 'three';
 import { VoxWorld, meshWorld, hash3 } from '../voxel.js';
 import { PALETTE } from '../palette.js';
-import { FLOOR_MAX, HEAD, Ground } from '../walk.js';
+import { FLOOR_MAX, HEAD, STEP_UP, Ground } from '../walk.js';
 import { house } from '../block.js';
 import * as P from '../props.js';
 import * as S from '../street.js';
@@ -38,6 +38,55 @@ const VERGE = 22;
 // is the single biggest voxel cost on the circuit.
 const APRON = 8;
 export const GROUND_Y = 2;
+
+// ------------------------------------------------------------------ relief
+// The circuit was dead flat, which cost it twice. Visually a flat ribbon has no
+// silhouette of its own — every shot is buildings against fog with a grey band
+// underneath. And mechanically, DARKNESS was the only thing that could ever
+// hide the road from you, which made the whole lighting design carry a job it
+// should have been sharing: a crest hides what is over it in broad daylight.
+//
+// Height is a function of s ALONE, so the road is level across its width. No
+// camber, no banking, and no chance of two different s values disagreeing about
+// how high the same patch of ground is.
+//
+// Control points are (s, voxels). 1 voxel is 8cm, so this spans about 4.3
+// metres top to bottom. Between knots it is a cosine, which makes every knot a
+// crest or a dip rather than a corner you can feel through the wheel.
+const PROFILE = [
+  [0, 0],        // the start line, and the value the lap has to come back to
+  [760, 12],
+  [1500, 30],    // the parade climbs to the chapel, which is on the high ground
+  [1910, 34],
+  [2530, 4],     // and drops away down mill lane
+  [2950, -20],   // the long dark sits in a hollow: the beam swings up out of it
+  [3350, -2],
+  [4020, 26],    // a crest halfway down the crescent -- you cannot see the exit
+  [4690, 10],
+  [5220, 22],    // the top is the top
+  [5700, -14],   // and the cut is a cutting, so it is BELOW everything
+  [5980, -8],
+  [6250, 8],
+];
+
+const smooth = (t) => (1 - Math.cos(t * Math.PI)) / 2;
+
+// Height of the ground at arc-length s, in voxels, wrapping at the lap.
+export function elev(s) {
+  const total = LAP;
+  s = ((s % total) + total) % total;
+  let i = 0;
+  while (i < PROFILE.length - 1 && PROFILE[i + 1][0] <= s) i++;
+  const [s0, h0] = PROFILE[i];
+  const [s1, h1] = i === PROFILE.length - 1 ? [total, PROFILE[0][1]] : PROFILE[i + 1];
+  const t = s1 === s0 ? 0 : (s - s0) / (s1 - s0);
+  return Math.round(h0 + (h1 - h0) * smooth(t));
+}
+
+// The extremes, so the mesher and the collision field can be told where the
+// world actually starts and stops rather than assuming y = 0 is the ground.
+export const ELEV_MIN = PROFILE.reduce((m, p) => Math.min(m, p[1]), 0);
+export const ELEV_MAX = PROFILE.reduce((m, p) => Math.max(m, p[1]), 0);
 
 // FOUR DIFFERENT CORNERS. The first circuit had four ninety-degree bends at
 // the same 340 radius, which meant one braking decision learned once and then
@@ -124,12 +173,19 @@ function ribbon(w, path) {
   // and a one-voxel step leaves pinholes a body's probe ring finds; on a
   // straight it is wasted work, and two thirds of this circuit is straight.
   const prev = frame();
+  let gyPrev = elev(0);
   for (let s = 0; s <= path.total; ) {
     path.at(s, f);
     path.at(Math.min(path.total, s + 30), prev);
     const turning = Math.abs(f.tx - prev.tx) + Math.abs(f.tz - prev.tz) > 0.02;
     const stepS = turning ? 0.55 : 1;
     const lit = isLit(s);
+    // The whole cross-section rises and falls together. Where the height
+    // changes we also write the voxel BELOW, which turns what would be a
+    // one-voxel-thick sheet with a diagonal gap in it into a proper staircase:
+    // 80cm treads, 8cm risers, watertight, and under the car's 4-voxel step-up.
+    const gy = elev(s);
+    const riser = gy !== gyPrev ? Math.min(gy, gyPrev) : null;
     for (let u = -edge; u <= edge; u += 1) {
       const x = Math.round(f.x + f.nx * u), z = Math.round(f.z + f.nz * u);
       const a = Math.abs(u), r = hash3(x, 0, z);
@@ -141,22 +197,32 @@ function ribbon(w, path) {
         // with a single stripe down it reads as an airstrip.
         if (a > half / 2 - 2 && a < half / 2 + 1 && (s % 96) < 52) c = 'roadLine';
         if (a < 2 && (s % 70) < 40) c = 'roadLine';             // centre dashes
-        w.set(x, -1, z, c);
+        w.set(x, -1 + gy, z, c);
+        if (riser !== null) w.set(x, -1 + riser, z, c);
       } else if (a <= half + KERB) {
         // only the road-facing lip needs a full-height face; the rest of the
         // kerb band is a top surface nobody ever sees the side of
         const lip = a <= half + 2;
-        for (let y = lip ? -1 : GROUND_Y; y <= GROUND_Y; y++)
-          w.set(x, y, z, y === GROUND_Y ? 'curb' : 'concreteOld');
+        // iterate in LOCAL height and add gy at the write, so the kerb keeps
+        // its shape and just moves with the road
+        const from = (lip ? -1 : GROUND_Y) + (riser !== null ? riser - gy : 0);
+        for (let y = from; y <= GROUND_Y; y++)
+          w.set(x, y + gy, z, y === GROUND_Y ? 'curb' : 'concreteOld');
       } else if (a <= half + KERB + 14) {              // pavement
-        w.set(x, GROUND_Y, z, ((x >> 3) + (z >> 3)) % 2 ? 'concrete' : 'concreteOld');
+        const c = ((x >> 3) + (z >> 3)) % 2 ? 'concrete' : 'concreteOld';
+        w.set(x, GROUND_Y + gy, z, c);
+        if (riser !== null) w.set(x, GROUND_Y + riser, z, c);
       } else if (a <= half + KERB + VERGE) {
-        w.set(x, GROUND_Y, z, r > 0.84 ? 'grassDry' : 'grass');
+        const c = r > 0.84 ? 'grassDry' : 'grass';
+        w.set(x, GROUND_Y + gy, z, c);
+        if (riser !== null) w.set(x, GROUND_Y + riser, z, c);
       } else {
         if ((x + z) % 4) continue;
-        w.set(x, GROUND_Y, z, lit ? 'grass' : 'leafDark');
+        w.set(x, GROUND_Y + gy, z, lit ? 'grass' : 'leafDark');
+        if (riser !== null) w.set(x, GROUND_Y + riser, z, lit ? 'grass' : 'leafDark');
       }
     }
+    gyPrev = gy;
     s += stepS;
   }
 }
@@ -232,17 +298,27 @@ const SET = ROAD_HALF + KERB + 16;
 function makeCtx(w, path, anchors, houses) {
   const f = frame();
   const pr = makeProtos();
-  const put = (s, u, fn) => { path.place(s, u, f); fn(Math.round(f.x), Math.round(f.z), f); };
+  // Every placement is handed the GROUND HEIGHT at its own s as `gy`, and uses
+  // it instead of GROUND_Y. Nothing may assume the ground is at a fixed height
+  // any more — a bench that does is a bench buried in a hill or floating over
+  // one, and on a 4-metre profile that is most of the circuit.
+  const put = (s, u, fn) => {
+    path.place(s, u, f);
+    fn(Math.round(f.x), Math.round(f.z), f, GROUND_Y + elev(s), s);
+  };
   const blit = (s, u, proto, extraRot = 0) => {
     path.place(s, u, f);
     const rot = (facingRot(f.nx, f.nz, Math.sign(u) || 1) + extraRot) % 360;
-    w.merge(proto.w, { ox: Math.round(f.x), oz: Math.round(f.z), mirrorZ: proto.mirrorZ, rotY: rot });
+    w.merge(proto.w, {
+      ox: Math.round(f.x), oz: Math.round(f.z), oy: elev(s),
+      mirrorZ: proto.mirrorZ, rotY: rot,
+    });
   };
   // Something laid down ALONG the road: hedges, fences, walls. It gets the
   // frame so it can work out which way it is running at that point, because on
   // an arc that answer changes every few voxels.
   const run = (from, to, u, step, fn) => {
-    for (let s = from; s < to; s += step) put(s, u, (x, z, ff) => fn(x, z, ff, s));
+    for (let s = from; s < to; s += step) put(s, u, (x, z, ff, gy) => fn(x, z, ff, gy, s));
   };
   const along = (ff) => (Math.abs(ff.nz) > Math.abs(ff.nx) ? 'x' : 'z');
   return { w, path, anchors, houses, pr, f, put, blit, run, along };
@@ -269,13 +345,13 @@ const DISTRICT = {
   chapel(c, sec) {
     const mid = (sec.from + sec.to) / 2;
     c.blit(mid, SET + 6, c.pr.chapel);
-    c.put(mid - 150, SET + 20, (x, z) => D.gravestones(c.w, x - 60, GROUND_Y, z - 60, 120, 120, 5));
-    c.put(mid + 160, SET + 20, (x, z) => D.gravestones(c.w, x - 50, GROUND_Y, z - 50, 100, 100, 9));
-    c.run(sec.from, sec.to, SET, 46, (x, z, ff) =>
-      P.hedge(c.w, x - (c.along(ff) === 'x' ? 24 : 5), GROUND_Y,
+    c.put(mid - 150, SET + 20, (x, z, ff, gy) => D.gravestones(c.w, x - 60, gy, z - 60, 120, 120, 5));
+    c.put(mid + 160, SET + 20, (x, z, ff, gy) => D.gravestones(c.w, x - 50, gy, z - 50, 100, 100, 9));
+    c.run(sec.from, sec.to, SET, 46, (x, z, ff, gy) =>
+      P.hedge(c.w, x - (c.along(ff) === 'x' ? 24 : 5), gy,
         z - (c.along(ff) === 'x' ? 5 : 24), 48, 10, 20, c.along(ff)));
     // the opposite side stays open, so the spire has sky behind it
-    c.run(sec.from, sec.to, -(SET + 40), 150, (x, z) => P.tree(c.w, x, GROUND_Y, z, 44, 15));
+    c.run(sec.from, sec.to, -(SET + 40), 150, (x, z, ff, gy) => P.tree(c.w, x, gy, z, 44, 15));
   },
 
   // Unlit, and the biggest single mass on the circuit. Going past a mill in the
@@ -284,23 +360,28 @@ const DISTRICT = {
     const ax = legAxis(c.path, sec, c.f);
     c.blit(sec.from + 320, SET - 4, c.pr.mill);
     for (const [ds, r, h] of [[70, 15, 76], [112, 15, 76], [152, 13, 62]])
-      c.put(sec.from + ds, SET + 30, (x, z) => D.silo(c.w, x, GROUND_Y, z, r, h));
+      c.put(sec.from + ds, SET + 30, (x, z, ff, gy) => D.silo(c.w, x, gy, z, r, h));
     for (const side of [-1, 1])
-      c.run(sec.from, sec.to, side * SET, 40, (x, z) =>
-        D.chainFence(c.w, ax === 'x' ? x - 20 : x, GROUND_Y, ax === 'x' ? z : z - 20, 42, ax));
-    c.put(sec.from + 470, -(SET + 20), (x, z) => D.pallets(c.w, x, GROUND_Y, z, 4));
-    c.put(sec.from + 250, -(SET + 26), (x, z) => D.oilDrums(c.w, x, GROUND_Y, z, 7));
-    c.put(sec.from + 545, SET + 12, (x, z) => S.skip(c.w, x - 22, GROUND_Y, z - 10));
+      c.run(sec.from, sec.to, side * SET, 40, (x, z, ff, gy) =>
+        D.chainFence(c.w, ax === 'x' ? x - 20 : x, gy, ax === 'x' ? z : z - 20, 42, ax));
+    c.put(sec.from + 470, -(SET + 20), (x, z, ff, gy) => D.pallets(c.w, x, gy, z, 4));
+    c.put(sec.from + 250, -(SET + 26), (x, z, ff, gy) => D.oilDrums(c.w, x, gy, z, 7));
+    c.put(sec.from + 545, SET + 12, (x, z, ff, gy) => S.skip(c.w, x - 22, gy, z - 10));
   },
 
   // The unlit sweeper. No buildings at all: whatever the headlights find, which
   // here is trunks going past and nothing behind them.
   wood(c, sec) {
     for (const side of [-1, 1]) {
-      c.run(sec.from, sec.to, side * (SET + 16), 128, (x, z, ff, s) =>
-        D.copse(c.w, x, GROUND_Y, z, 116, Math.round(s)));
-      c.run(sec.from, sec.to, side * (ROAD_HALF + KERB + 14), 54, (x, z, ff) =>
-        P.hedge(c.w, x - (c.along(ff) === 'x' ? 28 : 5), GROUND_Y,
+      // Placed well back, because copse() scatters its trees in WORLD x and z
+      // by up to half the spread — at SET + 16 with a spread of 116 that put
+      // trunks at u = 75 on a road with a 96-voxel half-width, and canopies over
+      // the racing line. The offset has to clear the road by more than the
+      // scatter plus a canopy radius.
+      c.run(sec.from, sec.to, side * (SET + 62), 124, (x, z, ff, gy, s) =>
+        D.copse(c.w, x, gy, z, 88, Math.round(s)));
+      c.run(sec.from, sec.to, side * (ROAD_HALF + KERB + 14), 54, (x, z, ff, gy) =>
+        P.hedge(c.w, x - (c.along(ff) === 'x' ? 28 : 5), gy,
           z - (c.along(ff) === 'x' ? 5 : 28), 56, 9, 14, c.along(ff)));
     }
   },
@@ -316,16 +397,16 @@ const DISTRICT = {
         c.path.place(s, side * (SET + 18), c.f);
         if (r > 0.2) {
           c.w.merge(c.houses[(n++) % c.houses.length].w, {
-            ox: Math.round(c.f.x), oz: Math.round(c.f.z),
+            ox: Math.round(c.f.x), oz: Math.round(c.f.z), oy: elev(s),
             rotY: facingRot(c.f.nx, c.f.nz, side),
           });
-          c.put(s, side * (ROAD_HALF + KERB + 9), (x, z, ff) =>
-            P.hedge(c.w, x - (c.along(ff) === 'x' ? 26 : 4), GROUND_Y,
+          c.put(s, side * (ROAD_HALF + KERB + 9), (x, z, ff, gy) =>
+            P.hedge(c.w, x - (c.along(ff) === 'x' ? 26 : 4), gy,
               z - (c.along(ff) === 'x' ? 4 : 26), 52, 8, 9 + Math.round(r * 3), c.along(ff)));
           if (r > 0.6) c.put(s + 44, side * (ROAD_HALF + KERB + 13),
-            (x, z) => c.w.stamp(P.MAILBOX, x, GROUND_Y, z));
+            (x, z, ff, gy) => c.w.stamp(P.MAILBOX, x, gy, z));
         } else {
-          c.put(s, side * (ROAD_HALF + KERB + 22), (x, z) => P.tree(c.w, x, GROUND_Y, z, 42, 15));
+          c.put(s, side * (ROAD_HALF + KERB + 22), (x, z, ff, gy) => P.tree(c.w, x, gy, z, 42, 15));
         }
       }
     }
@@ -335,16 +416,16 @@ const DISTRICT = {
   // no walls in it at all — after the crescent the eye wants the space.
   park(c, sec) {
     const mid = (sec.from + sec.to) / 2;
-    c.put(sec.from + 130, SET + 46, (x, z) => D.goalposts(c.w, x - 28, GROUND_Y, z));
-    c.put(sec.to - 160, SET + 46, (x, z) => D.goalposts(c.w, x - 28, GROUND_Y, z));
+    c.put(sec.from + 130, SET + 46, (x, z, ff, gy) => D.goalposts(c.w, x - 28, gy, z));
+    c.put(sec.to - 160, SET + 46, (x, z, ff, gy) => D.goalposts(c.w, x - 28, gy, z));
     c.blit(mid, SET + 8, c.pr.shed);
     c.blit(mid + 180, SET + 8, c.pr.glass);
-    c.put(mid - 190, -(SET + 34), (x, z) => D.allotment(c.w, x - 70, GROUND_Y, z - 50, 140, 100, 4));
-    c.put(mid + 110, -(SET + 34), (x, z) => D.allotment(c.w, x - 70, GROUND_Y, z - 50, 140, 100, 12));
-    c.run(sec.from, sec.to, SET, 52, (x, z, ff) =>
-      P.picketFence(c.w, x - (c.along(ff) === 'x' ? 26 : 0), GROUND_Y,
+    c.put(mid - 190, -(SET + 34), (x, z, ff, gy) => D.allotment(c.w, x - 70, gy, z - 50, 140, 100, 4));
+    c.put(mid + 110, -(SET + 34), (x, z, ff, gy) => D.allotment(c.w, x - 70, gy, z - 50, 140, 100, 12));
+    c.run(sec.from, sec.to, SET, 52, (x, z, ff, gy) =>
+      P.picketFence(c.w, x - (c.along(ff) === 'x' ? 26 : 0), gy,
         z - (c.along(ff) === 'x' ? 0 : 26), 52, c.along(ff)));
-    c.run(sec.from + 60, sec.to, -(SET + 14), 130, (x, z) => P.tree(c.w, x, GROUND_Y, z, 46, 16));
+    c.run(sec.from + 60, sec.to, -(SET + 14), 130, (x, z, ff, gy) => P.tree(c.w, x, gy, z, 46, 16));
   },
 
   // The cut: the road runs between two retaining walls, which is WHY this leg
@@ -352,13 +433,13 @@ const DISTRICT = {
   yard(c, sec) {
     const ax = legAxis(c.path, sec, c.f);
     for (const side of [-1, 1])
-      c.run(sec.from, sec.to, side * (ROAD_HALF + KERB + 12), 40, (x, z) =>
-        D.retainingWall(c.w, ax === 'x' ? x - 20 : x, GROUND_Y, ax === 'x' ? z : z - 20, 42, ax, 38));
-    c.put(sec.from + 250, -(ROAD_HALF + KERB + 20), (x, z) =>
-      D.signalGantry(c.w, x - 2, GROUND_Y + 38, z - 2, Math.round((ROAD_HALF + KERB + 20) * 2)));
-    c.put(sec.from + 120, SET + 34, (x, z) => D.pallets(c.w, x, GROUND_Y, z, 5));
-    c.put(sec.from + 410, -(SET + 38), (x, z) => D.oilDrums(c.w, x, GROUND_Y, z, 9));
-    c.put(sec.from + 460, SET + 30, (x, z) => D.silo(c.w, x, GROUND_Y, z, 12, 54));
+      c.run(sec.from, sec.to, side * (ROAD_HALF + KERB + 12), 40, (x, z, ff, gy) =>
+        D.retainingWall(c.w, ax === 'x' ? x - 20 : x, gy, ax === 'x' ? z : z - 20, 42, ax, 38));
+    c.put(sec.from + 250, -(ROAD_HALF + KERB + 20), (x, z, ff, gy) =>
+      D.signalGantry(c.w, x - 2, gy + 38, z - 2, Math.round((ROAD_HALF + KERB + 20) * 2)));
+    c.put(sec.from + 120, SET + 34, (x, z, ff, gy) => D.pallets(c.w, x, gy, z, 5));
+    c.put(sec.from + 410, -(SET + 38), (x, z, ff, gy) => D.oilDrums(c.w, x, gy, z, 9));
+    c.put(sec.from + 460, SET + 30, (x, z, ff, gy) => D.silo(c.w, x, gy, z, 12, 54));
   },
 
   // Open country on the last bend, so the lap ends somewhere with no walls and
@@ -366,18 +447,18 @@ const DISTRICT = {
   farm(c, sec) {
     c.blit(sec.from + 210, SET + 10, c.pr.barnA);
     c.blit(sec.to - 230, -(SET + 14), c.pr.barnA);
-    c.put(sec.from + 340, SET + 38, (x, z) => D.haybales(c.w, x - 30, GROUND_Y, z - 20, 6, 3));
-    c.put(sec.to - 390, -(SET + 34), (x, z) => D.haybales(c.w, x - 30, GROUND_Y, z - 20, 5, 8));
+    c.put(sec.from + 340, SET + 38, (x, z, ff, gy) => D.haybales(c.w, x - 30, gy, z - 20, 6, 3));
+    c.put(sec.to - 390, -(SET + 34), (x, z, ff, gy) => D.haybales(c.w, x - 30, gy, z - 20, 5, 8));
     for (const side of [-1, 1])
-      c.run(sec.from, sec.to, side * (ROAD_HALF + KERB + 16), 46, (x, z, ff, s) => {
+      c.run(sec.from, sec.to, side * (ROAD_HALF + KERB + 16), 46, (x, z, ff, gy, s) => {
         if (hash3(Math.round(s), side, 2) > 0.86)
-          D.fieldGate(c.w, x - (c.along(ff) === 'x' ? 20 : 0), GROUND_Y,
+          D.fieldGate(c.w, x - (c.along(ff) === 'x' ? 20 : 0), gy,
             z - (c.along(ff) === 'x' ? 0 : 20), c.along(ff));
         else
-          P.hedge(c.w, x - (c.along(ff) === 'x' ? 23 : 5), GROUND_Y,
+          P.hedge(c.w, x - (c.along(ff) === 'x' ? 23 : 5), gy,
             z - (c.along(ff) === 'x' ? 5 : 23), 46, 10, 16, c.along(ff));
       });
-    c.run(sec.from + 80, sec.to, SET + 78, 210, (x, z) => P.tree(c.w, x, GROUND_Y, z, 52, 18));
+    c.run(sec.from + 80, sec.to, SET + 78, 210, (x, z, ff, gy) => P.tree(c.w, x, gy, z, 52, 18));
   },
 };
 
@@ -391,8 +472,8 @@ function dress(w, path, anchors, houses) {
     if (!sec.lit) continue;
     for (let s = sec.from + 110; s < sec.to - 70; s += 240) {
       const side = ((s / 300) | 0) % 2 ? 1 : -1;
-      put(s, side * (ROAD_HALF + KERB + 10), (x, z) => {
-        anchors.lamps.push(P.streetLamp(w, x, GROUND_Y, z, 54, -side * 16));
+      put(s, side * (ROAD_HALF + KERB + 10), (x, z, ff, gy) => {
+        anchors.lamps.push(P.streetLamp(w, x, gy, z, 54, -side * 16));
       });
     }
   }
@@ -401,37 +482,37 @@ function dress(w, path, anchors, houses) {
 
   // start/finish gantry
   for (const side of [-1, 1])
-    put(30, side * (ROAD_HALF + 4), (x, z) => w.box(x - 2, GROUND_Y, z - 2, 4, 64, 4, 'metalDark'));
-  put(30, 0, (x, z) => {
-    w.box(x - ROAD_HALF - 4, GROUND_Y + 60, z - 3, ROAD_HALF * 2 + 8, 6, 5, 'metalDark');
-    w.box(x - ROAD_HALF + 6, GROUND_Y + 62, z - 4, ROAD_HALF * 2 - 12, 2, 1, 'neonSign');
+    put(30, side * (ROAD_HALF + 4), (x, z, ff, gy) => w.box(x - 2, gy, z - 2, 4, 64, 4, 'metalDark'));
+  put(30, 0, (x, z, ff, gy) => {
+    w.box(x - ROAD_HALF - 4, gy + 60, z - 3, ROAD_HALF * 2 + 8, 6, 5, 'metalDark');
+    w.box(x - ROAD_HALF + 6, gy + 62, z - 4, ROAD_HALF * 2 - 12, 2, 1, 'neonSign');
   });
   for (let u = -ROAD_HALF; u <= ROAD_HALF; u++)
-    put(30, u, (x, z) => w.set(x, -1, z, ((u >> 2) % 2) ? 'roadLine' : 'asphaltPatch'));
+    put(30, u, (x, z, ff, gy) => w.set(x, gy - 3, z, ((u >> 2) % 2) ? 'roadLine' : 'asphaltPatch'));
 
   // council property, because a street has some
-  put(430, ROAD_HALF + KERB + 12, (x, z) => S.phoneBox(w, x - 5, GROUND_Y, z - 5));
-  put(900, -(ROAD_HALF + KERB + 16), (x, z) => S.busShelter(w, x - 17, GROUND_Y, z - 7, 1));
-  put(4100, ROAD_HALF + KERB + 16, (x, z) => S.busShelter(w, x - 17, GROUND_Y, z - 7, 1));
+  put(430, ROAD_HALF + KERB + 12, (x, z, ff, gy) => S.phoneBox(w, x - 5, gy, z - 5));
+  put(900, -(ROAD_HALF + KERB + 16), (x, z, ff, gy) => S.busShelter(w, x - 17, gy, z - 7, 1));
+  put(4100, ROAD_HALF + KERB + 16, (x, z, ff, gy) => S.busShelter(w, x - 17, gy, z - 7, 1));
   for (const [s, side] of [[260, 1], [700, -1], [1150, 1], [3600, 1], [4400, -1], [4900, 1]]) {
-    put(s, side * (ROAD_HALF + KERB + 12), (x, z) => S.bench(w, x - 13, GROUND_Y, z - 4, 1));
-    put(s + 70, side * (ROAD_HALF + KERB + 12), (x, z) => P.trashBin(w, x, GROUND_Y, z));
+    put(s, side * (ROAD_HALF + KERB + 12), (x, z, ff, gy) => S.bench(w, x - 13, gy, z - 4, 1));
+    put(s + 70, side * (ROAD_HALF + KERB + 12), (x, z, ff, gy) => P.trashBin(w, x, gy, z));
   }
   for (const s of [520, 1240, 3500, 4200, 5400])
-    put(s, ROAD_HALF - 3, (x, z) => S.drain(w, x - 4, -1, z - 2));
+    put(s, ROAD_HALF - 3, (x, z, ff, gy) => S.drain(w, x - 4, gy - 3, z - 2));
   for (const [s, side, kind] of [[1380, 1, 'stop'], [2480, -1, 'sign'], [5150, 1, 'sign'], [5790, -1, 'stop']])
-    put(s, side * (ROAD_HALF + KERB + 8), (x, z) => S.signPost(w, x, GROUND_Y, z, kind));
+    put(s, side * (ROAD_HALF + KERB + 8), (x, z, ff, gy) => S.signPost(w, x, gy, z, kind));
 
   // zebra crossings, with a belisha beacon each side
   for (const sc of CROSSINGS) {
     for (let ds = -13; ds <= 13; ds++)
       for (let u = -ROAD_HALF + 2; u <= ROAD_HALF - 2; u++)
-        if (((u >> 3) % 2 + 2) % 2 === 0) put(sc + ds, u, (x, z) => w.set(x, -1, z, 'roadLine'));
+        if (((u >> 3) % 2 + 2) % 2 === 0) put(sc + ds, u, (x, z, ff, gy) => w.set(x, gy - 3, z, 'roadLine'));
     for (const side of [-1, 1]) {
-      put(sc, side * (ROAD_HALF + KERB + 4), (x, z) => {
-        w.box(x - 1, GROUND_Y, z - 1, 3, 48, 3, 'paper');
-        for (let k = 4; k < 44; k += 8) w.box(x - 2, GROUND_Y + k, z - 2, 5, 4, 5, 'metalDark');
-        P.ball(w, x, GROUND_Y + 52, z, 5, 'sodium');
+      put(sc, side * (ROAD_HALF + KERB + 4), (x, z, ff, gy) => {
+        w.box(x - 1, gy, z - 1, 3, 48, 3, 'paper');
+        for (let k = 4; k < 44; k += 8) w.box(x - 2, gy + k, z - 2, 5, 4, 5, 'metalDark');
+        P.ball(w, x, gy + 52, z, 5, 'sodium');
       });
     }
   }
@@ -457,7 +538,7 @@ function parked(w, path) {
     // it as two crashes on clear road with nothing to hit.
     path.place(s, side * (ROAD_HALF + 8), f);
     const rot = (alongRot(f.tx, f.tz) + (hash3(Math.round(s), 1, 2) > 0.5 ? 180 : 0)) % 360;
-    w.merge(proto, { ox: Math.round(f.x), oz: Math.round(f.z), rotY: rot });
+    w.merge(proto, { ox: Math.round(f.x), oz: Math.round(f.z), oy: elev(s), rotY: rot });
   }
 }
 
@@ -492,6 +573,7 @@ function hazards(w, path) {
   for (const h of HAZARDS) {
     path.place(h.s, h.u, f);
     const x = Math.round(f.x), z = Math.round(f.z);
+    const gy = elev(h.s);
     h.x = x; h.z = z;
     const rot = facingRot(f.nx, f.nz, Math.sign(h.u) || 1);
     if (h.kind === 'works') {
@@ -499,20 +581,20 @@ function hazards(w, path) {
       // is a traffic cone, and you drive past it without lifting.
       const span = Math.round(ROAD_HALF * 0.46);
       for (let i = -3; i <= 3; i++)
-        S.roadCone(w, x + Math.round(f.nx * i * (span / 3)), -2, z + Math.round(f.nz * i * (span / 3)));
+        S.roadCone(w, x + Math.round(f.nx * i * (span / 3)), -2 + gy, z + Math.round(f.nz * i * (span / 3)));
       const bar = new VoxWorld();
       S.barrier(bar, -(span >> 1), -1, -1, span);
-      w.merge(bar, { ox: x, oz: z, rotY: rot });
+      w.merge(bar, { ox: x, oz: z, oy: gy, rotY: rot });
     } else if (h.kind === 'skip') {
       const sk = new VoxWorld();
       S.skip(sk, -22, -1, -10);
-      w.merge(sk, { ox: x, oz: z, rotY: rot });
+      w.merge(sk, { ox: x, oz: z, oy: gy, rotY: rot });
     } else {
       // broken down, so it is pointing where it was going, not at the kerb
-      w.merge(wagon, { ox: x, oz: z, rotY: alongRot(f.tx, f.tz) });
+      w.merge(wagon, { ox: x, oz: z, oy: gy, rotY: alongRot(f.tx, f.tz) });
       for (let i = -1; i <= 1; i++)
         S.roadCone(w,
-          x + Math.round(f.nx * i * 10 + f.tx * 36), -2,
+          x + Math.round(f.nx * i * 10 + f.tx * 36), -2 + gy,
           z + Math.round(f.nz * i * 10 + f.tz * 36));
     }
   }
@@ -532,7 +614,9 @@ export function safeSpot(path, ground, fromS) {
     for (const u of [0, -40, 40, -64, 64]) {
       path.place(s, u, f);
       const fl = ground.ceilingAt(f.x, f.z, 2.6);
-      if (fl <= 0 && !ground.isBlocked(f.x, f.z) && ground.canStand(f.x, f.z, fl, 2.6))
+      // "the carriageway" is now a height RELATIVE to the profile, not <= 0
+      const road = elev(s) - 1;
+      if (Math.abs(fl - road) <= 3 && !ground.isBlocked(f.x, f.z) && ground.canStand(f.x, f.z, fl, 2.6))
         return { x: f.x, z: f.z, heading: Math.atan2(f.tx, f.tz), s };
     }
   }
@@ -542,7 +626,9 @@ export function safeSpot(path, ground, fromS) {
 // Where somebody walks OUT IN FRONT OF YOU. Marked on the road, because a
 // pedestrian who appears in the carriageway with no warning is not a decision,
 // it is a coin toss — the stripes are the tell that says lift here.
-export const CROSSINGS = [620, 1180, 3700, 4500, 5010];
+// Kept clear of the parking bays: a crosser walking into a parked car baulks
+// and turns round in the middle of the road, which looks like a bug.
+export const CROSSINGS = [480, 1240, 3620, 4260, 5010];
 
 // Pavement beats for the people who live here. Weighted toward the parade, the
 // crescent and the park, because that is where somebody would actually BE at
@@ -593,7 +679,12 @@ export function buildTrack() {
 
   const group = new THREE.Group();
   group.name = 'track';
-  group.add(meshWorld(w, PALETTE, { name: 'track', solidBelow: -2, noFloorBelow: GROUND_Y - 1 }));
+  // solidBelow gives contact AO at the LOWEST point the ground reaches;
+  // noFloorBelow only culls undersides down there too, so a raised stretch
+  // keeps its underside and reads as an embankment instead of a hole to the sky.
+  group.add(meshWorld(w, PALETTE, {
+    name: 'track', solidBelow: ELEV_MIN - 2, noFloorBelow: ELEV_MIN + GROUND_Y - 1,
+  }));
 
   let bx0 = 1e9, bx1 = -1e9, bz0 = 1e9, bz1 = -1e9;
   for (let i = 0; i < path.points.length; i += 2) {
@@ -603,6 +694,8 @@ export function buildTrack() {
   const pad = ROAD_HALF + KERB + VERGE + APRON + 100;
   const field = w.walkField(
     Math.floor(bx0 - pad), Math.ceil(bx1 + pad),
+    // FLOOR_MAX is relative to the ground in each column now, so the profile
+    // does not enter into it. See walkField().
     Math.floor(bz0 - pad), Math.ceil(bz1 + pad), FLOOR_MAX, HEAD);
   const ground0 = new Ground(field);
 
@@ -616,29 +709,56 @@ export function buildTrack() {
   //
   // So march the whole lap and ask the collision field. Anything solid inside
   // the painted road is a bug, every time, with no exceptions to argue about.
+  // Ask two questions, not one. "Is it blocked?" missed a tree canopy that had
+  // been promoted to floor 46 voxels above the tarmac: not blocked, not
+  // drivable, and completely invisible to the old check. The second question —
+  // "is the floor here actually the ROAD?" — is the one that catches it, and it
+  // is the question that matters, because anything the car cannot step onto is
+  // a wall whatever the field chooses to call it.
   const blockers = [];
   const probe = frame();
   for (let s = 0; s < path.total; s += 12) {
+    const road = elev(s) - 1;
     for (let u = -(ROAD_HALF - 6); u <= ROAD_HALF - 6; u += 8) {
       path.place(s, u, probe);
-      if (ground0.isBlocked(probe.x, probe.z)) { blockers.push([Math.round(s), Math.round(u)]); break; }
+      const fl = ground0.ceilingAt(probe.x, probe.z);
+      if (ground0.isBlocked(probe.x, probe.z) || Math.abs(fl - road) > STEP_UP) {
+        blockers.push([Math.round(s), Math.round(u), fl - road]);
+        break;
+      }
     }
   }
   if (blockers.length) {
     const hz = new Set(HAZARDS.map(h => Math.round(h.s / 12) * 12));
     const rogue = blockers.filter(([s]) => ![...hz].some(h => Math.abs(h - s) < 60));
     if (rogue.length) {
-      console.error('track: ' + rogue.length + ' points of the carriageway are blocked by something '
-        + 'that is not a hazard, starting at s=' + rogue[0][0] + ' u=' + rogue[0][1]
-        + ' (' + sectionAt(rogue[0][0]).district + ')');
+      console.error('track: ' + rogue.length + ' points of the carriageway are not drivable, '
+        + 'starting at s=' + rogue[0][0] + ' u=' + rogue[0][1]
+        + ' (floor is ' + rogue[0][2] + ' voxels off the road, in ' + sectionAt(rogue[0][0]).district + ')');
     }
+  }
+
+  // The steepest thing on the lap, reported rather than assumed. A profile edit
+  // that puts a 25% ramp in the road is a wall the car cannot climb, and it
+  // would present as "the lap is slower now" rather than as a hill.
+  // Measured over 40 voxels, not 4. elev() returns whole voxels, so a short
+  // baseline reads a 1-voxel step as a 25% ramp and every real gradient as
+  // either zero or absurd — the quantisation, not the hill.
+  let worst = 0, worstS = 0;
+  for (let s = 0; s < path.total; s += 8) {
+    const g = Math.abs(elev(s + 40) - elev(s)) / 40;
+    if (g > worst) { worst = g; worstS = s; }
+  }
+  if (worst > 0.16) {
+    console.error('track: ' + Math.round(worst * 100) + '% grade at s=' + Math.round(worstS)
+      + ' (' + sectionAt(worstS).district + ') - too steep to drive');
   }
 
   const start = frame();
   path.at(80, start);
 
   return {
-    group, path, field, anchors, hazards: HAZARDS,
+    group, path, field, anchors, hazards: HAZARDS, elev, grade: +worst.toFixed(3),
     start: { x: start.x, z: start.z, heading: Math.atan2(start.tx, start.tz) },
     voxels: w.size,
     buildMs: Math.round(performance.now() - t0),

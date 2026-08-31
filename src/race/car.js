@@ -142,6 +142,10 @@ export function buildCar(paint = 0) {
   const state = {
     x: 0, z: 0, heading: 0, speed: 0, turnRate: 0,
     crash: 0, spin: 0, dist: 0, roll: 0, stuck: 0, slip: 0,
+    // Ground height under the car, and the smoothed version the body sits at.
+    // The car used to be nailed to y = 0, which was invisible while the world
+    // was flat and would have left it four metres under the chapel.
+    y: 0, yView: 0,
   };
 
   function step(dt, throttle, steer, ground, drift = false) {
@@ -182,7 +186,7 @@ export function buildCar(paint = 0) {
       const bx = state.x, bz = state.z;
       const p = { x: state.x, y: 0, z: state.z };
       ground.move(p, dx, dz, null, CAR_PROBE);
-      state.x = p.x; state.z = p.z;
+      state.x = p.x; state.z = p.z; state.y = p.y;
       const moved = Math.hypot(p.x - bx, p.z - bz), wanted = Math.hypot(dx, dz);
       if (wanted > 0.01 && moved < wanted * 0.32 && state.speed > 90) crash();
       else if (wanted > 0.01 && moved < wanted * 0.72) state.speed *= 0.7;
@@ -209,14 +213,19 @@ export function buildCar(paint = 0) {
     return true;
   }
 
-  function respawn(x, z, heading) {
+  function respawn(x, z, heading, y) {
     state.x = x; state.z = z; state.heading = heading;
+    if (y !== undefined) { state.y = y; state.yView = y; }
     state.speed = 0; state.turnRate = 0; state.roll = 0; state.stuck = 0; state.slip = 0;
     root.rotation.z = 0; chassis.rotation.z = 0;
   }
 
   function present(dt) {
-    root.position.set(state.x, 0, state.z);
+    // Follow the ground, but SMOOTHED. The profile is a staircase of 8cm risers
+    // and taking it literally makes the car tremble at speed; the suspension is
+    // this lerp and nothing else.
+    state.yView += (state.y - state.yView) * Math.min(1, dt * 9);
+    root.position.set(state.x, state.yView, state.z);
     root.rotation.y = state.heading;
     // Body roll reads the corner for you before the tyres do — and leans HARD
     // into a slide, which is most of what sells the drift from behind.
@@ -226,10 +235,9 @@ export function buildCar(paint = 0) {
     chassis.rotation.z = state.roll;
     if (state.crash > 0) {
       root.rotation.z = Math.sin(state.spin) * 0.35;
-      root.position.y = Math.abs(Math.sin(state.spin * 0.7)) * 3;
+      root.position.y = state.yView + Math.abs(Math.sin(state.spin * 0.7)) * 3;
     } else {
       root.rotation.z += (0 - root.rotation.z) * Math.min(1, dt * 6);
-      root.position.y += (0 - root.position.y) * Math.min(1, dt * 6);
     }
   }
 

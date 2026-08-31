@@ -32,8 +32,20 @@ scene.add(track.group);
 const ground = new Ground(track.field);
 
 // ------------------------------------------------------------------ light
-const hemi = new THREE.HemisphereLight(0x2b3d60, 0x2c1f16, 0.46);
+// An unlit mass at night was a HOLE IN THE FOG: the chapel, the mill and the
+// barns were black silhouettes with windows floating on them and no volume at
+// all. The reference is path-traced and its shadows carry bounce; this is the
+// cheap version of that.
+const hemi = new THREE.HemisphereLight(0x3b537f, 0x2c2119, 0.68);
 scene.add(hemi);
+
+// The important half. A hemisphere lights HORIZONTAL surfaces most, which is
+// backwards -- it brightens the road (the thing the dark is supposed to hide)
+// and leaves walls flat. This one sits LOW and opposite the moon so it rakes
+// across vertical faces at a grazing angle: it gives buildings a lit side and a
+// dark side, and barely touches the tarmac. No shadow, because it is a fill.
+const fill = new THREE.DirectionalLight(0x7d93c4, 0.62);
+scene.add(fill, fill.target);
 const moon = new THREE.DirectionalLight(0xbdd2f2, 1.6);
 moon.castShadow = true;
 moon.shadow.mapSize.set(2048, 2048);
@@ -62,7 +74,7 @@ car.state.x = track.start.x;
 car.state.z = track.start.z;
 car.state.heading = track.start.heading;
 
-const life = buildLife(track.path, lifeSpots());
+const life = buildLife(track.path, lifeSpots(), ground, track.elev);
 scene.add(life.group);
 
 // Somebody else's evening, on the road you happen to be racing on.
@@ -75,7 +87,7 @@ const traffic = buildTraffic(track.path, buildCar, [
   { s: 3900, u: -50, speed: 88, dir: -1 },
   { s: 4900, u: 56, speed: 112, dir: 1 },
   { s: 6050, u: -56, speed: 70, dir: -1 },
-]);
+], track.elev);
 scene.add(traffic.group);
 
 // ----------------------------------------------------------------- camera
@@ -166,7 +178,7 @@ let best = +(localStorage.getItem('dynamo.lap') || 0) || null;
 const splits = [];
 
 function reset() {
-  car.respawn(track.start.x, track.start.z, track.start.heading);
+  car.respawn(track.start.x, track.start.z, track.start.heading, track.elev(80) - 1);
   car.state.crash = 0; car.state.dist = 0;
   lapTime = 0; lap = 0; running = false; done = false;
   s = prevS = 80; crashes = 0; wasDown = false; struck = 0; msgUntil = 0;
@@ -245,7 +257,7 @@ function tick() {
   if (car.state.crash > 0 && !wasDown) { crashes++; downAt = s; }
   if (wasDown && car.state.crash <= 0) {
     const spot = safeSpot(track.path, ground, downAt);
-    if (spot) { car.respawn(spot.x, spot.z, spot.heading); s = prevS = spot.s; }
+    if (spot) { car.respawn(spot.x, spot.z, spot.heading, track.elev(spot.s) - 1); s = prevS = spot.s; }
   }
   wasDown = car.state.crash > 0;
 
@@ -266,17 +278,21 @@ function tick() {
   camYaw += (want - camYaw) * Math.min(1, dt * 7);
   const hc = h + camYaw;
   const back = CAM.back * zoom, up = CAM.up * zoom;
-  camPos.set(car.state.x - Math.sin(hc) * back, up, car.state.z - Math.cos(hc) * back);
+  // Height is relative to the CAR, not to zero — on a 4-metre profile a fixed
+  // camera height is underground at the top of the crescent.
+  camPos.set(car.state.x - Math.sin(hc) * back, car.state.yView + up, car.state.z - Math.cos(hc) * back);
   camera.position.lerp(camPos, Math.min(1, dt * CAM.lag));
   // Looking up the road only makes sense while the camera is behind you. The
   // further it swings, the more it aims at the car itself.
   const reach = CAM.ahead * Math.max(0, 1 - Math.abs(camYaw) / 1.2);
-  camAim.set(car.state.x + Math.sin(h) * reach, 16, car.state.z + Math.cos(h) * reach);
+  camAim.set(car.state.x + Math.sin(h) * reach, car.state.yView + 16, car.state.z + Math.cos(h) * reach);
   camera.lookAt(camAim);
   sky.position.copy(camera.position);
   post.params.focus = camera.position.distanceTo(camAim);
-  moon.target.position.set(car.state.x, 0, car.state.z);
-  moon.position.set(car.state.x - 320, 470, car.state.z - 240);
+  moon.target.position.set(car.state.x, car.state.yView, car.state.z);
+  moon.position.set(car.state.x - 320, car.state.yView + 470, car.state.z - 240);
+  fill.target.position.set(car.state.x, car.state.yView, car.state.z);
+  fill.position.set(car.state.x + 340, car.state.yView + 110, car.state.z + 260);
 
   hud.speed.textContent = `${Math.round(car.state.speed * 0.08 * 3.6)}`;
   hud.drift.classList.toggle('on', Math.abs(car.state.slip) > 0.12);
@@ -310,7 +326,7 @@ window.DYNAMO = {
   place: (atS, u = 0) => {
     const f = { x: 0, z: 0, tx: 0, tz: 0, nx: 0, nz: 0 };
     track.path.place(atS, u, f);
-    car.respawn(f.x, f.z, Math.atan2(f.tx, f.tz));
+    car.respawn(f.x, f.z, Math.atan2(f.tx, f.tz), track.elev(atS) - 1);
     s = prevS = atS;
   },
   voxels: track.voxels,

@@ -69,6 +69,7 @@ export function run(track, policyName, opts = {}) {
   c.state.z = track.start.z;
   c.state.heading = track.start.heading;
   c.state.speed = 0;
+  c.state.y = c.state.yView = track.elev(80) - 1;
 
   const seen = new Map();
   let t = 0, s = 80, lap = 0, crashes = 0, blindHits = 0;
@@ -133,7 +134,7 @@ export function run(track, policyName, opts = {}) {
     }
     if (wasDown && c.state.crash <= 0) {
       const spot = safeSpot(path, ground, downAt);
-      if (spot) { c.respawn(spot.x, spot.z, spot.heading); s = prevS = spot.s; }
+      if (spot) { c.respawn(spot.x, spot.z, spot.heading, track.elev(spot.s) - 1); s = prevS = spot.s; }
     }
     wasDown = c.state.crash > 0;
 

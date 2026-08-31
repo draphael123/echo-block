@@ -161,9 +161,21 @@ export class VoxWorld {
   // the `head` voxels directly above it. A door has a floor and clear
   // headroom; a wall has no gap; a tree canopy and an overhead wire are far
   // enough above the floor to be walked under.
+  // floorMax is measured from the GROUND IN THIS COLUMN, not from y = 0.
+  //
+  // It used to be absolute, which was invisible while the world was flat and
+  // wrong the moment it was not. Raising it to clear a four-metre hill promoted
+  // every tree canopy and every roof to "floor": a canopy at +25 over a road at
+  // -21 became a 46-voxel cliff in the middle of the carriageway that the car
+  // could neither drive through nor climb, and it was not marked BLOCKED either,
+  // so nothing caught it. Measuring from the lowest voxel in the column makes
+  // the field say what it always meant — "you can step up onto anything within
+  // floorMax of the ground here" — at any altitude, and lets you drive under a
+  // tree again.
   walkField(x0, x1, z0, z1, floorMax, head) {
     const w = x1 - x0, d = z1 - z0;
     const floor = new Int16Array(w * d).fill(-999);
+    const low = new Int16Array(w * d).fill(32000);
     const blocked = new Uint8Array(w * d);
     const cells = [];
     for (const k of this.v.keys()) {
@@ -173,7 +185,11 @@ export class VoxWorld {
       const y = (Math.floor(k / SPAN) % SPAN) - OFF;
       const i = (x - x0) * d + (z - z0);
       cells.push(i, y);
-      if (y <= floorMax && y > floor[i]) floor[i] = y;
+      if (y < low[i]) low[i] = y;
+    }
+    for (let n = 0; n < cells.length; n += 2) {
+      const i = cells[n], y = cells[n + 1];
+      if (y <= low[i] + floorMax && y > floor[i]) floor[i] = y;
     }
     for (let n = 0; n < cells.length; n += 2) {
       const i = cells[n], y = cells[n + 1], f = floor[i];
