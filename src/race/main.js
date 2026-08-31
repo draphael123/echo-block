@@ -66,10 +66,15 @@ const life = buildLife(track.path, lifeSpots());
 scene.add(life.group);
 
 // Somebody else's evening, on the road you happen to be racing on.
+// Six of them now, spread so there is one somewhere on most of the lap, at
+// speeds that differ enough to catch each other up. Nobody is doing 80.
 const traffic = buildTraffic(track.path, buildCar, [
-  { s: 1600, u: 36, speed: 96, dir: 1 },
-  { s: 3400, u: -36, speed: 84, dir: -1 },
-  { s: 4600, u: 34, speed: 108, dir: 1 },
+  { s: 600, u: 54, speed: 92, dir: 1 },
+  { s: 1750, u: -54, speed: 78, dir: -1 },
+  { s: 2700, u: 50, speed: 104, dir: 1 },
+  { s: 3900, u: -50, speed: 88, dir: -1 },
+  { s: 4900, u: 56, speed: 112, dir: 1 },
+  { s: 6050, u: -56, speed: 70, dir: -1 },
 ]);
 scene.add(traffic.group);
 
@@ -155,6 +160,7 @@ const hud = {
 const LAPS = 3;
 let lapTime = 0, lap = 0, running = false, done = false;
 let s = 80, prevS = 80, crashes = 0, wasDown = false, downAt = 0;
+let struck = 0, msgUntil = 0;
 let best = +(localStorage.getItem('dynamo.lap') || 0) || null;
 const splits = [];
 
@@ -162,7 +168,7 @@ function reset() {
   car.respawn(track.start.x, track.start.z, track.start.heading);
   car.state.crash = 0; car.state.dist = 0;
   lapTime = 0; lap = 0; running = false; done = false;
-  s = prevS = 80; crashes = 0; wasDown = false;
+  s = prevS = 80; crashes = 0; wasDown = false; struck = 0; msgUntil = 0;
   splits.length = 0;
   hud.msg.textContent = 'accelerate to start';
 }
@@ -210,7 +216,9 @@ function tick() {
     if (lap >= LAPS) {
       done = true;
       hud.msg.innerHTML = `<b>${splits.map(x => x.toFixed(2)).join(' &middot; ')}</b>`
-        + `${crashes} crash${crashes === 1 ? '' : 'es'} &nbsp; <span class="dim">R to reset</span>`;
+        + `${crashes} crash${crashes === 1 ? '' : 'es'}`
+        + (struck ? ` &nbsp; ${struck} pedestrian${struck === 1 ? '' : 's'}` : '')
+        + ` &nbsp; <span class="dim">R to reset</span>`;
     }
   }
   prevS = loc.s;
@@ -218,6 +226,20 @@ function tick() {
 
   // traffic is solid; the voxel world already handles everything else
   if (!car.state.crash && car.state.speed > 60 && traffic.hits(car.state.x, car.state.z)) car.crash();
+
+  // A pedestrian is not a wall. You carry them, you lose most of your speed,
+  // and the lap is still yours to finish — which is what makes lifting for them
+  // a decision instead of a rule.
+  if (!car.state.crash && car.state.speed > 26) {
+    const who = life.hits(car.state.x, car.state.z);
+    if (who && life.strike(who, car.state.x, car.state.z, car.state.speed)) {
+      car.state.speed *= 0.38;
+      struck++;
+      hud.msg.textContent = 'you hit somebody';
+      msgUntil = time + 1.8;
+    }
+  }
+  if (msgUntil && time > msgUntil && !done) { hud.msg.textContent = ''; msgUntil = 0; }
   if (car.state.crash > 0 && !wasDown) { crashes++; downAt = s; }
   if (wasDown && car.state.crash <= 0) {
     const spot = safeSpot(track.path, ground, downAt);

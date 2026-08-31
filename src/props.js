@@ -135,12 +135,17 @@ export function leafPile(w, x, y, z, r) {
   }
 }
 
+// A CRUST, not a solid. The sides go all the way down because you see them;
+// the middle only needs its top few voxels, because nobody has ever seen the
+// inside of a hedge. On the circuit there are eighty of these and the solid
+// version was 400,000 voxels of foliage interior.
 export function hedge(w, x, y, z, len, depth, h, dir = 'x') {
   const wid = dir === 'x' ? len : depth, dep = dir === 'x' ? depth : len;
   for (let i = 0; i < wid; i++) for (let k = 0; k < dep; k++) {
     const edge = Math.min(i, wid - 1 - i, k, dep - 1 - k);
     const top = h - (edge < 1 ? 1 : 0) - Math.round(hash3(x + i, 0, z + k) * 2);
-    for (let j = 0; j < top; j++)
+    const from = edge < 1 ? 0 : Math.max(0, top - 3);
+    for (let j = from; j < top; j++)
       w.set(x + i, y + j, z + k, hash3(x + i, j, z + k) > 0.35 ? 'hedge' : 'leafDark');
   }
 }

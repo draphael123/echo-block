@@ -177,13 +177,43 @@ export function compare(track, opts = {}) {
   const best = finished.slice().sort((a, b) => a.time - b.time)[0];
   const racing = rows.find(r => r.policy === 'racing');
   const cautious = rows.find(r => r.policy === 'cautious');
+  // The verdict reads TIME AND RISK TOGETHER, because reading time alone lies.
+  //
+  // It once declared "the unlit sections are a paint job" off a 0.31-second gap
+  // in a deterministic sim — while racing was taking two blind hits to
+  // cautious's none. That is not a paint job, it is a knife-edge trade: driving
+  // the dark flat out is worth almost exactly what it costs, which is the best
+  // outcome a risk mechanic can have. A tie is a RESULT, not a failure to find
+  // a winner, and 0.31s of a 40-second lap is not a difference at all.
+  const gap = cautious.time - racing.time;        // positive means racing is faster
+  const risk = racing.blindHits - cautious.blindHits;
+  const TIE = 1.2;                                // seconds, on a ~40s lap
+
   let verdict;
   if (!racing.finished || !cautious.finished) {
     verdict = 'INCONCLUSIVE — a policy did not finish; fix that before reading the times';
-  } else if (cautious.time < racing.time) {
-    verdict = `CAUTIOUS WINS by ${(racing.time - cautious.time).toFixed(2)}s — the dark is doing work`;
+  } else if (Math.abs(gap) < TIE && risk > 0 && gap > 0) {
+    // Inside the noise band on time, and racing is the one taking the hits:
+    // the dark is charging almost exactly what the speed is worth.
+    verdict = `A REAL TRADE — racing is ${gap.toFixed(2)}s faster and pays for it with `
+      + `${racing.blindHits} blind hit${racing.blindHits === 1 ? '' : 's'} to cautious's `
+      + `${cautious.blindHits}. The dark prices the speed almost exactly.`;
+  } else if (Math.abs(gap) < TIE && risk > 0) {
+    // Same lap time AND fewer hits is not a trade, it is a free lunch: there is
+    // no reason left to drive the dark flat out.
+    verdict = `CAUTIOUS WINS — level on time (${Math.abs(gap).toFixed(2)}s) and `
+      + `${risk} fewer blind hit${risk === 1 ? '' : 's'}; racing is not buying anything`;
+  } else if (Math.abs(gap) < TIE) {
+    verdict = `TIED at ${Math.abs(gap).toFixed(2)}s with no risk difference — `
+      + 'neither policy is being asked anything; the dark is not doing work';
+  } else if (gap < 0) {
+    verdict = `CAUTIOUS WINS by ${(-gap).toFixed(2)}s — the dark is doing work`;
+  } else if (risk > 0) {
+    verdict = `RACING WINS by ${gap.toFixed(2)}s DESPITE ${risk} more blind hit`
+      + `${risk === 1 ? '' : 's'} — the dark is underpriced, the crash penalty is too cheap`;
   } else {
-    verdict = `RACING WINS by ${(cautious.time - racing.time).toFixed(2)}s — the unlit sections are a paint job`;
+    verdict = `RACING WINS by ${gap.toFixed(2)}s and takes no more hits — `
+      + 'the unlit sections are a paint job';
   }
-  return { rows, best: best && best.policy, verdict, margin: +(racing.time - cautious.time).toFixed(2) };
+  return { rows, best: best && best.policy, verdict, margin: +gap.toFixed(2), risk };
 }

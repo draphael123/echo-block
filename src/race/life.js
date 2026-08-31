@@ -13,8 +13,12 @@ import * as THREE from 'three';
 import { buildPerson, buildDog } from '../people.js';
 import { frame } from './path.js';
 
+const TMPV = new THREE.Vector3();
+
 const CULL = 900;                     // beyond this they are not drawn at all
 const FLINCH = 150;                   // a car this close pushes them off the kerb
+const HIT = 30;                       // how close is a hit
+const RECOVER = 0.7;                  // seconds to ease back onto the pavement
 
 const WALKERS = [
   { skin: 'skinLight', hair: 'hairBrown', shirt: 'shirtBlue', trouser: 'jeans', jacket: 'trouserGrey' },
@@ -43,11 +47,19 @@ export function buildLife(path, spots) {
       p, s: spot.s, u: spot.u, side: Math.sign(spot.u) || 1,
       dir: spot.dir || (i % 2 ? 1 : -1),
       span: spot.span || 420,
+      // A crowd that all move at exactly one speed reads as a conveyor belt.
+      pace: spot.idle ? 0 : (spot.pace || 24 + (i % 5) * 5),
+      idle: !!spot.idle,
+      cross: !!spot.cross,
+      // a crosser paces across u instead of along s, between the two pavements
+      reach: Math.abs(spot.u),
       home: spot.s,
       dog: null,
+      recover: 0,
     });
-    // one in three has a dog with them
-    if (i % 3 === 1) {
+    // one in three has a dog with them — but not the ones standing at a bus
+    // stop, who would be holding it still for four minutes
+    if (i % 3 === 1 && !spot.idle) {
       const d = buildDog({ pos: [0, 2, 0] });
       group.add(d.root);
       folk[folk.length - 1].dog = d;
@@ -57,10 +69,16 @@ export function buildLife(path, spots) {
   const tmp = frame();
   function update(t, dt, carX, carZ) {
     for (const w of folk) {
-      // pace up and down a stretch of pavement
-      w.s += w.dir * 26 * dt;
-      if (w.s > w.home + w.span) { w.s = w.home + w.span; w.dir = -1; }
-      if (w.s < w.home - w.span) { w.s = w.home - w.span; w.dir = 1; }
+      if (w.cross) {
+        w.u += w.dir * w.pace * dt;
+        if (w.u > w.reach) { w.u = w.reach; w.dir = -1; }
+        if (w.u < -w.reach) { w.u = -w.reach; w.dir = 1; }
+      } else {
+        // pace up and down a stretch of pavement
+        w.s += w.dir * w.pace * dt;
+        if (w.s > w.home + w.span) { w.s = w.home + w.span; w.dir = -1; }
+        if (w.s < w.home - w.span) { w.s = w.home - w.span; w.dir = 1; }
+      }
 
       path.place(w.s, w.u, tmp);
       const d = Math.hypot(tmp.x - carX, tmp.z - carZ);
@@ -69,11 +87,41 @@ export function buildLife(path, spots) {
       if (w.dog) w.dog.root.visible = near;
       if (!near) continue;
 
+      // While they are down, the RAGDOLL owns the root — writing a position
+      // here every frame would pin them to the pavement mid-tumble, which is
+      // the whole reason the knockdown reads as a knockdown.
+      if (w.p.downed) { w.p.update(t, dt); w.recover = RECOVER; continue; }
+      if (w.recover > 0) {
+        // They got up in the road. Ease them back to their beat rather than
+        // teleporting, which is a single frame but a very obvious one.
+        w.recover = Math.max(0, w.recover - dt);
+        const k = 1 - w.recover / RECOVER;
+        w.p.update(t, dt);
+        w.p.root.position.lerp(TMPV.set(tmp.x, 2, tmp.z), Math.min(1, k * dt * 9 + dt * 3));
+        if (w.recover > 0) continue;
+      }
+
+      if (w.cross) {
+        // Halfway across with a car coming, you do not step back — you RUN.
+        // It is what a person does and it is the merciful reading, because the
+        // alternative is a pedestrian who freezes under your bumper.
+        if (d < FLINCH * 2.4) w.u += w.dir * w.pace * 2.2 * dt;
+        path.place(w.s, w.u, tmp);
+        w.p.setMotion(1);
+        w.p.root.position.set(tmp.x, 2, tmp.z);
+        w.p.root.rotation.y = Math.atan2(tmp.nx * w.dir, tmp.nz * w.dir);
+        w.p.update(t, dt);
+        continue;
+      }
+
       // step away from the kerb when something is coming
       const flinch = d < FLINCH ? (1 - d / FLINCH) * 12 : 0;
       path.place(w.s, w.u + w.side * flinch, tmp);
       w.p.root.position.set(tmp.x, 2, tmp.z);
-      w.p.root.rotation.y = Math.atan2(tmp.tx * w.dir, tmp.tz * w.dir);
+      // Somebody waiting faces the road, not the way they last walked.
+      w.p.root.rotation.y = w.idle
+        ? Math.atan2(-tmp.nx * w.side, -tmp.nz * w.side)
+        : Math.atan2(tmp.tx * w.dir, tmp.tz * w.dir);
       w.p.update(t, dt);
 
       if (w.dog) {
@@ -85,7 +133,30 @@ export function buildLife(path, spots) {
     }
   }
 
-  return { group, folk, update };
+  // Somebody in the road.
+  //
+  // Deliberately NOT a crash. Hitting a person at eighty should cost you the
+  // race, not end it in a spin — and a night circuit through a town where the
+  // pedestrians are decorative bollards you clip for free is worse than one
+  // where they are a real reason to lift. So: they go down, and you lose most
+  // of your speed carrying them.
+  function hits(x, z) {
+    for (const w of folk) {
+      if (!w.p.root.visible || w.p.downed) continue;
+      const dx = x - w.p.root.position.x, dz = z - w.p.root.position.z;
+      if (dx * dx + dz * dz < HIT * HIT) return w;
+    }
+    return null;
+  }
+
+  // Knock one down, thrown away from the car rather than in a fixed direction.
+  function strike(w, carX, carZ, speed) {
+    const dx = w.p.root.position.x - carX, dz = w.p.root.position.z - carZ;
+    const len = Math.hypot(dx, dz) || 1;
+    return w.p.knock(dx / len, dz / len, 0.5 + Math.min(1.4, speed / 190));
+  }
+
+  return { group, folk, update, hits, strike };
 }
 
 // ------------------------------------------------------------------ traffic
