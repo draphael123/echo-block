@@ -20,7 +20,9 @@ import { house } from '../block.js';
 import * as P from '../props.js';
 import * as S from '../street.js';
 import { Path, frame } from './path.js';
+import { resolve } from './shape.js';
 import * as D from './district.js';
+import * as D2 from './district2.js';
 
 // 192 voxels, 15.4m. It has been 88 (a residential street, too tight to race
 // on) and 128 (two lanes, still one line through a skip). At 192 there are four
@@ -31,22 +33,34 @@ import * as D from './district.js';
 // pavements, frontages, lamps, the start gantry, the hazard lanes and the
 // sim's dodge target all move with it. That is deliberate: this number has now
 // changed three times and each change has to stay a one-line change.
-export const ROAD_HALF = 108;
-const KERB = 5;
-// The footway, and it is a real one now: 52 voxels is 4.2 metres, where it used
-// to be 14 (1.1m — barely a kerb edge, and too narrow for two people to pass or
-// for a bench to stand on without blocking it). Everything that lives on the
-// pavement is placed relative to PAVE rather than by a hand-picked offset, so
-// widening it again moves the benches, bins, boxes, hedges and walkers with it.
-export const PAVE = 52;
-const VERGE = 14;
-const APRON = 6;
+// THE CROSS-SECTION IS PER TRACK NOW.
+//
+// These are `let`, and ES module bindings are live, so every consumer that
+// imports ROAD_HALF sees whatever the track currently being played set it to
+// without a single import changing. That is a deliberate trade: it is module
+// state, which means exactly ONE track can be loaded at a time — true, since
+// each page builds one — in exchange for not threading a width parameter
+// through forty call sites in this file and four others.
+//
+// The Old Town needs 60 where the Parade needs 108, and that is the whole
+// reason any of this moved.
+export let ROAD_HALF = 108;
+let KERB = 5;
+export let PAVE = 52;
+let VERGE = 14;
+let APRON = 6;
 
 // The three lines everything on the footway is placed against.
-export const KERBSIDE = ROAD_HALF + KERB + 8;         // lamps, signs, beacons
-export const PAVE_MID = ROAD_HALF + KERB + PAVE / 2;  // where people walk
-export const PAVE_BACK = ROAD_HALF + KERB + PAVE - 6; // benches, boxes, hedges
+export let KERBSIDE = 0, PAVE_MID = 0, PAVE_BACK = 0, SET = 0;
 export const GROUND_Y = 2;
+
+function setRoad(r) {
+  ROAD_HALF = r.half; KERB = r.kerb; PAVE = r.pave; VERGE = r.verge; APRON = r.apron;
+  KERBSIDE = ROAD_HALF + KERB + 8;          // lamps, signs, beacons
+  PAVE_MID = ROAD_HALF + KERB + PAVE / 2;   // where people walk
+  PAVE_BACK = ROAD_HALF + KERB + PAVE - 6;  // benches, boxes, hedges
+  SET = ROAD_HALF + KERB + PAVE + 6;        // where a frontage starts
+}
 
 // ------------------------------------------------------------------ relief
 // The circuit was dead flat, which cost it twice. Visually a flat ribbon has no
@@ -62,21 +76,7 @@ export const GROUND_Y = 2;
 // Control points are (s, voxels). 1 voxel is 8cm, so this spans about 4.3
 // metres top to bottom. Between knots it is a cosine, which makes every knot a
 // crest or a dip rather than a corner you can feel through the wheel.
-const PROFILE = [
-  [0, 0],        // the start line, and the value the lap has to come back to
-  [760, 12],
-  [1500, 30],    // the parade climbs to the chapel, which is on the high ground
-  [1910, 34],
-  [2530, 4],     // and drops away down mill lane
-  [2950, -20],   // the long dark sits in a hollow: the beam swings up out of it
-  [3350, -2],
-  [4020, 26],    // a crest halfway down the crescent -- you cannot see the exit
-  [4690, 10],
-  [5220, 22],    // the top is the top
-  [5700, -14],   // and the cut is a cutting, so it is BELOW everything
-  [5980, -8],
-  [6250, 8],
-];
+let PROFILE = [[0, 0]];
 
 const smooth = (t) => (1 - Math.cos(t * Math.PI)) / 2;
 
@@ -94,8 +94,12 @@ export function elev(s) {
 
 // The extremes, so the mesher and the collision field can be told where the
 // world actually starts and stops rather than assuming y = 0 is the ground.
-export const ELEV_MIN = PROFILE.reduce((m, p) => Math.min(m, p[1]), 0);
-export const ELEV_MAX = PROFILE.reduce((m, p) => Math.max(m, p[1]), 0);
+export let ELEV_MIN = 0, ELEV_MAX = 0;
+function setProfile(prof) {
+  PROFILE = prof;
+  ELEV_MIN = prof.reduce((m, q) => Math.min(m, q[1]), 0);
+  ELEV_MAX = prof.reduce((m, q) => Math.max(m, q[1]), 0);
+}
 
 // FOUR DIFFERENT CORNERS. The first circuit had four ninety-degree bends at
 // the same 340 radius, which meant one braking decision learned once and then
@@ -115,30 +119,21 @@ export const ELEV_MAX = PROFILE.reduce((m, p) => Math.max(m, p[1]), 0);
 // R1 is a 260 hairpin you brake hard for (38 km/h through it); R2 is a 520
 // sweeper you take nearly flat and which is unlit, so it is the one corner you
 // commit to on faith. The two in between give the lap its rhythm.
-const R1 = 260, R2 = 520, R3 = 340, R4 = 440;
-const L1 = 1500, L2 = 620;
-const L3 = L1 + R1 + R4 - R2 - R3;
-const L4 = L2 + R1 + R2 - R3 - R4;
-const A = (r) => Math.PI / 2 * r;
+let LEGS = [];
+export let SECTIONS = [];
+export let LAP = 0;
+let OPS = [];
 
-// Each leg is a district as well as a section. The name is what the HUD says;
-// the district is what stands beside the road, and no two legs share one.
-const LEGS = [
-  { len: L1, lit: true, name: 'the parade', district: 'parade' },
-  { len: A(R1), lit: true, name: 'chapel corner', district: 'chapel' },
-  { len: L2, lit: false, name: 'mill lane', district: 'mill' },
-  { len: A(R2), lit: false, name: 'the long dark', district: 'wood' },
-  { len: L3, lit: true, name: 'the crescent', district: 'crescent' },
-  { len: A(R3), lit: true, name: 'the top', district: 'park' },
-  { len: L4, lit: false, name: 'the cut', district: 'yard' },
-  { len: A(R4), lit: false, name: 'the last bend', district: 'farm' },
-];
-
-export const SECTIONS = (() => {
+// Legs come from the track's own shape now: a list of straights and arcs, two
+// of the straights left free for solveClosure() to fill in. The hand-derived
+// rectangle algebra is gone — see shape.js for why it had to be.
+function setShape(spec) {
+  OPS = resolve(spec.shape);
+  LEGS = OPS.map((op, i) => ({ ...spec.legs[i], len: op.len }));
   let at = 0;
-  return LEGS.map(l => { const sec = { ...l, from: at, to: at + l.len }; at += l.len; return sec; });
-})();
-export const LAP = SECTIONS[SECTIONS.length - 1].to;
+  SECTIONS = LEGS.map(l => { const sec = { ...l, from: at, to: at + l.len }; at += l.len; return sec; });
+  LAP = SECTIONS[SECTIONS.length - 1].to;
+}
 
 export const isLit = (s) => {
   const sec = SECTIONS.find(x => s >= x.from && s < x.to);
@@ -146,19 +141,19 @@ export const isLit = (s) => {
 };
 export const sectionAt = (s) => SECTIONS.find(x => s >= x.from && s < x.to) || SECTIONS[0];
 
-export function buildPath() {
-  const p = new Path(0, 0, 180)
-    .straight(L1).arc(-90, R1)
-    .straight(L2).arc(-90, R2)
-    .straight(L3).arc(-90, R3)
-    .straight(L4).arc(-90, R4)
-    .build();
+export function buildPath(spec) {
+  const p = new Path(0, 0, spec.heading === undefined ? 180 : spec.heading);
+  for (const op of OPS) {
+    if (op.straight !== undefined) p.straight(op.straight);
+    else p.arc(op.arc, op.r);
+  }
+  const built = p.build();
   // A loop that does not quite close leaves a step in the road you only find by
   // driving into it, so say so here instead.
-  const n = p.points.length;
-  const gap = Math.hypot(p.points[0] - p.points[n - 2], p.points[1] - p.points[n - 1]);
-  if (gap > 8) console.error('track: the loop is ' + Math.round(gap) + ' voxels from closing - check the L3/L4 solution in track.js');
-  return p;
+  const n = built.points.length;
+  const gap = Math.hypot(built.points[0] - built.points[n - 2], built.points[1] - built.points[n - 1]);
+  if (gap > 8) console.error('track "' + spec.id + '": the loop is ' + Math.round(gap) + ' voxels from closing');
+  return built;
 }
 
 // Everything is built facing +Z. This is the quarter turn that points it at
@@ -187,7 +182,18 @@ function ribbon(w, path) {
     path.at(s, f);
     path.at(Math.min(path.total, s + 30), prev);
     const turning = Math.abs(f.tx - prev.tx) + Math.abs(f.tz - prev.tz) > 0.02;
-    const stepS = turning ? 0.55 : 1;
+    // A DIAGONAL straight needs over-covering just as much as an arc does.
+    //
+    // Stepping s by 1 and u by 1 lays down a unit lattice, and a unit lattice
+    // ROTATED by anything other than a quarter turn does not land on the integer
+    // grid — at 45 degrees it misses about a third of the cells. The Parade
+    // never showed it because all four of its straights are axis-aligned; the
+    // ring road runs at sixty degrees and its carriageway came out full of
+    // pinholes, which the collision field reported as the tunnel ceiling being
+    // the floor. Both steps go to 0.7, which is 1/sqrt(2) and covers any angle.
+    const aligned = Math.abs(f.tx) < 0.02 || Math.abs(f.tz) < 0.02;
+    const stepS = turning ? 0.55 : (aligned ? 1 : 0.6);
+    const stepU = aligned && !turning ? 1 : 0.7;
     const lit = isLit(s);
     // The whole cross-section rises and falls together. Where the height
     // changes we also write the voxel BELOW, which turns what would be a
@@ -195,7 +201,7 @@ function ribbon(w, path) {
     // 80cm treads, 8cm risers, watertight, and under the car's 4-voxel step-up.
     const gy = elev(s);
     const riser = gy !== gyPrev ? Math.min(gy, gyPrev) : null;
-    for (let u = -edge; u <= edge; u += 1) {
+    for (let u = -edge; u <= edge; u += stepU) {
       const x = Math.round(f.x + f.nx * u), z = Math.round(f.z + f.nz * u);
       const a = Math.abs(u), r = hash3(x, 0, z);
       if (a <= half) {
@@ -285,6 +291,18 @@ function makeProtos() {
     terraceB: protoOf(D.terrace, 184, 48, true, [4, 'x', 19]),
     shed: protoOf(D.parkShelter, 36, 28, true),
     glass: protoOf(D.greenhouse, 24, 44, true),
+    // TWO units, not four. blit() orients a prototype with facingRot(), which
+    // snaps to a quarter turn -- exact on the Parade, where every leg is
+    // axis-aligned, and up to 45 degrees out on a bend. A 152-voxel building
+    // that far off square swings its corners 54 voxels, which on a 120-voxel
+    // road is a building standing in the carriageway. Short blocks swing less.
+    stoneA: protoOf(D2.stoneRow, 76, 44, true, [2, 5]),
+    stoneB: protoOf(D2.stoneRow, 76, 44, true, [2, 23]),
+    mews: protoOf(D2.mewsYard, 64, 52, true, [7]),
+    // 110 not 150: a long prototype on a leg that is 45 degrees off a quarter
+    // turn swings its corners half its length, and a dock road runs at 135.
+    shed: protoOf(D2.shed, 110, 84, true, [110, 84]),
+    services: protoOf(D2.services, 240, 74, true),
   };
 }
 
@@ -295,14 +313,7 @@ function legAxis(path, sec, f) {
   return Math.abs(f.tz) > Math.abs(f.tx) ? 'z' : 'x';
 }
 
-// Where a frontage starts: RIGHT BEHIND THE PAVEMENT.
-//
-// This was ROAD_HALF + KERB + VERGE + 12, which put the mill 260 voxels off the
-// road — 21 metres — and a 76-voxel wall that far back at night is not a
-// building, it is a slightly darker patch of nothing. Widening the road pushed
-// everything out with it and made that worse. Buildings have to crowd the
-// pavement or the district may as well not be there.
-const SET = ROAD_HALF + KERB + PAVE + 6;
+// SET is set by setRoad(), with the rest of the cross-section.
 
 function makeCtx(w, path, anchors, houses) {
   const f = frame();
@@ -330,7 +341,12 @@ function makeCtx(w, path, anchors, houses) {
     for (let s = from; s < to; s += step) put(s, u, (x, z, ff, gy) => fn(x, z, ff, gy, s));
   };
   const along = (ff) => (Math.abs(ff.nz) > Math.abs(ff.nx) ? 'x' : 'z');
-  return { w, path, anchors, houses, pr, f, put, blit, run, along };
+  // Step ALONG the track from a placement point. district builders that offset
+  // in world x or z are assuming the leg is axis-aligned, which is true of the
+  // Parade's straights and false of every corner in the Old Town -- so props
+  // ended up strewn across the carriageway on a bend.
+  const back = (ff, x, z, d) => [Math.round(x - ff.tx * d), Math.round(z - ff.tz * d)];
+  return { w, path, anchors, houses, pr, f, put, blit, run, along, back };
 }
 
 // A short street running away from the main road, closed at the far end.
@@ -353,6 +369,30 @@ function sideStreet(c, s, side) {
   const gy = GROUND_Y + elev(s);
   c.anchors.lamps.push(P.streetLamp(c.w,
     Math.round(f.x + f.tx * (HALF + 5)), gy, Math.round(f.z + f.tz * (HALF + 5)), 50, -14));
+}
+
+// Anything that spans the road is built in TRACK coordinates.
+//
+// The first version marched these along a world axis picked by legAxis(), which
+// is a quarter-turn approximation. On the Parade every leg is axis-aligned so
+// it was exact; on a dock road running at sixty degrees a 266-voxel gantry
+// swings ninety voxels and walks diagonally across the carriageway. Seventy-two
+// crashes in a lap, all at one gantry.
+function gantryOver(c, s, half, lift, signal) {
+  for (const side of [-1, 1])
+    c.put(s, side * half, (x, z, ff, gy) => c.w.box(x - 2, gy + lift, z - 2, 5, 62, 5, 'metalDark'));
+  for (let u = -half; u <= half; u++)
+    c.put(s, u, (x, z, ff, gy) => {
+      c.w.box(x - 1, gy + lift + 62, z - 1, 3, 5, 3, 'metalDark');
+      if (signal) {
+        if (Math.abs(u) % 20 < 3) c.w.box(x - 1, gy + lift + 54, z - 1, 3, 9, 3, 'metalDark');
+        if (Math.abs(u - half * 0.5) < 3) c.w.set(x, gy + lift + 58, z, 'signRed');
+        if (Math.abs(u + half * 0.5) < 3) c.w.set(x, gy + lift + 58, z, 'winWarmDim');
+      } else if (Math.abs(u) < half * 0.5) {
+        c.w.box(x, gy + lift + 40, z, 1, 20, 2, 'signGreen');
+        if (Math.abs(u) % 9 < 4) c.w.box(x, gy + lift + 46, z, 1, 3, 3, 'signWhite');
+      }
+    });
 }
 
 // -------------------------------------------------------------- districts
@@ -381,8 +421,8 @@ const DISTRICT = {
   chapel(c, sec) {
     const mid = (sec.from + sec.to) / 2;
     c.blit(mid, SET + 6, c.pr.chapel);
-    c.put(mid - 150, SET + 20, (x, z, ff, gy) => D.gravestones(c.w, x - 60, gy, z - 60, 120, 120, 5));
-    c.put(mid + 160, SET + 20, (x, z, ff, gy) => D.gravestones(c.w, x - 50, gy, z - 50, 100, 100, 9));
+    c.put(mid - 150, SET + 76, (x, z, ff, gy) => D.gravestones(c.w, x - 60, gy, z - 60, 120, 120, 5));
+    c.put(mid + 160, SET + 66, (x, z, ff, gy) => D.gravestones(c.w, x - 50, gy, z - 50, 100, 100, 9));
     c.run(sec.from, sec.to, SET, 46, (x, z, ff, gy) =>
       P.hedge(c.w, x - (c.along(ff) === 'x' ? 24 : 5), gy,
         z - (c.along(ff) === 'x' ? 5 : 24), 48, 10, 20, c.along(ff)));
@@ -476,11 +516,137 @@ const DISTRICT = {
     for (const side of [-1, 1])
       c.run(sec.from, sec.to, side * (PAVE_BACK + 8), 40, (x, z, ff, gy) =>
         D.retainingWall(c.w, ax === 'x' ? x - 20 : x, gy, ax === 'x' ? z : z - 20, 42, ax, 38));
-    c.put(sec.from + 250, -(PAVE_BACK + 8), (x, z, ff, gy) =>
-      D.signalGantry(c.w, x - 2, gy + 38, z - 2, Math.round((PAVE_BACK + 8) * 2)));
+    gantryOver(c, sec.from + 250, PAVE_BACK + 8, 38, true);
     c.put(sec.from + 120, SET + 34, (x, z, ff, gy) => D.pallets(c.w, x, gy, z, 5));
     c.put(sec.from + 410, -(SET + 38), (x, z, ff, gy) => D.oilDrums(c.w, x, gy, z, 9));
     c.put(sec.from + 460, SET + 30, (x, z, ff, gy) => D.silo(c.w, x, gy, z, 12, 54));
+  },
+
+  // ---------------------------------------------------------- THE OLD TOWN
+  // Buildings right out to the kerb. On a 120-voxel road that frontage is most
+  // of what you can see, which is the entire point of the place.
+  stone(c, sec) {
+    for (const side of [-1, 1])
+      for (let s = sec.from + 60, i = 0; s < sec.to - 80; s += 88, i++)
+        c.blit(s, side * (SET + 26), i % 2 ? c.pr.stoneB : c.pr.stoneA);
+  },
+
+  market(c, sec) {
+    c.blit(sec.from + 120, SET + 26, c.pr.stoneA);
+    c.blit(sec.to - 200, -(SET + 26), c.pr.stoneB);
+    for (const side of [-1, 1])
+      c.run(sec.from + 40, sec.to - 40, side * (PAVE_BACK + 16), 96, (x, z, ff, gy) => {
+        const [sx, sz] = c.back(ff, x, z, 45);
+        D2.marketStalls(c.w, sx, gy, sz, 3, Math.round(x));
+      });
+    c.run(sec.from, sec.to, SET + 60, 190, (x, z, ff, gy) => P.tree(c.w, x, gy, z, 34, 12));
+  },
+
+  // A wall the road goes THROUGH, rather than one that runs beside it.
+  wall(c, sec) {
+    for (const side of [-1, 1])
+      c.run(sec.from, sec.to, side * (PAVE_BACK + 6), 40, (x, z, ff, gy) => {
+        const a = c.along(ff);
+        const [wx, wz] = c.back(ff, x, z, 20);
+        D2.townWall(c.w, wx, gy, wz, 42, a, 46);
+      });
+    c.blit(sec.from + 150, SET + 52, c.pr.stoneA);
+    c.blit(sec.to - 180, -(SET + 52), c.pr.stoneB);
+  },
+
+  mews(c, sec) {
+    for (const side of [-1, 1])
+      for (let s = sec.from + 90, i = 0; s < sec.to - 90; s += 96, i++)
+        c.blit(s, side * (SET + 30), i % 3 === 1 ? c.pr.mews : (i % 2 ? c.pr.stoneB : c.pr.stoneA));
+  },
+
+  // ============================================================= THE DOCKS
+  quay(c, sec) {
+    for (let i = 0; i < 4; i++)
+      c.put(sec.from + 140 + i * 210, SET + 70, (x, z, ff, gy) =>
+        D2.crane(c.w, x, gy, z, 120 + (i % 2) * 24, 130));
+    c.run(sec.from, sec.to, SET - 4, 60, (x, z, ff, gy) => {
+      const [bx, bz] = c.back(ff, x, z, 30);
+      D2.bollards(c.w, bx, gy, bz, 60, c.along(ff));
+    });
+    c.run(sec.from, sec.to, -(SET + 90), 220, (x, z, ff, gy, s) => {
+      const [bx, bz] = c.back(ff, x, z, 60);
+      D2.containers(c.w, bx, gy, bz, 2, 2, 3, Math.round(s));
+    });
+  },
+
+  containers(c, sec) {
+    for (const side of [-1, 1])
+      c.run(sec.from, sec.to, side * (SET + 100), 200, (x, z, ff, gy, s) => {
+        const [bx, bz] = c.back(ff, x, z, 60);
+        D2.containers(c.w, bx, gy, bz, 2, 3, 4, Math.round(s) + (side > 0 ? 0 : 91));
+      });
+    c.put(sec.from + 240, SET + 210, (x, z, ff, gy) => D2.crane(c.w, x, gy, z, 132, 120));
+  },
+
+  sheds(c, sec) {
+    for (let s = sec.from + 140, i = 0; s < sec.to - 160; s += 200, i++)
+      c.blit(s, (i % 2 ? 1 : -1) * (SET + 46), c.pr.shed);
+    c.run(sec.from, sec.to, SET + 190, 240, (x, z, ff, gy, s) => {
+      const [bx, bz] = c.back(ff, x, z, 30);
+      D2.containers(c.w, bx, gy, bz, 1, 2, 3, Math.round(s));
+    });
+  },
+
+  // ========================================================== THE RING ROAD
+  motorway(c, sec) {
+    const ax = legAxis(c.path, sec, c.f);
+    for (const side of [-1, 1])
+      c.run(sec.from, sec.to, side * (PAVE_BACK + 4), 40, (x, z, ff, gy) => {
+        const [ex, ez] = c.back(ff, x, z, 20);
+        D2.embankment(c.w, ex, gy, ez, 42, c.along(ff), side, 34);
+      });
+    for (let s = sec.from + 260; s < sec.to - 200; s += 620) gantryOver(c, s, ROAD_HALF + 30, 0, false);
+    c.run(sec.from, sec.to, SET + 90, 260, (x, z, ff, gy) => P.tree(c.w, x, gy, z, 40, 14));
+  },
+
+  // Not new geometry: a roof over a road that already exists. The collision
+  // field only calls something blocked within head height of the floor, so a
+  // ceiling four metres up costs nothing but voxels.
+  tunnel(c, sec) {
+    const half = ROAD_HALF + KERB + 10;
+    for (let s = sec.from + 60; s < sec.to - 60; s += 0.9) {
+      const lit = (Math.round(s) % 90) < 30;
+      for (let u = -half; u <= half; u++) {
+        const a = Math.abs(u);
+        const top = Math.round(46 + Math.cos((a / half) * Math.PI * 0.5) * 16);
+        c.put(s, u, (x, z, ff, gy) => {
+          if (a > half - 5) for (let k = 0; k < top; k++)
+            c.w.set(x, gy + k, z, (k >> 2) % 2 ? 'concreteOld' : 'concrete');
+          c.w.set(x, gy + top, z, 'concreteOld');
+          c.w.set(x, gy + top + 1, z, 'concrete');
+          if (lit && a < 4) c.w.set(x, gy + 58, z, 'sodium');
+        });
+      }
+    }
+    // Portals, so you can see the mouth coming. ABOVE the arch and OUTSIDE it
+    // only — the first version filled the whole cross-section, which is not a
+    // portal, it is a wall across the road. Fifty-one crashes, all at one spot,
+    // and the car simply stopped dead at the tunnel mouth.
+    for (const s of [sec.from + 56, sec.to - 56])
+      for (let u = -half - 10; u <= half + 10; u++) {
+        const a = Math.abs(u);
+        const top = a <= half ? Math.round(46 + Math.cos((a / half) * Math.PI * 0.5) * 16) + 2 : 0;
+        c.put(s, u, (x, z, ff, gy) => {
+          for (let k = top; k < 88; k++) c.w.set(x, gy + k, z, (k >> 3) % 2 ? 'concrete' : 'concreteOld');
+        });
+      }
+  },
+
+  services(c, sec) {
+    c.blit(sec.from + 220, SET + 90, c.pr.services);
+    const ax = legAxis(c.path, sec, c.f);
+    for (const side of [-1, 1])
+      c.run(sec.from, sec.to, side * (PAVE_BACK + 4), 40, (x, z, ff, gy) => {
+        const [ex, ez] = c.back(ff, x, z, 20);
+        D2.embankment(c.w, ex, gy, ez, 42, c.along(ff), side, 26);
+      });
+    gantryOver(c, sec.to - 260, ROAD_HALF + 30, 0, false);
   },
 
   // Open country on the last bend, so the lap ends somewhere with no walls and
@@ -531,17 +697,21 @@ function dress(w, path, anchors, houses) {
   for (let u = -ROAD_HALF; u <= ROAD_HALF; u++)
     put(30, u, (x, z, ff, gy) => w.set(x, gy - 3, z, ((u >> 2) % 2) ? 'roadLine' : 'asphaltPatch'));
 
-  // council property, because a street has some
-  put(430, PAVE_BACK, (x, z, ff, gy) => S.phoneBox(w, x - 5, gy, z - 5));
-  put(900, -(PAVE_BACK - 2), (x, z, ff, gy) => S.busShelter(w, x - 17, gy, z - 7, 1));
-  put(4100, PAVE_BACK - 2, (x, z, ff, gy) => S.busShelter(w, x - 17, gy, z - 7, 1));
-  for (const [s, side] of [[260, 1], [700, -1], [1150, 1], [3600, 1], [4400, -1], [4900, 1]]) {
+  // council property, because a street has some. Positions come from the
+  // track's own spec, so a narrower town gets its own furniture rather than
+  // the Parade's laid out on top of it.
+  const F = SPEC.furniture || {};
+  for (const s of F.phone || [])
+    put(s, PAVE_BACK, (x, z, ff, gy) => S.phoneBox(w, x - 5, gy, z - 5));
+  for (const [s, side] of F.shelters || [])
+    put(s, side * (PAVE_BACK - 2), (x, z, ff, gy) => S.busShelter(w, x - 17, gy, z - 7, 1));
+  for (const [s, side] of F.benches || []) {
     put(s, side * PAVE_BACK, (x, z, ff, gy) => S.bench(w, x - 13, gy, z - 4, 1));
     put(s + 70, side * PAVE_BACK, (x, z, ff, gy) => P.trashBin(w, x, gy, z));
   }
-  for (const s of [520, 1240, 3500, 4200, 5400])
+  for (const s of F.drains || [])
     put(s, ROAD_HALF - 3, (x, z, ff, gy) => S.drain(w, x - 4, gy - 3, z - 2));
-  for (const [s, side, kind] of [[1380, 1, 'stop'], [2480, -1, 'sign'], [5150, 1, 'sign'], [5790, -1, 'stop']])
+  for (const [s, side, kind] of F.signs || [])
     put(s, side * KERBSIDE, (x, z, ff, gy) => S.signPost(w, x, gy, z, kind));
 
   // zebra crossings, with a belisha beacon each side
@@ -562,17 +732,14 @@ function dress(w, path, anchors, houses) {
 // ---------------------------------------------------------------- parked
 // Parked cars at the kerb — blitted like the houses, and into the VOXEL world
 // rather than as scene objects, so they are solid for free.
+let PARKED = [];
 function parked(w, path) {
   const proto = new VoxWorld();
   P.wagon(proto, -11, 0, -25);                        // centred, facing +Z
   const f = frame();
   // On the parade and in the crescent, because those are the two legs where
   // somebody lives. Nobody parks on the sweeper.
-  const spots = [
-    [300, 1], [620, -1], [980, 1], [1120, -1], [1330, 1],
-    [2170, -1],
-    [3480, 1], [3760, -1], [4060, 1], [4380, -1], [4560, 1],
-  ];
+  const spots = PARKED;
   for (const [s, side] of spots) {
     // FULLY off the carriageway. Half on the kerb left the body reaching 5
     // voxels onto the road, and a driver running wide of a skip clipped it and
@@ -594,10 +761,11 @@ function landmarks(w, path) {
   for (let i = 0; i < path.points.length; i += 2) { cx += path.points[i]; cz += path.points[i + 1]; }
   cx = Math.round(cx / n); cz = Math.round(cz / n);
   const gy = GROUND_Y + elev(0);
-  D.gasholder(w, cx + 60, gy, cz - 40, 46, 132);
-  D.waterTower(w, cx - 210, gy, cz + 190);
+  const L = SPEC.landmarks || {};
+  if (L.gasholder) D.gasholder(w, cx + L.gasholder[0], gy, cz + L.gasholder[1], L.gasholder[2], L.gasholder[3]);
+  if (L.waterTower) D.waterTower(w, cx + L.waterTower[0], gy, cz + L.waterTower[1]);
   // a few pylons marching away, so the middle distance is not empty either
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < (L.pylons || 0); i++) {
     const px = cx - 340 + i * 150, pz = cz - 300 - i * 40;
     for (const [ox] of [[-9], [9]]) for (let j = 0; j < 88; j++) w.set(px + ox, gy + j, pz, 'metalDark');
     for (const yy of [52, 70, 86]) for (let k = -22; k <= 22; k++) w.set(px + k, gy + yy, pz, 'metalDark');
@@ -611,22 +779,12 @@ function landmarks(w, path) {
 // Placed as a fraction of the carriageway, not in absolute voxels: on a wider
 // road the same numbers would leave a clear lane past every one of them, and
 // a hazard you can ignore is scenery.
-const H = (f) => Math.round(ROAD_HALF * f);
+export const H = (f) => Math.round(ROAD_HALF * f);
 // Six of the nine are on unlit legs, and one of those is mid-corner on the
 // long dark sweeper — which is the hardest thing on the circuit and the only
 // place the lighting design and the corner design ask the same question at
 // once. Two lit ones exist so the dark ones are a contrast rather than a rule.
-export const HAZARDS = [
-  { s: 700, u: H(0.62), r: 30, kind: 'works' },        // the parade, lit
-  { s: 2060, u: H(-0.30), r: 32, kind: 'skip' },       // mill lane, dark
-  { s: 2330, u: H(0.34), r: 30, kind: 'works' },       // mill lane, dark
-  { s: 2900, u: H(-0.34), r: 34, kind: 'broken' },     // the long dark, mid-corner
-  { s: 3190, u: H(0.30), r: 30, kind: 'works' },       // the long dark, exit
-  { s: 4300, u: H(-0.55), r: 32, kind: 'skip' },       // the crescent, lit
-  { s: 5430, u: H(0.34), r: 30, kind: 'works' },       // the cut, dark
-  { s: 5700, u: H(-0.34), r: 34, kind: 'broken' },     // the cut, dark
-  { s: 6150, u: H(0.28), r: 30, kind: 'works' },       // the last bend, dark
-];
+export let HAZARDS = [];
 
 function hazards(w, path) {
   const f = frame();
@@ -709,7 +867,7 @@ export function safeSpot(path, ground, fromS) {
 // it is a coin toss — the stripes are the tell that says lift here.
 // Kept clear of the parking bays: a crosser walking into a parked car baulks
 // and turns round in the middle of the road, which looks like a bug.
-export const CROSSINGS = [480, 1240, 3620, 4260, 5010];
+export let CROSSINGS = [];
 
 // Pavement beats for the people who live here. Weighted toward the parade, the
 // crescent and the park, because that is where somebody would actually BE at
@@ -718,33 +876,9 @@ export const CROSSINGS = [480, 1240, 3620, 4260, 5010];
 //
 // `pace` sets how fast they walk (a jogger is not a shopper) and `idle` stands
 // them still facing the road, which is what waiting for a bus looks like.
-export function lifeSpots() {
-  const pave = PAVE_MID;
-  return [
-    { s: 200, u: pave, dir: 1, span: 260 },
-    { s: 520, u: -pave, dir: -1, span: 280 },
-    { s: 780, u: pave, dir: -1, span: 240 },
-    { s: 900, u: -pave, dir: 1, idle: true },            // at the bus shelter
-    { s: 935, u: -pave, dir: 1, idle: true },
-    { s: 1060, u: -pave, dir: 1, span: 220 },
-    { s: 1330, u: pave, dir: 1, span: 200, pace: 46 },   // late for something
-    { s: 1660, u: pave, dir: 1, span: 180 },
-    { s: 1840, u: -pave, dir: -1, span: 160 },
-    { s: 2170, u: -pave, dir: -1, span: 300 },           // mill lane, in the dark
-    { s: 3460, u: pave, dir: 1, span: 280 },
-    { s: 3780, u: -pave, dir: -1, span: 300 },
-    { s: 4080, u: pave, dir: -1, span: 260 },
-    { s: 4110, u: pave, dir: 1, idle: true },            // the second shelter
-    { s: 4420, u: -pave, dir: 1, span: 240 },
-    { s: 4640, u: pave, dir: -1, span: 220, pace: 52 },  // running the park
-    { s: 4880, u: -pave, dir: -1, span: 200 },
-    { s: 5080, u: pave, dir: 1, span: 180 },
-    // The ones who step out in front of you. They cross ACROSS the road at a
-    // marked crossing rather than pacing along it, which is the only way a
-    // pedestrian is ever actually in your way.
-    ...CROSSINGS.map((s, i) => ({ s, u: i % 2 ? pave : -pave, cross: true, pace: 30 + i * 4 })),
-  ];
-}
+let LIFE = [];
+export function lifeSpots() { return LIFE; }
+
 
 // --------------------------------------------------------------- surround
 // The land beyond the built plate.
@@ -815,7 +949,25 @@ function surround(path) {
 }
 
 // ---------------------------------------------------------------- assemble
-export function buildTrack() {
+// The track currently loaded. Module state, deliberately: one per page.
+let SPEC = null;
+export const spec = () => SPEC;
+
+export function buildTrack(trackSpec) {
+  SPEC = trackSpec;
+  setRoad(trackSpec.road);
+  setProfile(trackSpec.profile);
+  setShape(trackSpec);
+  HAZARDS = trackSpec.hazards.map(h => ({ ...h }));
+  CROSSINGS = trackSpec.crossings || [];
+  PARKED = trackSpec.parked || [];
+  LIFE = (trackSpec.life || []).map(l => ({
+    ...l, u: (l.side || 1) * PAVE_MID,
+  })).concat((trackSpec.crossings || []).map((cs, i) => ({
+    // the ones who step out in front of you, at the marked crossings
+    s: cs, u: i % 2 ? PAVE_MID : -PAVE_MID, cross: true, pace: 30 + i * 4,
+  })));
+
   const t0 = performance.now();
   // Phase timings, because "the build takes twenty seconds" is not actionable
   // and every guess I have made about where voxel time goes has been wrong.
@@ -823,7 +975,7 @@ export function buildTrack() {
   let last = t0;
   const mark = (name) => { const n = performance.now(); marks.push([name, Math.round(n - last)]); last = n; };
 
-  const path = buildPath();
+  const path = buildPath(trackSpec);
   const w = new VoxWorld();
   const anchors = { lamps: [], stacks: [], tvs: [] };
   const protos = prototypes();
@@ -931,6 +1083,8 @@ export function buildTrack() {
 
   return {
     group, path, field, anchors, hazards: HAZARDS, elev, grade: +worst.toFixed(3),
+    spec: trackSpec, id: trackSpec.id, name: trackSpec.name,
+    roadHalf: ROAD_HALF, sections: SECTIONS, traffic: trackSpec.traffic || [],
     chunks: group.children.filter(c => c.name === 'track:chunks').reduce((n, g) => n + g.children.length, 0),
     start: { x: start.x, z: start.z, heading: Math.atan2(start.tx, start.tz) },
     voxels: w.size,

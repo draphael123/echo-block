@@ -9,6 +9,7 @@ import { buildSky } from '../lights.js';
 import { Post } from '../post.js';
 import { Ground } from '../walk.js';
 import { buildTrack, sectionAt, safeSpot, lifeSpots, ROAD_HALF } from './track.js';
+import { TRACKS, pickTrack } from './tracks/index.js';
 import { buildCar, V_MAX, BODIES } from './car.js';
 import { buildLife, buildTraffic } from './life.js';
 import { buildRival } from './rival.js';
@@ -38,7 +39,7 @@ scene.fog = new THREE.FogExp2(0x161f33, 0.00135);
 const sky = buildSky();
 scene.add(sky);
 
-const track = buildTrack();
+const track = buildTrack(pickTrack());
 scene.add(track.group);
 const ground = new Ground(track.field);
 
@@ -128,14 +129,7 @@ scene.add(life.group);
 // Somebody else's evening, on the road you happen to be racing on.
 // Six of them now, spread so there is one somewhere on most of the lap, at
 // speeds that differ enough to catch each other up. Nobody is doing 80.
-const traffic = buildTraffic(track.path, buildCar, [
-  { s: 600, u: 54, speed: 92, dir: 1 },
-  { s: 1750, u: -54, speed: 78, dir: -1 },
-  { s: 2700, u: 50, speed: 104, dir: 1 },
-  { s: 3900, u: -50, speed: 88, dir: -1 },
-  { s: 4900, u: 56, speed: 112, dir: 1 },
-  { s: 6050, u: -56, speed: 70, dir: -1 },
-], track.elev);
+const traffic = buildTraffic(track.path, buildCar, track.traffic, track.elev);
 scene.add(traffic.group);
 
 // ----------------------------------------------------------------- camera

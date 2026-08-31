@@ -9,6 +9,7 @@
 // — which keeps the shop from having to know which page it is on.
 import * as Garage from './race/garage.js';
 import { BODIES } from './race/car.js';
+import { TRACKS, pickTrack, chooseTrack } from './race/tracks/index.js';
 
 const CSS = `
 #garage {
@@ -93,6 +94,30 @@ export function mountGarage({ save, onChange, closeHint = 'G to close' } = {}) {
     row.appendChild(sw);
     row.appendChild(document.createElement('span'));
     partsEl.appendChild(row);
+
+    // Where you are racing. It lives on the garage counter because that is
+    // where you are already standing when you decide what to spend, and the
+    // two decisions are the same decision: the Docks want tyres and the ring
+    // road wants lamps.
+    const tr = document.createElement('div');
+    tr.className = 'row';
+    const here = pickTrack().id;
+    tr.innerHTML = '<div><div class="nm">Circuit</div>'
+      + `<div class="bl">${TRACKS.find(t => t.id === here).blurb}</div></div>`;
+    const list = document.createElement('div');
+    list.className = 'swatches';
+    for (const t of TRACKS) {
+      const b = document.createElement('button');
+      b.textContent = t.name.replace(/^The /, '');
+      b.style.minWidth = '0';
+      b.style.padding = '5px 8px';
+      if (t.id === here) { b.style.borderColor = '#ffd9a0'; b.style.color = '#ffd9a0'; }
+      b.onclick = () => { chooseTrack(t.id); changed(); };
+      list.appendChild(b);
+    }
+    tr.appendChild(list);
+    tr.appendChild(document.createElement('span'));
+    partsEl.appendChild(tr);
   }
 
   paint();
