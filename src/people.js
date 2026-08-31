@@ -424,6 +424,22 @@ export function buildDog(spec) {
 // and everyone has a small, mundane reason to still be outside.
 // The two who work here. Their positions come from the shop anchors rather
 // than being written down twice, because the shop moved three times.
+// The garage is a place in the hub now, so somebody has to be standing in it.
+// Positioned outside the roller door of the house that already had a garage,
+// rather than inventing a new building for a counter and a conversation.
+export const MECHANIC = {
+  name: 'Verity', role: 'runs the garage',
+  key: 'mechanic', garage: true,
+  skin: 'skinMid', hair: 'hairDark', hairStyle: 'long',
+  shirt: 'shirtBlue', trouser: 'trouserGrey', collar: 'fabricPale',
+  pos: [22, 2, -48], face: -1.57,
+  lines: [
+    'Leave it with me. Lamps first, if you are asking — you cannot drive what you cannot see.',
+    'Everyone buys the engine first and everyone spends the next week in a hedge.',
+    'Bring me the money and I will bring you the parts. That is the whole arrangement.',
+  ],
+};
+
 export const INDOOR_CAST = [
   {
     key: 'keeper', name: 'Marlow', role: 'behind the counter',

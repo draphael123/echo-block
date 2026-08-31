@@ -4,7 +4,9 @@
 import * as THREE from 'three';
 import { buildBlock, BOUNDS, ROAD } from './block.js';
 import { buildSky, buildLights, tvFlicker } from './lights.js';
-import { buildPerson, buildDog, CAST, INDOOR_CAST, LOOKS } from './people.js';
+import { buildPerson, buildDog, CAST, INDOOR_CAST, MECHANIC, LOOKS } from './people.js';
+import { mountGarage } from './garage-ui.js';
+import * as Garage from './race/garage.js';
 import { PALETTE } from './palette.js';
 import { buildTraffic } from './traffic.js';
 import { Ground } from './walk.js';
@@ -60,7 +62,7 @@ scene.add(peopleGroup);
 const indoorSpecs = INDOOR_CAST
   .filter(s => block.anchors[s.key])
   .map(s => ({ ...s, pos: block.anchors[s.key] }));
-const folk = [...CAST, ...indoorSpecs].map(spec => buildPerson(spec));
+const folk = [...CAST, ...indoorSpecs, MECHANIC].map(spec => buildPerson(spec));
 let player = folk.find(p => p.data.player);
 let npcs = folk.filter(p => p !== player);
 const biscuit = buildDog({ pos: [58, 2, 40], path: [[58, 40], [-172, 40]], speed: 1 });
@@ -313,8 +315,16 @@ function nearestNpc() {
 // One key does both jobs. A person in front of you wins over a mailbox,
 // because otherwise standing near Sam and his own postbox is ambiguous.
 let nearBox = null;
+// The garage counter, shared with the circuit. Talking to Verity opens it,
+// which is the whole reason the hub exists: the money you win out there is
+// spent in here.
+const savefile = Garage.load();
+const garage = mountGarage({ save: savefile, closeHint: 'ESC or E to close' });
+
 function interact() {
+  if (garage.isOpen()) { garage.close(); return; }
   if (talk.isOpen()) { talk.advance(); return; }
+  if (nearby && nearby.data.garage) { talk.hide(); garage.open(); return; }
   if (nearby) {
     const custom = round.linesFor(nearby.data.name);
     const startsRound = custom && round.state === 'idle';
@@ -418,7 +428,7 @@ const ui = createUI({
 addEventListener('keydown', (e) => {
   if (e.key === 'Tab') { e.preventDefault(); ui.toggle(); return; }
   if (intro.isUp()) return;
-  if (e.key === 'Escape') { talk.hide(); return; }
+  if (e.key === 'Escape') { garage.close(); talk.hide(); return; }
   const k = e.key.toLowerCase();
   if (k === 'e' && mode === 'follow') { interact(); return; }
   if (k === 'c') { mode === 'follow' ? applyShot(shot) : followMode(); return; }

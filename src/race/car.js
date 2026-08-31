@@ -89,16 +89,24 @@ const V_REV = 78, REV_ACCEL = 96, REV_ENGAGE = 0.35;
 // than your headlights never bought you anything. The number is the mechanic.
 const BEAM_REACH = 280;
 
-const BODIES = [
-  { body: 'carBody', roof: 'carBody', trim: 'carTrim', name: 'red' },
-  { body: 'doorBlue', roof: 'doorBlue', trim: 'chrome', name: 'blue' },
-  { body: 'sidingF', roof: 'sidingFdark', trim: 'carTrim', name: 'sage' },
-  { body: 'shirtCream', roof: 'sidingBdark', trim: 'chrome', name: 'cream' },
+export const BODIES = [
+  { body: 'carBody', roof: 'carBody', trim: 'carTrim', name: 'red', swatch: '#8d2b26' },
+  { body: 'doorBlue', roof: 'doorBlue', trim: 'chrome', name: 'blue', swatch: '#33507e' },
+  { body: 'sidingF', roof: 'sidingFdark', trim: 'carTrim', name: 'sage', swatch: '#5d6f5a' },
+  { body: 'shirtCream', roof: 'sidingBdark', trim: 'chrome', name: 'cream', swatch: '#cbbfa4' },
+  { body: 'doorYellow', roof: 'metalDark', trim: 'metalDark', name: 'ochre', swatch: '#b9862f' },
+  { body: 'doorGreen', roof: 'doorGreen', trim: 'chrome', name: 'racing', swatch: '#2f6440' },
+  { body: 'metalDark', roof: 'metalDark', trim: 'rust', name: 'primer', swatch: '#2b2f36' },
+  { body: 'plasticRed', roof: 'shirtCream', trim: 'chrome', name: 'rally', swatch: '#b0403a' },
 ];
 
 // A 1986 three-door, facing +Z. Wedge nose, upright glass, black bumpers.
-function shell(w, c) {
+function shell(w, c, parts) {
   const L = 58, W = 26, sill = 5, hw = W >> 1;
+  // What you have bought, on the outside of the car. Every part shows, because
+  // an upgrade you cannot see is a number in a menu — and the lamps in
+  // particular ARE the mechanic, so they had better be the thing you notice.
+  const lv = (id) => (parts && parts[id]) || 0;
 
   // main body, tapering slightly toward the nose
   for (let k = 0; k < L; k++) {
@@ -140,15 +148,65 @@ function shell(w, c) {
   w.box(-hw - 2, sill + 15, cz + cL - 3, 2, 3, 3, c.body);
   w.box(hw, sill + 15, cz + cL - 3, 2, 3, 3, c.body);
 
-  // wheels, sunk into arches
+  // wheels, sunk into arches — fatter with better tyres
+  const tyre = lv('tyres');
+  const tw = 3 + (tyre > 0 ? 1 : 0) + (tyre > 1 ? 1 : 0);
   for (const wz of [11, L - 19]) for (const wx of [-hw - 1, hw - 2]) {
+    const ox = wx < 0 ? -(tw - 3) : 0;
     for (let k = -7; k <= 7; k++) for (let j = -7; j <= 7; j++) {
       const d = Math.hypot(k, j);
       if (d > 7) continue;
-      for (let i = 0; i < 3; i++)
-        w.set(wx + i, 6 + j, wz + k, d < 3.2 ? 'chrome' : 'rubber');
+      for (let i = 0; i < tw; i++)
+        w.set(wx + ox + i, 6 + j, wz + k, d < 3.2 ? 'chrome' : 'rubber');
     }
-    w.cut(wx - 1, 14, wz - 8, 5, 6, 17);
+    w.cut(wx + ox - 1, 14, wz - 8, tw + 2, 6, 17);
+    if (tyre > 1) {                                   // arch flares
+      for (let k = -9; k <= 9; k++)
+        w.box(wx + ox - 1, 13 - Math.round(Math.abs(k) * 0.3), wz + k, tw + 2, 1, 1, c.roof);
+    }
+  }
+
+  // ------------------------------------------------- what the money bought
+  const eng = lv('engine');
+  if (eng > 0) {                                      // bonnet scoop
+    w.box(-5, sill + 11, L - 12, 10, 3, 9, c.roof);
+    w.box(-4, sill + 12, L - 4, 8, 2, 1, 'metalDark');
+  }
+  if (eng > 1) {                                      // twin pipes
+    for (const px of [-8, 4]) {
+      w.box(px, sill, -3, 4, 3, 3, 'chrome');
+      w.box(px + 1, sill + 1, -4, 2, 1, 1, 'metalDark');
+    }
+  }
+  if (eng > 2) w.box(-hw + 3, sill + 22, cz - 2, W - 6, 2, 4, c.roof);   // ducktail
+
+  const brk = lv('brakes');
+  if (brk > 0) {                                      // front splitter
+    w.box(-hw - 2, sill, L - 1, W + 4, 2, 3, 'metalDark');
+    w.box(-hw - 3, sill, L - 4, 2, 2, 5, 'metalDark');
+    w.box(hw + 1, sill, L - 4, 2, 2, 5, 'metalDark');
+  }
+  if (brk > 1) {                                      // cooling ducts
+    w.box(-hw + 3, sill + 3, L, 5, 3, 1, 'glassDark');
+    w.box(hw - 7, sill + 3, L, 5, 3, 1, 'glassDark');
+  }
+
+  // LAMPS. The one upgrade the level design is built around, so it is the one
+  // you can see from behind at a glance: a pair on the bumper, then four, then
+  // a bar across the roof.
+  const lamps = lv('lamps');
+  if (lamps > 0) for (const px of [-9, 5]) {
+    w.box(px, sill + 3, L, 4, 4, 2, 'metalDark');
+    w.box(px + 1, sill + 4, L + 1, 2, 2, 1, 'headLight');
+  }
+  if (lamps > 1) for (const px of [-hw + 1, hw - 5]) {
+    w.box(px, sill + 3, L, 4, 4, 2, 'metalDark');
+    w.box(px + 1, sill + 4, L + 1, 2, 2, 1, 'headLight');
+  }
+  if (lamps > 2) {
+    w.box(-hw + 2, sill + 24, cz + cL - 2, W - 4, 2, 4, 'metalDark');
+    for (let i = 0; i < 4; i++)
+      w.box(-hw + 4 + i * 5, sill + 26, cz + cL - 1, 3, 3, 2, 'headLight');
   }
   return { L, W };
 }
@@ -158,7 +216,7 @@ function shell(w, c) {
 // a part you buy has to move one of these numbers or it is not doing anything,
 // and the rival runs the same builder with no tune at all so a bought advantage
 // is a real advantage rather than a difficulty slider.
-export function buildCar(paint = 0, tune = {}) {
+export function buildCar(paint = 0, tune = {}, parts = null) {
   const T = {
     vmax: tune.vmax || 1, accel: tune.accel || 1, brake: tune.brake || 1,
     grip: tune.grip || 1, beam: tune.beam || 1,
@@ -170,7 +228,7 @@ export function buildCar(paint = 0, tune = {}) {
   const BEAM = BEAM_REACH * T.beam;
   const c = BODIES[paint % BODIES.length];
   const w = new VoxWorld();
-  const { L, W } = shell(w, c);
+  const { L, W } = shell(w, c, parts);
 
   // A CONTACT SHADOW.
   //

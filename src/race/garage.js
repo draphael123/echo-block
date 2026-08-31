@@ -34,7 +34,7 @@ export const PARTS = [
   },
 ];
 
-const BLANK = { money: 0, best: null, races: 0, parts: { engine: 0, brakes: 0, tyres: 0, lamps: 0 } };
+const BLANK = { money: 0, best: null, races: 0, paint: 0, parts: { engine: 0, brakes: 0, tyres: 0, lamps: 0 } };
 
 export function load() {
   try {

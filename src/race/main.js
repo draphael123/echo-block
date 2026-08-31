@@ -9,11 +9,12 @@ import { buildSky } from '../lights.js';
 import { Post } from '../post.js';
 import { Ground } from '../walk.js';
 import { buildTrack, sectionAt, safeSpot, lifeSpots, ROAD_HALF } from './track.js';
-import { buildCar, V_MAX } from './car.js';
+import { buildCar, V_MAX, BODIES } from './car.js';
 import { buildLife, buildTraffic } from './life.js';
 import { buildRival } from './rival.js';
 import { createAudio } from './audio.js';
 import * as Garage from './garage.js';
+import { mountGarage } from '../garage-ui.js';
 import { compare, run } from './sim.js';
 
 const canvas = document.getElementById('view');
@@ -76,9 +77,20 @@ const LAMPS = track.anchors.lamps.map(([x, y, z]) => {
 const LIVE_LAMPS = 7;
 
 // ------------------------------------------------------------------- cast
-const paint = +(localStorage.getItem('dynamo.paint') || 0) || 0;
 const savefile = Garage.load();
-const car = buildCar(paint, Garage.tuneOf(savefile));
+// `let`, because buying a part or a respray rebuilds the car in place: the body
+// is meshed from voxels, so a wider tyre or an extra pair of lamps is a
+// different mesh, and it is cheap enough to throw the old one away.
+let car = buildCar(savefile.paint, Garage.tuneOf(savefile), savefile.parts);
+
+function rebuildCar() {
+  const keep = { ...car.state };
+  scene.remove(car.root);
+  car.root.traverse(o => { if (o.isMesh && o.geometry) o.geometry.dispose(); });
+  car = buildCar(savefile.paint, Garage.tuneOf(savefile), savefile.parts);
+  scene.add(car.root);
+  Object.assign(car.state, keep);
+}
 scene.add(car.root);
 car.state.x = track.start.x;
 car.state.z = track.start.z;
@@ -88,7 +100,7 @@ car.state.heading = track.start.heading;
 // rubber-banding, so if you are quicker you pull away and if you are not you
 // get to watch it do the thing you are failing to do.
 const rival = buildRival(track, ground, buildCar, {
-  paint: (paint + 2) % 4, policy: 'cautious', pace: 1, startS: 80, startU: 34,
+  paint: (savefile.paint + 3) % BODIES.length, policy: 'cautious', pace: 1, startS: 80, startU: 34,
 });
 scene.add(rival.root);
 
@@ -157,7 +169,7 @@ addEventListener('keydown', (e) => {
   if (k === 'v') camYawWant = camYawWant ? 0 : Math.PI;   // latched look-back
   if (k === 'h') hud.help.classList.toggle('hidden');
   if (k === 'g') toggleGarage();
-  if (k === 'c') { localStorage.setItem('dynamo.paint', String((paint + 1) % 4)); location.reload(); }
+  if (k === 'c') { savefile.paint = (savefile.paint + 1) % BODIES.length; Garage.save(savefile); rebuildCar(); paintGarage(); }
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
@@ -382,41 +394,14 @@ setInterval(() => {
 }, 1000);
 
 // ----------------------------------------------------------------- garage
-// Rebuilt from the savefile rather than mutated in place: it is a dozen rows
-// and it is only ever redrawn when something has actually been bought.
-const garageEl = document.getElementById('garage');
-const partsEl = document.getElementById('parts');
-const moneyEl = document.getElementById('money');
-
-function paintGarage() {
-  moneyEl.textContent = savefile.money.toLocaleString() + ' cr';
-  partsEl.innerHTML = '';
-  for (const p of Garage.PARTS) {
-    const lvl = savefile.parts[p.id] || 0;
-    const cost = Garage.nextCost(savefile, p.id);
-    const row = document.createElement('div');
-    row.className = 'row';
-    const max = p.steps.length - 1;
-    row.innerHTML = `<div><div class="nm">${p.name}</div><div class="bl">${p.blurb}</div></div>`
-      + `<div class="pips">${'■'.repeat(lvl)}${'□'.repeat(max - lvl)}</div>`;
-    const b = document.createElement('button');
-    b.textContent = cost === null ? 'MAX' : `${cost} cr`;
-    b.disabled = cost === null || savefile.money < cost;
-    b.onclick = () => {
-      if (!Garage.buy(savefile, p.id)) return;
-      paintGarage();
-      hud.msg.textContent = p.name + ' fitted — R to take it out';
-      msgUntil = time + 2.4;
-    };
-    row.appendChild(b);
-    partsEl.appendChild(row);
-  }
-}
-function toggleGarage() {
-  garageEl.classList.toggle('hidden');
-  if (!garageEl.classList.contains('hidden')) paintGarage();
-}
-paintGarage();
+// The same counter the hub has, mounted here so you can fit a part between
+// races without walking back into town.
+const garage = mountGarage({
+  save: savefile,
+  onChange: () => { rebuildCar(); hud.msg.textContent = 'fitted'; msgUntil = time + 1.6; },
+});
+const paintGarage = () => garage.paint();
+const toggleGarage = () => garage.toggle();
 
 window.DYNAMO = {
   scene, camera, renderer, post, track, car, ground, life, traffic, rival,

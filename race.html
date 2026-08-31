@@ -70,31 +70,6 @@
   }
   #back:hover { color: #ffd9a0; }
 
-  #garage {
-    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
-    width: min(560px, 90vw); padding: 26px 30px 20px; pointer-events: auto;
-    background: rgba(9, 13, 22, .93); border: 1px solid #2b3547; border-radius: 8px;
-    color: #c8d0de; z-index: 40;
-  }
-  #garage.hidden { display: none; }
-  #garage h2 { margin: 0 0 18px; font-size: 13px; letter-spacing: .3em; color: #8d97ab; font-weight: 600; }
-  #garage h2 span { float: right; color: #ffd9a0; letter-spacing: .12em; }
-  #garage .row {
-    display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center;
-    padding: 9px 0; border-top: 1px solid #1d2635;
-  }
-  #garage .nm { color: #e6ecf6; font-size: 12px; letter-spacing: .1em; }
-  #garage .bl { color: #6b7689; font-size: 10px; letter-spacing: .06em; }
-  #garage .pips { letter-spacing: .22em; color: #ffb45c; font-size: 12px; }
-  #garage button {
-    min-width: 84px; padding: 6px 10px; border: 1px solid #33405a; border-radius: 4px;
-    background: rgba(20, 28, 44, .9); color: #cfe0ff; font: inherit; font-size: 11px;
-    letter-spacing: .1em; cursor: pointer;
-  }
-  #garage button:hover:not(:disabled) { border-color: #ffd9a0; color: #ffd9a0; }
-  #garage button:disabled { opacity: .32; cursor: default; }
-  #garage .note { color: #5b657a; font-size: 10px; letter-spacing: .1em; margin: 16px 0 0; line-height: 1.7; }
-
   #boot {
     position: fixed; inset: 0; display: grid; place-content: center; gap: 10px;
     background: #05070d; color: #8f9bb3; text-align: center;
@@ -130,11 +105,6 @@
     <b>g</b> garage &nbsp; <b>m</b> sound &nbsp; <b>c</b> repaint &nbsp; <b>r</b> reset &nbsp; <b>h</b> hide<br>
     <span style="opacity:.7">console: <b>DYNAMO.sim()</b></span>
   </div>
-</div>
-<div id="garage" class="hidden">
-  <h2>GARAGE <span id="money">0</span></h2>
-  <div id="parts"></div>
-  <p class="note">Upgrades ride on your car only &mdash; the rival runs stock.<br><b>G</b> to close</p>
 </div>
 <div id="boot"><div>building the circuit…</div><small id="bootmsg"></small></div>
 
