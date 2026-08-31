@@ -166,6 +166,62 @@ cheaper. A kid is 20 voxels tall, an adult 23, heads deliberately oversized.
   the ground under the player drawn with depth testing off, because the honest
   answer to "where am I" should never be "somewhere behind that canopy".
 
+## DYNAMO — the track prototype
+
+, or **ride out** from the hub. A 300-metre sprint out of the
+estate: a straight, two corners and one stretch with the streetlights
+deliberately absent. Deliberately not a lap — at 9.7 m/s a sixty-second lap is
+580 metres, about eight of these blocks, and building that before knowing
+whether the look survives speed would be building the expensive thing first.
+
+Speed powers the dynamo, so how hard you have been pedalling decides how far
+ahead you can see. Three rules shape it: a **floor**, so slowing down is never
+blinding; **lag**, so a sprint before a dark stretch banks light you can still
+spend after you brake; and **saturation at 70%**, so past that you gain no
+sight and only lose reaction time.
+
+### What it measured
+
+ in the console drives the same bike down the same track under
+five throttle policies and prints the table. As tuned:
+
+| policy | time | crashes | blind hits |
+| --- | --- | --- | --- |
+| flat out | **36.0s** | 2 | 2 |
+| steady 90% | 39.4s | 2 | 2 |
+| ride to your light | 42.0s | 2 | 0 |
+| steady 75% | 45.6s | 2 | 2 |
+| steady 60% | 55.3s | 2 | 0 |
+
+**Flat out wins by six seconds. The lamp is currently decoration.** Riding
+blind and taking the hits is faster than riding to what you can see.
+
+The more useful detail is that *every* policy crashes exactly twice — including
+the one with zero blind hits. So the crashes are not coming from the hazards at
+all, they are corner mistakes, and changing the crash penalty cannot flip the
+result because it applies equally to everyone. The hazards are not
+discriminating between a fast rider and a careful one, which is the actual
+thing to fix: either more of them on the back road, tighter to the racing line,
+or a rider model whose line does not wander +/-20 voxels of its own accord.
+
+This is written down rather than tuned away. The harness exists so the question
+gets a number instead of a feeling, and the first number it produced was a no.
+
+### What it did answer
+
+The look survives 35 km/h. Depth of field and grain still read at speed, the
+lit stretch holds together, and the dark stretch is legible precisely because
+the lamp reaches a parked car before you do. That was the question the slice
+was built for.
+
+### And one architectural finding
+
+ addressed +/-512 voxels and corrupted **silently** past it — a key
+outside the range borrows from the next field, so voxels land somewhere else
+entirely and nothing throws. It is +/-4096 now with a bounds check that says
+so. Related: a 300m track is 2.1M voxels and a 6.5s build. A 580m lap will not
+fit this single-mesh approach; a real track needs chunking.
+
 ## Credits
 
 Reference: *Echo Generation*, Cococucumber (2021). Nothing here is their asset,
