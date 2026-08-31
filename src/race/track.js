@@ -766,14 +766,24 @@ function surround(path) {
 // ---------------------------------------------------------------- assemble
 export function buildTrack() {
   const t0 = performance.now();
+  // Phase timings, because "the build takes twenty seconds" is not actionable
+  // and every guess I have made about where voxel time goes has been wrong.
+  const marks = [];
+  let last = t0;
+  const mark = (name) => { const n = performance.now(); marks.push([name, Math.round(n - last)]); last = n; };
+
   const path = buildPath();
   const w = new VoxWorld();
   const anchors = { lamps: [] };
   const protos = prototypes();
+  mark('prototypes');
   ribbon(w, path);
+  mark('ribbon');
   dress(w, path, anchors, protos);
+  mark('districts');
   parked(w, path);
   hazards(w, path);
+  mark('props');
 
   const group = new THREE.Group();
   group.name = 'track';
@@ -781,10 +791,13 @@ export function buildTrack() {
   // noFloorBelow only culls undersides down there too, so a raised stretch
   // keeps its underside and reads as an embankment instead of a hole to the sky.
   group.add(surround(path));
+  mark('surround');
   group.add(meshChunks(w, PALETTE, {
-    name: 'track', size: 320,
+    name: 'track', size: 192,
     solidBelow: ELEV_MIN - 2, noFloorBelow: ELEV_MIN + GROUND_Y - 1,
   }));
+
+  mark('mesh');
 
   let bx0 = 1e9, bx1 = -1e9, bz0 = 1e9, bz1 = -1e9;
   for (let i = 0; i < path.points.length; i += 2) {
@@ -798,6 +811,7 @@ export function buildTrack() {
     // does not enter into it. See walkField().
     Math.floor(bz0 - pad), Math.ceil(bz1 + pad), FLOOR_MAX, HEAD);
   const ground0 = new Ground(field);
+  mark('walkField');
 
   // IS THE ROAD ACTUALLY CLEAR?
   //
@@ -854,6 +868,7 @@ export function buildTrack() {
       + ' (' + sectionAt(worstS).district + ') - too steep to drive');
   }
 
+  mark('audits');
   const start = frame();
   path.at(80, start);
 
@@ -863,6 +878,7 @@ export function buildTrack() {
     start: { x: start.x, z: start.z, heading: Math.atan2(start.tx, start.tz) },
     voxels: w.size,
     buildMs: Math.round(performance.now() - t0),
+    phases: marks,
     lapLength: path.total,
   };
 }
