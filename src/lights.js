@@ -18,6 +18,9 @@ const SKY_HORIZON = new THREE.Color('#33456e');
 const SODIUM_HAZE = new THREE.Color('#7a4a1f');
 const SKY_BELOW = new THREE.Color('#151d2e');
 const RIDGE = new THREE.Color('#0d1322');
+// Matches the direction main.js hangs the moon light at, so the thing casting
+// the shadows is the thing you can see.
+const MOON_DIR = new THREE.Vector3(-320, 470, -240).normalize();
 
 export function buildSky() {
   const mat = new THREE.ShaderMaterial({
@@ -28,6 +31,7 @@ export function buildSky() {
       uHaze: { value: new THREE.Vector3(...SODIUM_HAZE.toArray()) },
       uBelow: { value: new THREE.Vector3(...SKY_BELOW.toArray()) },
       uRidge: { value: new THREE.Vector3(...RIDGE.toArray()) },
+      uMoon: { value: MOON_DIR.clone() },
     },
     vertexShader: `
       varying vec3 vDir;
@@ -38,6 +42,7 @@ export function buildSky() {
     fragmentShader: `
       varying vec3 vDir;
       uniform vec3 uTop, uHorizon, uHaze, uBelow, uRidge;
+      uniform vec3 uMoon;
       float hash(vec2 p){ return fract(sin(dot(p, vec2(41.7, 289.3))) * 43758.5453); }
       void main() {
         float y = vDir.y;
@@ -58,6 +63,13 @@ export function buildSky() {
           + sin(az * 2.0) * 0.016 + sin(az * 4.7 + 1.3) * 0.009
           + sin(az * 9.1 + 2.4) * 0.005;
         c = mix(c, uRidge, smoothstep(ridge, ridge - 0.010, y) * 0.92);
+        // The moon itself. It has been the key light all along and there was
+        // nothing in the sky to look at — a disc plus a wide soft halo, which is
+        // most of what a moon does to a night sky anyway.
+        float md = dot(normalize(vDir), normalize(uMoon));
+        c += vec3(0.30, 0.36, 0.52) * pow(max(md, 0.0), 160.0);
+        c += vec3(0.86, 0.90, 1.00) * smoothstep(0.99955, 0.99985, md) * 1.5;
+
         // stars, thinned out toward the horizon where the haze eats them
         vec2 g = floor(vDir.xz / max(abs(vDir.y), 0.15) * 90.0);
         float s = hash(g);

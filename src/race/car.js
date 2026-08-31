@@ -66,6 +66,13 @@ const CAR_STEP = 10;
 // ploughed field. Grass should cost you the corner, not the lap.
 const OFF_DRAG = 95, OFF_ACCEL = 0.55, OFF_TURN = 0.78;
 
+// Rain, as a number the physics can read. It is deliberately ONE multiplier on
+// grip and one on braking rather than a separate wet handling model: the point
+// is that a wet lap asks the same questions as a dry one and gives you less to
+// answer them with -- and it lands squarely on the mechanic the circuit is
+// built around, because you also cannot see as far.
+const WET_GRIP = 0.80, WET_BRAKE = 0.72, WET_BEAM = 0.82;
+
 // REVERSE.
 //
 // There was none, and its absence had been quietly shaping the design: nosing
@@ -140,8 +147,6 @@ function shell(w, c, parts) {
   // lights
   w.box(-hw + 2, sill + 7, L, 6, 4, 1, 'headLight');
   w.box(hw - 8, sill + 7, L, 6, 4, 1, 'headLight');
-  w.box(-hw + 2, sill + 6, -1, 6, 4, 1, 'tailLight');
-  w.box(hw - 8, sill + 6, -1, 6, 4, 1, 'tailLight');
   w.box(-hw + 9, sill + 6, -1, W - 18, 3, 1, 'paper');         // plate
 
   // mirrors — small, but they are most of what says "car" in silhouette
@@ -216,6 +221,23 @@ function shell(w, c, parts) {
 // a part you buy has to move one of these numbers or it is not doing anything,
 // and the rival runs the same builder with no tune at all so a bought advantage
 // is a real advantage rather than a difficulty slider.
+// The tail lamps live in their OWN world so they can be their own mesh and
+// their own material. Baked into the body they were a constant glow, which
+// meant the rival looked identical whether it was flat out or standing on the
+// brakes — and watching where the car ahead lifts is how anybody has ever
+// learned a circuit. Now it teaches you something.
+function lamps(w, c) {
+  const L = 58, W = 26, sill = 5, hw = W >> 1;
+  w.box(-hw + 2, sill + 6, -1, 6, 4, 1, 'tailLight');
+  w.box(hw - 8, sill + 6, -1, 6, 4, 1, 'tailLight');
+  return { L };
+}
+function reverseLamps(w) {
+  const W = 26, sill = 5, hw = W >> 1;
+  w.box(-hw + 9, sill + 7, -2, 3, 2, 1, 'headLight');
+  w.box(hw - 12, sill + 7, -2, 3, 2, 1, 'headLight');
+}
+
 export function buildCar(paint = 0, tune = {}, parts = null) {
   const T = {
     vmax: tune.vmax || 1, accel: tune.accel || 1, brake: tune.brake || 1,
@@ -225,7 +247,8 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
   const ACC = ACCEL * T.accel;
   const BRK = BRAKE * T.brake;
   const T_SLOW = TURN_SLOW * T.grip, T_FAST = TURN_FAST * T.grip;
-  const BEAM = BEAM_REACH * T.beam;
+  let BEAM = BEAM_REACH * T.beam;
+  let wet = 0;
   const c = BODIES[paint % BODIES.length];
   const w = new VoxWorld();
   const { L, W } = shell(w, c, parts);
@@ -259,6 +282,19 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
   const mesh = meshWorld(w, PALETTE, { name: 'car', solidBelow: -1 });
   mesh.position.set(0, 0, -L / 2);            // pivot about the middle
   chassis.add(mesh);
+
+  const lw = new VoxWorld(); lamps(lw, c);
+  const brakeMesh = meshWorld(lw, PALETTE, { name: 'brake', solidBelow: -999 });
+  brakeMesh.position.set(0, 0, -L / 2);
+  chassis.add(brakeMesh);
+  const brakeMats = [];
+  brakeMesh.traverse(o => { if (o.isMesh && o.material) brakeMats.push(o.material); });
+
+  const rw = new VoxWorld(); reverseLamps(rw);
+  const revMesh = meshWorld(rw, PALETTE, { name: 'reverse', solidBelow: -999 });
+  revMesh.position.set(0, 0, -L / 2);
+  revMesh.visible = false;
+  chassis.add(revMesh);
   root.add(chassis);
   mesh.traverse(o => { if (o.isMesh && o.material && o.material.isMeshStandardMaterial) o.castShadow = true; });
 
@@ -291,6 +327,7 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     // The car used to be nailed to y = 0, which was invisible while the world
     // was flat and would have left it four metres under the chapel.
     y: 0, yView: 0, shake: 0, wedged: false, offRoad: false, rev: 0,
+    braking: false, lampGlow: 0.34,
   };
 
   function step(dt, throttle, steer, ground, drift = false, allowReverse = true) {
@@ -302,6 +339,7 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
 
     const off = state.offRoad;
     const spd = state.speed;
+    state.braking = throttle < 0 && spd > 1;
     // hold the brake at a standstill and the car selects reverse
     if (throttle < 0 && spd <= 0.5) state.rev += dt;
     else if (throttle >= 0) state.rev = 0;
@@ -315,7 +353,7 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
       if (spd < 0) state.speed = Math.min(0, spd + BRK * dt);       // brake out of reverse
       else state.speed = spd + ACC * throttle * dt * (off ? OFF_ACCEL : 1);
     } else if (throttle < 0) {
-      if (spd > 0.5) state.speed = spd + BRK * throttle * dt;
+      if (spd > 0.5) state.speed = spd + BRK * (1 - wet * (1 - WET_BRAKE)) * throttle * dt;
       else if (canRev) state.speed = Math.max(-V_REV, spd - REV_ACCEL * dt);
     } else {
       state.speed = bleed(spd, DRAG * dt);
@@ -333,6 +371,7 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     const sliding = drift && state.speed > 55;
     state.turnRate = steer * (T_SLOW + (T_FAST - T_SLOW) * f)
       * (0.22 + 0.78 * Math.min(1, Math.abs(state.speed) / 30)) * way
+      * (1 - wet * (1 - WET_GRIP))
       * (sliding ? DRIFT_TURN : 1) * (state.offRoad ? OFF_TURN : 1);
     state.heading += state.turnRate * dt;
 
@@ -420,6 +459,14 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     // Follow the ground, but SMOOTHED. The profile is a staircase of 8cm risers
     // and taking it literally makes the car tremble at speed; the suspension is
     // this lerp and nothing else.
+    // Tail lamps sit at a third and flare to full on the brakes. The rest of
+    // the car does not change, so the eye reads it as a light rather than as
+    // the whole vehicle getting brighter.
+    const wantGlow = state.braking ? 1 : (state.speed > 1 ? 0.34 : 0.34);
+    state.lampGlow += (wantGlow - state.lampGlow) * Math.min(1, dt * 18);
+    for (const m of brakeMats) m.color.setScalar(state.lampGlow);
+    revMesh.visible = state.speed < -1;
+
     state.yView += (state.y - state.yView) * Math.min(1, dt * 9);
     root.position.set(state.x, state.yView, state.z);
     root.rotation.y = state.heading;
@@ -443,7 +490,13 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
 
   return {
     root, state, step, crash, impact, respawn, present, beam, length: L, width: W, vmax: VMAX,
-    sightRange: () => BEAM,
+    sightRange: () => BEAM * (1 - wet * (1 - WET_BEAM)),
+    // How wet the road is, 0 to 1. Set by whoever owns the weather.
+    setWet(v) {
+      wet = Math.max(0, Math.min(1, v));
+      beam.distance = BEAM * (1 - wet * (1 - WET_BEAM));
+      return wet;
+    },
   };
 }
 

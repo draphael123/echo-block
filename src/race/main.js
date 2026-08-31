@@ -158,6 +158,16 @@ resize();
 const keys = new Set();
 // Browsers will not start an AudioContext without a gesture, so the whole
 // sound engine waits for the first key press rather than failing quietly.
+// Weather. One number, and it moves the look, the grip and the sight line
+// together -- which is the cheapest content this track can be given, because it
+// asks the same questions as a dry lap and hands you less to answer them with.
+let wet = 0, wetWant = 0;
+function setWeather(v) {
+  wetWant = Math.max(0, Math.min(1, v));
+  hud.msg.textContent = wetWant > 0.5 ? 'rain' : 'the road is drying';
+  msgUntil = time + 1.8;
+}
+
 const audio = createAudio();
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
@@ -169,6 +179,7 @@ addEventListener('keydown', (e) => {
   if (k === 'v') camYawWant = camYawWant ? 0 : Math.PI;   // latched look-back
   if (k === 'h') hud.help.classList.toggle('hidden');
   if (k === 'g') toggleGarage();
+  if (k === 'x') setWeather(wetWant > 0.5 ? 0 : 1);
   if (k === 'c') { savefile.paint = (savefile.paint + 1) % BODIES.length; Garage.save(savefile); rebuildCar(); paintGarage(); }
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
@@ -330,6 +341,14 @@ function tick() {
     if (spot) { car.respawn(spot.x, spot.z, spot.heading, track.elev(spot.s) - 1); s = prevS = spot.s; }
   }
 
+  // eases in over a few seconds, so weather arrives rather than switching
+  wet += (wetWant - wet) * Math.min(1, dt * 0.5);
+  car.setWet(wet);
+  rival.car.setWet(wet);
+  post.params.wet = wet * 0.85;
+  post.params.rain = wet * 0.9;
+  scene.fog.density = 0.00135 + wet * 0.00055;
+
   audio.update(car.state.speed, V_MAX, throttle, car.state.slip, car.state.offRoad);
   car.present(dt);
   rival.update(dt, LAPS);
@@ -353,6 +372,21 @@ function tick() {
   // camera height is underground at the top of the crescent.
   camPos.set(car.state.x - Math.sin(hc) * back, car.state.yView + up, car.state.z - Math.cos(hc) * back);
   camera.position.lerp(camPos, Math.min(1, dt * CAM.lag));
+  // Eighty read as about fifty, because nothing in the frame changed with
+  // speed. The lens opens eight degrees across the range and the camera picks
+  // up a tremble past halfway -- both small enough that you feel them rather
+  // than see them, which is the point.
+  const fSpd = Math.min(1, Math.abs(car.state.speed) / V_MAX);
+  const wantFov = 34 + fSpd * fSpd * 8;
+  if (Math.abs(camera.fov - wantFov) > 0.02) {
+    camera.fov += (wantFov - camera.fov) * Math.min(1, dt * 3);
+    camera.updateProjectionMatrix();
+  }
+  const rattle = Math.max(0, fSpd - 0.5) * (car.state.offRoad ? 5.2 : 1.7);
+  if (rattle > 0.01) {
+    camera.position.x += Math.sin(time * 47.3) * rattle;
+    camera.position.y += Math.sin(time * 61.7) * rattle * 0.8;
+  }
   // Looking up the road only makes sense while the camera is behind you. The
   // further it swings, the more it aims at the car itself.
   const reach = CAM.ahead * Math.max(0, 1 - Math.abs(camYaw) / 1.2);

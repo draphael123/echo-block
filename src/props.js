@@ -170,6 +170,41 @@ export function tree(w, x, y, z, h, r) {
   }
 }
 
+// One blobby canopy repeated everywhere reads as wallpaper. These two are the
+// cheap fix: a columnar poplar is a different SILHOUETTE at the same cost, and a
+// bare tree is far cheaper than a blob as well as reading better against a lit
+// sky — which at night is most of what you see of a tree anyway.
+export function treePoplar(w, x, y, z, h, r) {
+  for (let j = 0; j < h; j++) cyl(w, x, y + j, z, j < h * 0.4 ? 2 : 1, 1, 'trunk');
+  for (let j = 0; j < h * 0.82; j++) {
+    const t = j / (h * 0.82);
+    const rr = Math.max(1, Math.round(r * (0.35 + Math.sin(t * Math.PI) * 0.65)));
+    cyl(w, x, y + Math.round(h * 0.22) + j, z, rr, 1,
+      (px, py, pz) => (hash3(px, py, pz) > 0.5 ? 'leafMid' : 'leafDark'), true);
+  }
+}
+
+export function treeBare(w, x, y, z, h) {
+  for (let j = 0; j < h; j++) {
+    const lean = Math.round(Math.sin(j * 0.16) * 1.6);
+    cyl(w, x + lean, y + j, z, j < h * 0.35 ? 2 : 1, 1, 'trunk');
+  }
+  // four limbs that fork once, which is enough to read as branching
+  for (let a = 0; a < 4; a++) {
+    const th = a * 1.6 + 0.5;
+    const bx = Math.round(Math.cos(th)), bz = Math.round(Math.sin(th));
+    let px = x, py = y + Math.round(h * 0.55), pz = z;
+    for (let i = 0; i < h * 0.42; i++) {
+      px += (i % 2 === 0) ? bx : 0; pz += (i % 3 === 0) ? bz : 0; py += 1;
+      w.set(px, py, pz, 'trunk');
+      if (i === Math.round(h * 0.2)) {
+        let qx = px, qy = py, qz = pz;
+        for (let k = 0; k < h * 0.2; k++) { qx -= bz; qy += 1; qz += bx; w.set(qx, qy, qz, 'trunk'); }
+      }
+    }
+  }
+}
+
 export function picketFence(w, x, y, z, len, dir = 'x') {
   for (let i = 0; i < len; i++) {
     const ax = dir === 'x' ? x + i : x, az = dir === 'x' ? z : z + i;

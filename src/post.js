@@ -55,6 +55,7 @@ uniform sampler2D tScene, tDepth, tBloomA, tBloomB;
 uniform vec2 uTexel;
 uniform float uNear, uFar, uFocus, uRange, uMaxBlur;
 uniform float uBloom, uTime, uGrain, uVignette, uAberration, uExposure, uRolloff;
+uniform float uWet, uRain;
 uniform vec3 uShadowTint, uHighTint;
 
 // 16-tap poisson disk. Enough for a soft, non-bokeh defocus; the shapes in
@@ -103,6 +104,50 @@ void main() {
   col.b = texture2D(tScene, vUv - r * ab).b * 0.5 + col.b * 0.5;
 
   col += (texture2D(tBloomA, vUv).rgb * 0.6 + texture2D(tBloomB, vUv).rgb) * uBloom;
+
+  // ------------------------------------------------------------- wet road
+  //
+  // Not a real reflection: a real one needs the scene rendered again upside
+  // down, and at night nobody can tell. What a wet road actually does is take
+  // every bright thing and smear it DOWNWARD, so that is what this does —
+  // walk up the already-blurred bright buffer and accumulate, with a lateral
+  // wobble so it ripples instead of streaking like a bad TV.
+  //
+  // Two masks keep it off everything that is not tarmac. Reflections only show
+  // on DARK surfaces, so bright pixels reject themselves; and the road is the
+  // lower part of the frame, which is where a chase camera always puts it.
+  // Crude, and it survives being looked at, which is the whole test.
+  if (uWet > 0.001) {
+    vec3 wet = vec3(0.0);
+    float wsumw = 0.0;
+    for (int i = 1; i <= 10; i++) {
+      float t = float(i) / 10.0;
+      float ripple = sin((vUv.y * 90.0) + uTime * 2.3 + vUv.x * 40.0) * 0.0022 * t;
+      vec3 s = texture2D(tBloomA, vUv + vec2(ripple, t * 0.16)).rgb;
+      float wgt = (1.0 - t) * (1.0 - t);
+      wet += s * wgt; wsumw += wgt;
+    }
+    wet /= max(wsumw, 1e-4);
+    float dark = 1.0 - smoothstep(0.03, 0.30, dot(col, vec3(0.299, 0.587, 0.114)));
+    float low = smoothstep(0.60, 0.02, vUv.y);
+    col += wet * dark * low * uWet * 2.6;
+  }
+
+  // ----------------------------------------------------------------- rain
+  // Sheets of it, in screen space. Three layers at different speeds and
+  // scales, because one layer reads as scratches on the lens.
+  if (uRain > 0.001) {
+    float streak = 0.0;
+    for (int i = 0; i < 3; i++) {
+      float sc = 90.0 + float(i) * 70.0;
+      float sp = 1.4 + float(i) * 0.9;
+      vec2 p = vec2(vUv.x * sc + float(i) * 17.0, vUv.y * 26.0 - uTime * sp * 6.0);
+      float h = hash(floor(p));
+      float body = smoothstep(0.985, 1.0, h) * smoothstep(0.0, 0.35, fract(p.y));
+      streak += body * (0.5 + 0.5 * float(i) / 3.0);
+    }
+    col += vec3(0.52, 0.60, 0.78) * streak * uRain * 0.5;
+  }
 
   // Highlight rolloff BEFORE the tone curve. A point light with physical
   // falloff puts an enormous linear value on anything close to it, and skin
@@ -173,11 +218,13 @@ export class Post {
       shadowTint: new THREE.Color(0.80, 0.93, 1.10),
       highTint:   new THREE.Color(1.10, 1.00, 0.88),
       enabled: true,
+      wet: 0, rain: 0,
     };
 
     this.bright = new Quad(new THREE.ShaderMaterial({
       vertexShader: VERT, fragmentShader: BRIGHT,
-      uniforms: { tDiffuse: { value: null }, uThreshold: { value: 0.72 }, uKnee: { value: 0.35 } },
+      uniforms: {
+        tDiffuse: { value: null }, uThreshold: { value: 0.72 }, uKnee: { value: 0.35 } },
     }));
     this.blur = new Quad(new THREE.ShaderMaterial({
       vertexShader: VERT, fragmentShader: BLUR,
@@ -186,6 +233,7 @@ export class Post {
     this.comp = new Quad(new THREE.ShaderMaterial({
       vertexShader: VERT, fragmentShader: COMPOSITE,
       uniforms: {
+        uWet: { value: 0 }, uRain: { value: 0 },
         tScene: { value: null }, tDepth: { value: null },
         tBloomA: { value: null }, tBloomB: { value: null },
         uTexel: { value: new THREE.Vector2() },
@@ -242,6 +290,8 @@ export class Post {
     blur(this.rtC, this.rtD, 0, 2, qw, qh);
 
     const u = this.comp.material.uniforms;
+    u.uWet.value = p.wet;
+    u.uRain.value = p.rain;
     u.tScene.value = this.rtScene.texture;
     u.tDepth.value = this.rtScene.depthTexture;
     u.tBloomA.value = this.rtA.texture;

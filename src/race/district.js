@@ -15,7 +15,7 @@
 //   3. SHELLS, NOT SOLIDS. These are big, and a solid mill is a quarter of a
 //      million voxels of brick nobody can ever see the inside of.
 import { VoxWorld, hash3 } from '../voxel.js';
-import { cyl, ball, tree } from '../props.js';
+import { cyl, ball, tree, treePoplar, treeBare } from '../props.js';
 
 // A horizontal course round a building: a plinth, a sill band, a parapet.
 //
@@ -397,7 +397,12 @@ export function copse(w, x, y, z, spread, seed) {
   for (let i = 0; i < 4; i++) {
     const r = hash3(x + i * 13, seed, z);
     const ox = Math.round((r - 0.5) * spread), oz = Math.round((hash3(z, i, x) - 0.5) * spread);
-    tree(w, x + ox, y, z + oz, 32 + Math.round(r * 20), 9 + Math.round(r * 5));
+    const h = 32 + Math.round(r * 20);
+    // three silhouettes rather than one, picked by the same seed everything
+    // else in the district uses
+    if (r > 0.72) treePoplar(w, x + ox, y, z + oz, h + 14, 7 + Math.round(r * 3));
+    else if (r < 0.22) treeBare(w, x + ox, y, z + oz, h);
+    else tree(w, x + ox, y, z + oz, h, 9 + Math.round(r * 5));
   }
 }
 
