@@ -168,7 +168,7 @@ cheaper. A kid is 20 voxels tall, an adult 23, heads deliberately oversized.
 
 ## DYNAMO — the track prototype
 
-, or **ride out** from the hub. A 300-metre sprint out of the
+`race.html`, or **ride out** from the hub. A 300-metre sprint out of the
 estate: a straight, two corners and one stretch with the streetlights
 deliberately absent. Deliberately not a lap — at 9.7 m/s a sixty-second lap is
 580 metres, about eight of these blocks, and building that before knowing
@@ -182,7 +182,7 @@ sight and only lose reaction time.
 
 ### What it measured
 
- in the console drives the same bike down the same track under
+`DYNAMO.sim()` in the console drives the same bike down the same track under
 five throttle policies and prints the table. As tuned:
 
 | policy | time | crashes | blind hits |
@@ -216,7 +216,7 @@ was built for.
 
 ### And one architectural finding
 
- addressed +/-512 voxels and corrupted **silently** past it — a key
+`VoxWorld` addressed +/-512 voxels and corrupted **silently** past it — a key
 outside the range borrows from the next field, so voxels land somewhere else
 entirely and nothing throws. It is +/-4096 now with a bounds check that says
 so. Related: a 300m track is 2.1M voxels and a 6.5s build. A 580m lap will not
