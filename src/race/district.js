@@ -35,11 +35,13 @@ const pick = (arr, x, z, salt) => arr[Math.floor(hash3(x, salt || 0, z) * arr.le
 
 // A lit window. Two thirds of the time it is on — a terrace where every pane
 // is burning reads as an office block.
-function pane(w, x, y, z, wid, h, dir, seed, always) {
+function pane(w, x, y, z, wid, h, dir, seed, always, warmOnly) {
   const r = hash3(x + seed, y, z);
-  const c = always || r > 0.34
-    ? (r > 0.72 ? 'winWarm' : (r > 0.44 ? 'winWarmDim' : 'winTV'))
-    : 'glassDark';
+  // warmOnly exists because winTV in a chapel is a television in a church.
+  const lit = warmOnly
+    ? (r > 0.6 ? 'winWarm' : 'winWarmDim')
+    : (r > 0.72 ? 'winWarm' : (r > 0.44 ? 'winWarmDim' : 'winTV'));
+  const c = always || r > 0.34 ? lit : 'glassDark';
   if (dir === 'x') w.box(x, y, z, wid, h, 1, c);
   else w.box(x, y, z, 1, h, wid, c);
 }
@@ -62,8 +64,11 @@ export function chapel(w, x, y, z) {
   // lancet windows down both flanks, tall and narrow
   for (let k = 14; k < NAVE_D - 14; k += 22) {
     for (const wx of [x - 1, x + NAVE_W]) {
-      pane(w, wx, y + 18, z + k, 5, 22, 'z', k, false);
-      ball(w, wx, y + 40, z + k + 2, 3, 'winWarmDim');
+      // A lancet is a TALL SLOT. The extra ball on top was a second emitter
+      // sitting on the first, and under the bloom pass the pair came out as a
+      // glowing orb bigger than the window it was meant to be part of.
+      pane(w, wx, y + 12, z + k, 4, 30, 'z', k, false, true);
+      w.box(wx, y + 42, z + k + 1, 1, 2, 2, 'winWarmDim');       // the arch head
     }
   }
 
@@ -71,7 +76,7 @@ export function chapel(w, x, y, z) {
   const TW = 30, tx = x + ((NAVE_W - TW) >> 1), tz = z + NAVE_D - 6;
   w.shell(tx, y, tz, TW, 96, TW, 3, 'concreteOld', { top: false, bottom: false });
   for (const [ox, oz, d] of [[-1, 4, 'z'], [TW, 4, 'z'], [4, -1, 'x'], [4, TW, 'x']])
-    pane(w, tx + ox, y + 60, tz + oz, 6, 16, d === 'x' ? 'x' : 'z', 7, true);
+    pane(w, tx + ox, y + 60, tz + oz, 6, 16, d === 'x' ? 'x' : 'z', 7, true, true);
   // clock face
   w.box(tx + 9, y + 76, tz - 1, 12, 12, 1, 'paper');
   w.box(tx + 14, y + 80, tz - 2, 2, 5, 1, 'metalDark');

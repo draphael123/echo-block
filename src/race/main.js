@@ -155,6 +155,7 @@ const hud = {
   help: document.getElementById('help'),
   best: document.getElementById('best'),
   lap: document.getElementById('lap'),
+  drift: document.getElementById('drift'),
 };
 
 const LAPS = 3;
@@ -194,8 +195,9 @@ function tick() {
   time += dt;
   renderer.shadowMap.needsUpdate = (frames++ % 3) === 0;
 
-  let throttle = 0, steer = 0;
+  let throttle = 0, steer = 0, drift = false;
   if (!done) {
+    drift = keys.has(' ') || keys.has('shift');
     if (keys.has('w') || keys.has('arrowup')) throttle = 1;
     if (keys.has('s') || keys.has('arrowdown')) throttle = -1;
     if (keys.has('a') || keys.has('arrowleft')) steer = -1;
@@ -203,7 +205,7 @@ function tick() {
   } else throttle = -0.6;
   if (throttle > 0 && !running && !done) { running = true; hud.msg.textContent = ''; }
 
-  car.step(dt, throttle, steer, ground);
+  car.step(dt, throttle, steer, ground, drift);
   if (running && !done) lapTime += dt;
 
   const loc = track.path.locate(car.state.x, car.state.z, s);
@@ -277,6 +279,7 @@ function tick() {
   moon.position.set(car.state.x - 320, 470, car.state.z - 240);
 
   hud.speed.textContent = `${Math.round(car.state.speed * 0.08 * 3.6)}`;
+  hud.drift.classList.toggle('on', Math.abs(car.state.slip) > 0.12);
   hud.time.textContent = lapTime.toFixed(2);
   hud.best.textContent = best ? `best ${best.toFixed(2)}s` : '';
   hud.lap.textContent = `lap ${Math.min(lap + 1, LAPS)}/${LAPS}`;

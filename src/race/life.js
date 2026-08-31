@@ -41,6 +41,14 @@ export function buildLife(path, spots) {
       name: 'walker' + i, ...look,
       pos: [0, 2, 0], face: 0,
       speed: 0.55 + (i % 3) * 0.18,
+      // DRIVEN, or the walk cycle never runs.
+      //
+      // buildPerson only animates legs for a body that is either `driven` (its
+      // stride set from outside) or following its own `path`. These are neither
+      // — life.js writes their root position every frame — so they fell through
+      // to the IDLE branch and glided down the pavement breathing, with their
+      // legs perfectly still. It reads as floating, because it is.
+      driven: true,
     });
     group.add(p.root);
     folk.push({
@@ -56,6 +64,7 @@ export function buildLife(path, spots) {
       home: spot.s,
       dog: null,
       recover: 0,
+      lx: 0, lz: 0,
     });
     // one in three has a dog with them — but not the ones standing at a bus
     // stop, who would be holding it still for four minutes
@@ -65,6 +74,17 @@ export function buildLife(path, spots) {
       folk[folk.length - 1].dog = d;
     }
   });
+
+  // Stride comes from DISTANCE ACTUALLY COVERED, not from the pace we intended
+  // — so somebody who stops at a kerb stops their legs, somebody hurrying
+  // across a crossing strides faster, and nobody has to be told twice.
+  const REF = 44;                     // voxels/second that counts as a full stride
+  function drive(w, dt) {
+    const px = w.p.root.position.x, pz = w.p.root.position.z;
+    const v = Math.hypot(px - w.lx, pz - w.lz) / Math.max(dt, 1e-4);
+    w.lx = px; w.lz = pz;
+    w.p.setMotion(Math.min(1, v / REF));
+  }
 
   const tmp = frame();
   function update(t, dt, carX, carZ) {
@@ -107,9 +127,9 @@ export function buildLife(path, spots) {
         // alternative is a pedestrian who freezes under your bumper.
         if (d < FLINCH * 2.4) w.u += w.dir * w.pace * 2.2 * dt;
         path.place(w.s, w.u, tmp);
-        w.p.setMotion(1);
         w.p.root.position.set(tmp.x, 2, tmp.z);
         w.p.root.rotation.y = Math.atan2(tmp.nx * w.dir, tmp.nz * w.dir);
+        drive(w, dt);
         w.p.update(t, dt);
         continue;
       }
@@ -122,10 +142,14 @@ export function buildLife(path, spots) {
       w.p.root.rotation.y = w.idle
         ? Math.atan2(-tmp.nx * w.side, -tmp.nz * w.side)
         : Math.atan2(tmp.tx * w.dir, tmp.tz * w.dir);
+      drive(w, dt);
       w.p.update(t, dt);
 
       if (w.dog) {
         path.place(w.s - w.dir * 22, w.u + w.side * (flinch + 8), tmp);
+        const dxx = tmp.x - (w.dlx || tmp.x), dzz = tmp.z - (w.dlz || tmp.z);
+        w.dlx = tmp.x; w.dlz = tmp.z;
+        w.dog.setMotion(Math.min(1, Math.hypot(dxx, dzz) / Math.max(dt, 1e-4) / REF));
         w.dog.root.position.set(tmp.x, 2, tmp.z);
         w.dog.root.rotation.y = Math.atan2(tmp.tx * w.dir, tmp.tz * w.dir);
         w.dog.update(t + w.s * 0.01, dt);

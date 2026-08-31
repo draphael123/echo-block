@@ -384,8 +384,20 @@ export function buildDog(spec) {
   const seed = 0.31;
   const path = s.path;
   let travel = seed, dir = 1;
+  // Same as the people: a dog whose owner is being moved by somebody else needs
+  // its legs driven from the OUTSIDE, or it slides along the pavement rigid.
+  let motion = 0, phase = seed * 6;
   function update(t, dt = 1 / 60) {
     const k = t + seed * 20;
+    if (!path && motion > 0.02) {
+      phase += motion * dt * 13;
+      const sw = Math.sin(phase) * Math.min(1, motion * 1.2);
+      legs[0].rotation.x = sw * 0.6;
+      legs[1].rotation.x = -sw * 0.6;
+      legs[2].rotation.x = -sw * 0.6;
+      legs[3].rotation.x = sw * 0.6;
+      body.position.y = Math.abs(Math.sin(phase)) * 0.35 * motion;
+    }
     if (path) {
       travel += dir * 0.055 * (s.speed || 1) * dt;
       if (travel > 1) { travel = 1; dir = -1; }
@@ -404,7 +416,7 @@ export function buildDog(spec) {
     body.rotation.y = Math.sin(k * 1.7) * 0.05;
   }
   update(0);
-  return { root, update, data: s };
+  return { root, update, data: s, setMotion: (v) => { motion = v; } };
 }
 
 // ------------------------------------------------------------------- cast

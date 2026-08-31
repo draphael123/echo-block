@@ -26,6 +26,21 @@ export const V_MAX = 278;              // voxels/second ~ 80 km/h at 8cm/voxel
 // streetlight and it does not bind. Unlit, it does.
 const ACCEL = 74, BRAKE = 130, DRAG = 22;
 const TURN_SLOW = 1.9, TURN_FAST = 0.55;
+
+// ------------------------------------------------------------------- drift
+// Until now the car had no slip angle at all: heading WAS the direction of
+// travel, which is why it felt like it was on rails. A drift is the two coming
+// apart — the nose leads, the car keeps going roughly where it was pointed a
+// moment ago, and you steer with the gap between them.
+//
+// It is a cost, not a shortcut. You get much more yaw authority and you scrub
+// speed the whole time, so it is for tightening a corner you got wrong, not for
+// going faster than the grippy line. That keeps the braking-vs-sight mechanic
+// intact rather than handing the player a way round it.
+const MAX_SLIP = 0.62;                 // radians the nose can lead by
+const DRIFT_TURN = 1.85;               // yaw authority multiplier with it held
+const DRIFT_SCRUB = 165;               // speed bled per second at full slip
+const SLIP_ON = 5.0, SLIP_OFF = 3.2;   // how fast the angle builds and recovers
 const CAR_PROBE = 2.6;                 // ~18 voxels across, against a 26-wide car
 
 // Headlights do not care how fast you are going — that was the dynamo, and it
@@ -126,10 +141,10 @@ export function buildCar(paint = 0) {
 
   const state = {
     x: 0, z: 0, heading: 0, speed: 0, turnRate: 0,
-    crash: 0, spin: 0, dist: 0, roll: 0, stuck: 0,
+    crash: 0, spin: 0, dist: 0, roll: 0, stuck: 0, slip: 0,
   };
 
-  function step(dt, throttle, steer, ground) {
+  function step(dt, throttle, steer, ground, drift = false) {
     if (state.crash > 0) {
       state.crash -= dt;
       state.spin += dt * 7;
@@ -144,12 +159,25 @@ export function buildCar(paint = 0) {
     const f = state.speed / V_MAX;
     // A car cannot pivot on the spot, but it must keep SOME authority at a
     // crawl or a nudge into a kerb is permanent — the bike taught me that.
+    const sliding = drift && state.speed > 55;
     state.turnRate = steer * (TURN_SLOW + (TURN_FAST - TURN_SLOW) * f)
-      * (0.22 + 0.78 * Math.min(1, state.speed / 30));
+      * (0.22 + 0.78 * Math.min(1, state.speed / 30))
+      * (sliding ? DRIFT_TURN : 1);
     state.heading += state.turnRate * dt;
 
-    const dx = Math.sin(state.heading) * state.speed * dt;
-    const dz = Math.cos(state.heading) * state.speed * dt;
+    // The slip angle: how far the nose leads the direction of travel. It builds
+    // while the handbrake is in and washes off when it is not, so letting go is
+    // a recovery you can feel rather than a switch.
+    const wantSlip = sliding ? steer * MAX_SLIP * Math.min(1, state.speed / 130) : 0;
+    state.slip += (wantSlip - state.slip) * Math.min(1, dt * (sliding ? SLIP_ON : SLIP_OFF));
+    if (Math.abs(state.slip) > 0.02) {
+      state.speed = Math.max(0, state.speed - DRIFT_SCRUB * (Math.abs(state.slip) / MAX_SLIP) * dt);
+    }
+
+    // Travel lags the nose by the slip angle. THIS is the whole drift.
+    const travel = state.heading - state.slip;
+    const dx = Math.sin(travel) * state.speed * dt;
+    const dz = Math.cos(travel) * state.speed * dt;
     if (ground) {
       const bx = state.x, bz = state.z;
       const p = { x: state.x, y: 0, z: state.z };
@@ -183,15 +211,17 @@ export function buildCar(paint = 0) {
 
   function respawn(x, z, heading) {
     state.x = x; state.z = z; state.heading = heading;
-    state.speed = 0; state.turnRate = 0; state.roll = 0; state.stuck = 0;
+    state.speed = 0; state.turnRate = 0; state.roll = 0; state.stuck = 0; state.slip = 0;
     root.rotation.z = 0; chassis.rotation.z = 0;
   }
 
   function present(dt) {
     root.position.set(state.x, 0, state.z);
     root.rotation.y = state.heading;
-    // body roll reads the corner for you before the tyres do
-    const want = THREE.MathUtils.clamp(-state.turnRate * (state.speed / V_MAX) * 0.5, -0.16, 0.16);
+    // Body roll reads the corner for you before the tyres do — and leans HARD
+    // into a slide, which is most of what sells the drift from behind.
+    const want = THREE.MathUtils.clamp(
+      -state.turnRate * (state.speed / V_MAX) * 0.5 - state.slip * 0.34, -0.30, 0.30);
     state.roll += (want - state.roll) * Math.min(1, dt * 6);
     chassis.rotation.z = state.roll;
     if (state.crash > 0) {
