@@ -33,7 +33,7 @@ Ranked, because the ordering is the finding:
    are the same cube (1 voxel ≈ 8 cm; the houses are ~100 × 80). The common
    failure is modelling small props at a finer resolution because it is easier
    to make them look good — the diorama read collapses immediately.
-4. **Clutter density.** The bike on its side, the coiled hose, the leaf piles,
+4. **Clutter density.** The bicycle on its side, the coiled hose, the leaf piles,
    the bin with its lid off. This is content labour rather than tech, and it is
    the single largest cost.
 5. **Grade and grain.** ACES, teal shadows / amber highlights, vignette, grain,
@@ -166,63 +166,82 @@ cheaper. A kid is 20 voxels tall, an adult 23, heads deliberately oversized.
   the ground under the player drawn with depth testing off, because the honest
   answer to "where am I" should never be "somewhere behind that canopy".
 
-## DYNAMO — the track prototype
+## DYNAMO -- the circuit
 
-`race.html`, or **ride out** from the hub. A 300-metre sprint out of the
-estate: a straight, two corners and one stretch with the streetlights
-deliberately absent. Deliberately not a lap — at 9.7 m/s a sixty-second lap is
-580 metres, about eight of these blocks, and building that before knowing
-whether the look survives speed would be building the expensive thing first.
+`race.html`, or **drive out** from the hub. A closed 507-metre lap: two long
+straights, two short ones, four ninety-degree bends, and half the circuit with
+the streetlights deliberately absent.
 
-Speed powers the dynamo, so how hard you have been pedalling decides how far
-ahead you can see. Three rules shape it: a **floor**, so slowing down is never
-blinding; **lag**, so a sprint before a dark stretch banks light you can still
-spend after you brake; and **saturation at 70%**, so past that you gain no
-sight and only lose reaction time.
+**Cars, not bikes.** One voxel is 8cm, so a BMX wheel is six voxels across and
+the frame is a set of one-voxel tubes. Voxels are good at solid masses with
+panels and glass and lights and bad at thin tubes: the parked wagon in the hub
+reads as a car instantly, and the bike read as a smudge with a lamp on it. That
+only became obvious after building the bike.
+
+The carriageway is 128 voxels -- 10.2 metres. It was 88, which is a correct
+residential street and too tight to race on, because the only line past a skip
+was the one the parked cars were sitting in.
+
+### The mechanic
+
+Your headlights reach 280 voxels. At top speed your braking distance is 297.
+**At speed, you cannot stop inside your own beam** -- so on the lit half of the
+circuit the streetlights are doing the seeing for you, and on the unlit half
+they are not. That single relationship is the whole design, and it is why the
+numbers below are the ones they are rather than whatever felt right.
 
 ### What it measured
 
-`DYNAMO.sim()` in the console drives the same bike down the same track under
-five throttle policies and prints the table. As tuned:
+`DYNAMO.sim()` drives the same car round the same circuit under five throttle
+policies. RACING brakes for corners and ignores the light. CAUTIOUS brakes for
+corners *and* caps its speed to what it can actually see.
 
-| policy | time | crashes | blind hits |
+| policy | lap | crashes | blind hits |
 | --- | --- | --- | --- |
-| flat out | **36.0s** | 2 | 2 |
-| steady 90% | 39.4s | 2 | 2 |
-| ride to your light | 42.0s | 2 | 0 |
-| steady 75% | 45.6s | 2 | 2 |
-| steady 60% | 55.3s | 2 | 0 |
+| steady 80% | **34.95s** | 0 | 0 |
+| cautious | 35.07s | 0 | 0 |
+| steady 65% | 37.67s | 0 | 0 |
+| steady 95% | 37.87s | 1 | 0 |
+| racing | 38.52s | 1 | 0 |
 
-**Flat out wins by six seconds. The lamp is currently decoration.** Riding
-blind and taking the hits is faster than riding to what you can see.
+**Cautious beats racing by 3.45s. The dark is doing work.** Racing loses a lap
+to the broken-down car on the unlit stretch; cautious gets round clean.
 
-The more useful detail is that *every* policy crashes exactly twice — including
-the one with zero blind hits. So the crashes are not coming from the hazards at
-all, they are corner mistakes, and changing the crash penalty cannot flip the
-result because it applies equally to everyone. The hazards are not
-discriminating between a fast rider and a careful one, which is the actual
-thing to fix: either more of them on the back road, tighter to the racing line,
-or a rider model whose line does not wander +/-20 voxels of its own accord.
+The harness is deterministic -- no RNG in the driver or the physics -- so each
+row is one exact answer, not a sample. Repeating a run changes nothing, and a
+"twenty-one run sweep" here would be one run reported twenty-one times.
 
-This is written down rather than tuned away. The harness exists so the question
-gets a number instead of a feeling, and the first number it produced was a no.
+### What it took to get a readable number
 
-### What it did answer
+Four separate bugs, each of which presented as a design finding:
 
-The look survives 35 km/h. Depth of field and grain still read at speed, the
-lit stretch holds together, and the dark stretch is legible precisely because
-the lamp reaches a parked car before you do. That was the question the slice
-was built for.
+- **`locate()` could not wrap.** The nearest-point search clamped its window to
+  `[0, total]`, so arc-length pinned to the end of the lap and never came back
+  round to zero. Presented as "every policy fails to finish"; was arithmetic.
+- **Parked cars were rotated to face the road, like houses.** That parks them
+  broadside across the carriageway. Presented as "nobody can complete a lap".
+- **Parked cars sat in the dodge lane.** At `ROAD_HALF - 13` a 26-wide car
+  spans u 18..44, which is exactly where a driver avoiding a skip goes.
+  Presented as two crashes on clear road with nothing to hit.
+- **The driver waited before reacting, then moved sideways instantly.** The
+  avoidance gate made it wait `WARNING` seconds after sighting and *then* start
+  steering -- a dead time followed by teleporting. Reaction is a delay; getting
+  across is a distance; they are not the same number. Presented as "the
+  lighting is decoration", twice.
 
-### And one architectural finding
+The last one is the one worth keeping: **a mechanic can measure as decorative
+because the thing measuring it is wrong.** The lighting was working all along.
 
-`VoxWorld` addressed +/-512 voxels and corrupted **silently** past it — a key
-outside the range borrows from the next field, so voxels land somewhere else
-entirely and nothing throws. It is +/-4096 now with a bounds check that says
-so. Related: a 300m track is 2.1M voxels and a 6.5s build. A 580m lap will not
-fit this single-mesh approach; a real track needs chunking.
+### Life
 
-## Credits
+Pedestrians pace the pavements in track coordinates, one in three walking a
+dog, and they step back off the kerb when a car comes at them. Three more cars
+drive the loop on their own business and are solid. Everything is culled past
+900 voxels, so the cost is a dozen figures rather than a town.
 
-Reference: *Echo Generation*, Cococucumber (2021). Nothing here is their asset,
-code or art — this is an independent study of the look.
+### Still open
+
+- **The circuit is one mesh.** 3.35M voxels, ~9s to build. This is the second
+  independent confirmation that a real track needs chunking.
+- **Oncoming headlights bloom into a blob** wider than the car carrying them.
+  Reads as night dazzle, but it hides the car.

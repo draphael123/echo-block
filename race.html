@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>DYNAMO — track prototype</title>
+<title>DYNAMO — the circuit</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -21,17 +21,7 @@
   #dash { left: 24px; bottom: 22px; display: grid; gap: 8px; }
   #speed { font-size: 46px; line-height: .9; color: #f3e6cf; letter-spacing: .02em; }
   #speed::after { content: ' km/h'; font-size: 12px; color: #7d8799; letter-spacing: .16em; }
-  #lamp {
-    width: 190px; height: 7px; border-radius: 2px;
-    background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.12);
-    overflow: hidden;
-  }
-  #lampbar {
-    height: 100%; width: 0%; background: #ffb45c;
-    transition: width .08s linear; box-shadow: 0 0 12px rgba(255,180,92,.6);
-  }
-  #lampbar.sat { background: #fff0c4; box-shadow: 0 0 18px rgba(255,240,196,.85); }
-  #lamplabel { font-size: 10px; letter-spacing: .2em; color: #7d8799; }
+  #lap { font-size: 11px; color: #9fb0c8; letter-spacing: .16em; margin-top: 2px; }
 
   #clock { right: 24px; top: 20px; text-align: right; }
   #time { font-size: 34px; line-height: 1; color: #f3e6cf; }
@@ -47,6 +37,17 @@
   #msg b { color: #f3e6cf; font-size: 30px; display: block; margin-bottom: 6px; letter-spacing: .04em; }
   #msg .pb { color: #ffb45c; }
   #msg .dim { color: #5b657a; }
+
+  #cam {
+    right: 24px; bottom: 126px; display: flex; gap: 6px; pointer-events: auto;
+  }
+  #cam button {
+    width: 34px; height: 30px; border: 1px solid #2b3547; border-radius: 4px;
+    background: rgba(10, 15, 26, .62); color: #8d97ab; font: inherit; font-size: 12px;
+    cursor: pointer; touch-action: none; -webkit-user-select: none; user-select: none;
+  }
+  #cam button:hover { color: #ffd9a0; border-color: #4a586e; }
+  #cam .lbl { align-self: center; margin-right: 4px; opacity: .45; font-size: 9px; letter-spacing: .18em; }
 
   #help { right: 24px; bottom: 22px; text-align: right; opacity: .5; line-height: 1.8; }
   #help.hidden { display: none; }
@@ -73,20 +74,25 @@
 <div id="ui">
   <div id="sect"></div>
   <a id="back" href="./index.html">&larr; back to the block</a>
-  <div id="dash">
-    <div id="speed">0</div>
-    <div id="lamplabel">dynamo</div>
-    <div id="lamp"><div id="lampbar"></div></div>
+  <div id="dash"><div id="speed">0</div></div>
+  <div id="clock"><div id="time">0.00</div><div id="best"></div><div id="lap"></div></div>
+  <div id="msg">accelerate to start</div>
+  <div id="cam">
+    <span class="lbl">CAM</span>
+    <button id="camL" title="look left (q)">&#9668;</button>
+    <button id="camB" title="look behind (v)">&#8635;</button>
+    <button id="camR" title="look right (e)">&#9658;</button>
+    <button id="zOut" title="zoom out">&minus;</button>
+    <button id="zIn" title="zoom in">+</button>
   </div>
-  <div id="clock"><div id="time">0.00</div><div id="best"></div></div>
-  <div id="msg">pedal to start</div>
   <div id="help">
-    <b>w</b> pedal &nbsp; <b>s</b> brake &nbsp; <b>a</b>/<b>d</b> steer<br>
-    <b>r</b> reset &nbsp; <b>h</b> hide<br>
+    <b>w</b> throttle &nbsp; <b>s</b> brake &nbsp; <b>a</b>/<b>d</b> steer<br>
+    <b>q</b>/<b>e</b> look &nbsp; <b>v</b> look back &nbsp; <b>scroll</b> zoom<br>
+    <b>c</b> repaint &nbsp; <b>r</b> reset &nbsp; <b>h</b> hide<br>
     <span style="opacity:.7">console: <b>DYNAMO.sim()</b></span>
   </div>
 </div>
-<div id="boot"><div>building the track…</div><small id="bootmsg"></small></div>
+<div id="boot"><div>building the circuit…</div><small id="bootmsg"></small></div>
 
 <script type="importmap">
 { "imports": { "three": "./vendor/three/three.module.js" } }

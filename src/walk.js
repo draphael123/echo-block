@@ -19,10 +19,19 @@ const VOID = -999;                 // inside the field, but nothing built here
 export const FLOOR_MAX = 14;       // the highest surface that counts as a floor
 export const HEAD = 19;            // body height, in voxels
 
-const PROBE = [                    // points around the body
+const PROBE = [                    // points around a BODY
   [0, 0], [3.4, 0], [-3.4, 0], [0, 3.4], [0, -3.4],
   [2.4, 2.4], [-2.4, 2.4], [2.4, -2.4], [-2.4, -2.4],
 ];
+// A car is 26 voxels wide and 58 long; testing it with a person's 7-voxel
+// ring means it drives through the corner of things. Scale is passed in
+// rather than baked so one field serves both.
+const scaled = (k) => PROBE.map(([a, b]) => [a * k, b * k]);
+const RINGS = new Map([[1, PROBE]]);
+function ring(scale) {
+  if (!RINGS.has(scale)) RINGS.set(scale, scaled(scale));
+  return RINGS.get(scale);
+}
 
 export class Ground {
   constructor(field) { this.f = field; }
@@ -52,9 +61,9 @@ export class Ground {
 
   // The tallest floor the body would be standing on at (x,z), ignoring
   // pinholes — one missing voxel must not decide where your feet are.
-  ceilingAt(x, z) {
+  ceilingAt(x, z, scale = 1) {
     let top = VOID;
-    for (const [ox, oz] of PROBE) {
+    for (const [ox, oz] of ring(scale)) {
       const h = this.floorAt(x + ox, z + oz);
       if (h === VOID || h === OUT) continue;
       if (h > top) top = h;
@@ -63,8 +72,8 @@ export class Ground {
   }
 
   // Can a body currently standing on floor `from` occupy (x,z)?
-  canStand(x, z, from) {
-    for (const [ox, oz] of PROBE) {
+  canStand(x, z, from, scale = 1) {
+    for (const [ox, oz] of ring(scale)) {
       const px = x + ox, pz = z + oz;
       const h = this.floorAt(px, pz);
       if (h === OUT) return false;               // the edge of the world
@@ -77,16 +86,16 @@ export class Ground {
 
   // Move with wall-sliding: try the whole step, then each axis alone. Without
   // the per-axis retry you stick to every hedge you brush against.
-  move(pos, dx, dz, blockers) {
+  move(pos, dx, dz, blockers, scale = 1) {
     let from = this.floorAt(pos.x, pos.z);
-    if (from === VOID || from === OUT) from = this.ceilingAt(pos.x, pos.z);
-    const free = (x, z) => this.canStand(x, z, from) && !(blockers && blockers(x, z));
+    if (from === VOID || from === OUT) from = this.ceilingAt(pos.x, pos.z, scale);
+    const free = (x, z) => this.canStand(x, z, from, scale) && !(blockers && blockers(x, z));
 
     if (free(pos.x + dx, pos.z + dz)) { pos.x += dx; pos.z += dz; }
     else if (free(pos.x + dx, pos.z)) pos.x += dx;
     else if (free(pos.x, pos.z + dz)) pos.z += dz;
 
-    pos.y = Math.max(0, this.ceilingAt(pos.x, pos.z));
+    pos.y = Math.max(0, this.ceilingAt(pos.x, pos.z, scale));
     return pos;
   }
 }

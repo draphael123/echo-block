@@ -134,16 +134,19 @@ const RAW_EMIT = {
   winWarmDim:   ['#e09a52', 1.5],
   winTV:        ['#79b4ff', 2.2],   // the television, animated separately
   porchBulb:    ['#ffd8a2', 2.1],
-  sodium:       ['#ffa947', 5.0],   // the streetlight itself
+  sodium:       ['#ffa947', 3.0],   // 5.0 whited out the lens and everything under it
   neonSign:     ['#ff6a8a', 3.0],
-  tailLight:    ['#ff4030', 2.2],
+  tailLight:    ['#ff4030', 1.4],   // 2.2 blew out the whole rear of the car
   bugZapper:    ['#8affd0', 2.4],
   moonGlass:    ['#9fd0ff', 1.2],
   torchLens:    ['#fff0c4', 2.6],
   radioDial:    ['#ff9a5c', 1.8],
   cigarette:    ['#ff6a3c', 2.0],
   phoneGlow:    ['#ffe0a8', 1.7],
-  headLight:    ['#fff4d6', 6.0],
+  // Just the lens. It was 6.0, and above about 1.5 the bloom pass smears it into
+  // a blob wider than the car carrying it, so an oncoming Cortina arrived as a
+  // white hole. The spotlight does the lighting; this only has to say "lamp".
+  headLight:    ['#fff4d6', 1.5],
   shelterTube:  ['#cfe4ff', 2.2],
   stripLight:   ['#dfeaff', 0.95],
   chillGlow:    ['#bcd8f2', 0.8],

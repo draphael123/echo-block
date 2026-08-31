@@ -132,13 +132,21 @@ export class VoxWorld {
   // stall riser, a fascia and an awning that all have to agree about which
   // side is "out". Rather than thread a direction through every line of one,
   // build it once at the origin and blit it in flipped.
+  // rotY is 0/90/180/270 about the Y axis. Together with mirrorZ this turns a
+  // builder written to face ONE way into something you can place facing any
+  // way — which is what lets a race track reuse the hub'''s houses instead of
+  // growing its own worse ones.
   merge(other, opts) {
-    const { ox = 0, oy = 0, oz = 0, mirrorZ = false } = opts || {};
+    const { ox = 0, oy = 0, oz = 0, mirrorZ = false, rotY = 0 } = opts || {};
     for (const [k, name] of other.v) {
-      const z = (k % SPAN) - OFF;
+      let z = (k % SPAN) - OFF;
       const y = (Math.floor(k / SPAN) % SPAN) - OFF;
-      const x = Math.floor(k / (SPAN * SPAN)) - OFF;
-      this.set(x + ox, y + oy, (mirrorZ ? -z : z) + oz, name);
+      let x = Math.floor(k / (SPAN * SPAN)) - OFF;
+      if (mirrorZ) z = -z;
+      if (rotY === 90) { const t = x; x = -z; z = t; }
+      else if (rotY === 180) { x = -x; z = -z; }
+      else if (rotY === 270) { const t = x; x = z; z = -t; }
+      this.set(x + ox, y + oy, z + oz, name);
     }
     return this;
   }

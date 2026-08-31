@@ -69,7 +69,7 @@ export class Path {
     // for s in increasing order — a binary search here would be slower.
     let hint = 0;
     function at(s, out) {
-      s = Math.max(0, Math.min(total, s));
+      s = ((s % total) + total) % total;      // the circuit is closed
       if (cum[hint] > s) hint = 0;
       while (hint < n - 2 && cum[hint + 1] < s) hint++;
       const i = hint;
@@ -87,19 +87,25 @@ export class Path {
     // Nearest point on the track to a world position, as (s, u). Used to know
     // how far round the rider is and how far off the racing line — a search
     // seeded from the last answer, because a bike does not teleport.
+    // The search WRAPS. A closed circuit is the normal case, and clamping the
+    // window to [0, total] means s pins to the end of the lap and never comes
+    // back round to zero — which presents as "the lap counter never ticks"
+    // rather than as anything to do with searching.
+    const wrap = (s) => ((s % total) + total) % total;
     function locate(wx, wz, fromS) {
       let bestS = fromS, bestD = Infinity;
       const probe = { x: 0, z: 0, tx: 0, tz: 0, nx: 0, nz: 0 };
-      const lo = Math.max(0, fromS - 240), hi = Math.min(total, fromS + 400);
-      for (let s = lo; s <= hi; s += 6) {
+      for (let d = -240; d <= 400; d += 6) {
+        const s = wrap(fromS + d);
         at(s, probe);
-        const d = (probe.x - wx) ** 2 + (probe.z - wz) ** 2;
-        if (d < bestD) { bestD = d; bestS = s; }
+        const dd = (probe.x - wx) ** 2 + (probe.z - wz) ** 2;
+        if (dd < bestD) { bestD = dd; bestS = s; }
       }
-      for (let s = Math.max(0, bestS - 6); s <= Math.min(total, bestS + 6); s += 1) {
+      for (let d = -6; d <= 6; d += 1) {
+        const s = wrap(bestS + d);
         at(s, probe);
-        const d = (probe.x - wx) ** 2 + (probe.z - wz) ** 2;
-        if (d < bestD) { bestD = d; bestS = s; }
+        const dd = (probe.x - wx) ** 2 + (probe.z - wz) ** 2;
+        if (dd < bestD) { bestD = dd; bestS = s; }
       }
       at(bestS, probe);
       const u = (wx - probe.x) * probe.nx + (wz - probe.z) * probe.nz;

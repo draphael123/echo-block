@@ -1,18 +1,16 @@
-// DYNAMO — track prototype.
+// DYNAMO — the circuit.
 //
-// This slice exists to answer three questions and nothing else:
-//   1. does the ECHO BLOCK look survive 35 km/h
-//   2. is the dynamo a decision or a punishment spiral
-//   3. is a bicycle exciting at honest speed
-//
-// It shares the hub's renderer on purpose. Testing the look on a different
-// renderer would answer a different question.
+// Cars, because a bike does not read at 8cm per voxel: thin tubes vanish, and a
+// solid mass with panels and glass and lights does not. The hub's renderer is
+// shared on purpose — testing the look on a different one would answer a
+// different question.
 import * as THREE from 'three';
 import { buildSky } from '../lights.js';
 import { Post } from '../post.js';
 import { Ground } from '../walk.js';
-import { buildTrack, isLit, SECTIONS, safeSpot } from './track.js';
-import { buildRider, V_MAX } from './bike.js';
+import { buildTrack, sectionAt, safeSpot, lifeSpots } from './track.js';
+import { buildCar } from './car.js';
+import { buildLife, buildTraffic } from './life.js';
 import { compare, run } from './sim.js';
 
 const canvas = document.getElementById('view');
@@ -20,11 +18,12 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPrefer
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = false;
 renderer.toneMapping = THREE.NoToneMapping;
 renderer.setClearColor(0x070b16, 1);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x141d31, 0.0013);
+scene.fog = new THREE.FogExp2(0x141d31, 0.00115);
 const sky = buildSky();
 scene.add(sky);
 
@@ -33,47 +32,65 @@ scene.add(track.group);
 const ground = new Ground(track.field);
 
 // ------------------------------------------------------------------ light
-// Same grammar as the hub: a cool key that only stops things going pure black,
-// a warm bounce, and everything else coming from small local sources. Out here
-// there are far fewer of them, which is the point.
-const hemi = new THREE.HemisphereLight(0x2b3d60, 0x2c1f16, 0.42);
+const hemi = new THREE.HemisphereLight(0x2b3d60, 0x2c1f16, 0.46);
 scene.add(hemi);
-const moon = new THREE.DirectionalLight(0xbdd2f2, 1.5);
-moon.position.set(-300, 460, -220);
+const moon = new THREE.DirectionalLight(0xbdd2f2, 1.6);
 moon.castShadow = true;
 moon.shadow.mapSize.set(2048, 2048);
 Object.assign(moon.shadow.camera, { left: -420, right: 420, top: 420, bottom: -420, near: 60, far: 1400 });
 moon.shadow.bias = -0.0006;
 moon.shadow.normalBias = 0.9;
 scene.add(moon, moon.target);
-// only the lamps near the rider are lit at any moment — the forward renderer
-// loops every light per pixel, and a track has far more poles than a block
+
+// Only the poles near the car are lit. The forward renderer loops every light
+// per pixel, and a circuit has an order of magnitude more poles than a block.
 const LAMPS = track.anchors.lamps.map(([x, y, z]) => {
-  const l = new THREE.SpotLight(0xffa23c, 0, 250, 0.85, 0.75, 2);
+  const l = new THREE.SpotLight(0xffa23c, 150000, 260, 0.85, 0.75, 2);
   l.position.set(x, y, z);
   l.target.position.set(x, 2, z + 8);
   l.visible = false;
   scene.add(l, l.target);
   return { light: l, x, z };
 });
-const LIVE_LAMPS = 6;
+const LIVE_LAMPS = 7;
 
-const look = JSON.parse(localStorage.getItem('echo-block.look') || 'null') || {};
-const rider = buildRider(look);
-scene.add(rider.root);
-rider.state.x = track.start.x;
-rider.state.z = track.start.z;
-rider.state.heading = track.start.heading;
+// ------------------------------------------------------------------- cast
+const paint = +(localStorage.getItem('dynamo.paint') || 0) || 0;
+const car = buildCar(paint);
+scene.add(car.root);
+car.state.x = track.start.x;
+car.state.z = track.start.z;
+car.state.heading = track.start.heading;
+
+const life = buildLife(track.path, lifeSpots());
+scene.add(life.group);
+
+// Somebody else's evening, on the road you happen to be racing on.
+const traffic = buildTraffic(track.path, buildCar, [
+  { s: 1600, u: 36, speed: 96, dir: 1 },
+  { s: 3400, u: -36, speed: 84, dir: -1 },
+  { s: 4600, u: 34, speed: 108, dir: 1 },
+]);
+scene.add(traffic.group);
 
 // ----------------------------------------------------------------- camera
-// A chase camera, still on a longish lens. Wide enough to read a corner at
-// speed, long enough that the compression the whole look depends on survives.
-const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 12, 1800);
+// A chase camera on a longish lens: wide enough to read a corner at 80, long
+// enough that the compression the whole look depends on survives.
+const camera = new THREE.PerspectiveCamera(34, innerWidth / innerHeight, 12, 2400);
 const post = new Post(renderer, innerWidth, innerHeight);
-post.params.range = 210;
+post.params.range = 260;
 post.params.maxBlur = 7;
-post.params.focus = 170;
-const CAM = { back: 132, up: 58, ahead: 66, lag: 5.2 };
+post.params.focus = 190;
+// Far enough back that the car is a sixth of the frame, not half of it: the
+// first pass had the camera in the boot and you could not see a corner
+// coming, which is the only thing a racing camera has to do.
+const CAM = { back: 196, up: 84, ahead: 150, lag: 4.2 };
+let zoom = 1;
+// Where the camera sits on its ring around the car, as an offset from the
+// heading. Held on a key or a button rather than latched: you want to glance
+// at what is beside you and then have the road back, and a camera you have to
+// put away is a camera you crash with.
+let camYaw = 0, camYawWant = 0;
 const camPos = new THREE.Vector3(), camAim = new THREE.Vector3();
 
 let lastW = 0, lastH = 0;
@@ -97,177 +114,183 @@ addEventListener('keydown', (e) => {
   if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
   keys.add(k);
   if (k === 'r') reset();
+  if (k === 'v') camYawWant = camYawWant ? 0 : Math.PI;   // latched look-back
   if (k === 'h') hud.help.classList.toggle('hidden');
+  if (k === 'c') { localStorage.setItem('dynamo.paint', String((paint + 1) % 4)); location.reload(); }
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
+addEventListener('wheel', (e) => {
+  zoom = THREE.MathUtils.clamp(zoom * (1 + Math.sign(e.deltaY) * 0.08), 0.62, 1.9);
+}, { passive: true });
+
+// The same three moves as buttons, because not everybody finds q/e, and on a
+// trackpad the scroll wheel is not a zoom anybody expects.
+const nudge = (dz) => { zoom = THREE.MathUtils.clamp(zoom * dz, 0.62, 1.9); };
+let held = 0;
+function wire(id, on, off) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const down = (e) => { e.preventDefault(); on(); };
+  el.addEventListener('pointerdown', down);
+  if (off) { for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) el.addEventListener(ev, off); }
+}
+wire('camL', () => { held = -1; }, () => { held = 0; });
+wire('camR', () => { held = 1; }, () => { held = 0; });
+wire('camB', () => { camYawWant = camYawWant ? 0 : Math.PI; });
+wire('zIn', () => nudge(0.88));
+wire('zOut', () => nudge(1.14));
 
 // -------------------------------------------------------------------- hud
 const hud = {
   speed: document.getElementById('speed'),
-  lamp: document.getElementById('lampbar'),
   time: document.getElementById('time'),
   sect: document.getElementById('sect'),
   msg: document.getElementById('msg'),
   help: document.getElementById('help'),
   best: document.getElementById('best'),
+  lap: document.getElementById('lap'),
 };
 
-let raceTime = 0, running = false, finished = false, s = 90, crashes = 0, wasDown = false, downAt = 0;
-const RESPAWN = { x: 0, z: 0, tx: 0, tz: 0, nx: 0, nz: 0 };
-let best = +(localStorage.getItem('dynamo.best') || 0) || null;
-const ghost = [];                       // [t, x, z, heading] of the current run
-let bestGhost = JSON.parse(localStorage.getItem('dynamo.ghost') || 'null');
-let ghostMesh = null;
-if (bestGhost) {
-  ghostMesh = buildRider(look);
-  ghostMesh.root.traverse(o => {
-    if (!o.isMesh) return;
-    o.material = o.material.clone();
-    o.material.transparent = true;
-    o.material.opacity = 0.28;
-    o.material.depthWrite = false;
-    o.castShadow = false;
-  });
-  scene.add(ghostMesh.root);
-}
+const LAPS = 3;
+let lapTime = 0, lap = 0, running = false, done = false;
+let s = 80, prevS = 80, crashes = 0, wasDown = false, downAt = 0;
+let best = +(localStorage.getItem('dynamo.lap') || 0) || null;
+const splits = [];
 
 function reset() {
-  rider.state.x = track.start.x;
-  rider.state.z = track.start.z;
-  rider.state.heading = track.start.heading;
-  rider.state.speed = 0;
-  rider.state.lamp = 0;
-  rider.state.crash = 0;
-  rider.state.dist = 0;
-  raceTime = 0; running = false; finished = false; s = 90; crashes = 0;
-  ghost.length = 0;
-  for (const h of track.hazards) h.done = false;
-  hud.msg.textContent = 'pedal to start';
+  car.respawn(track.start.x, track.start.z, track.start.heading);
+  car.state.crash = 0; car.state.dist = 0;
+  lapTime = 0; lap = 0; running = false; done = false;
+  s = prevS = 80; crashes = 0; wasDown = false;
+  splits.length = 0;
+  hud.msg.textContent = 'accelerate to start';
 }
 reset();
 
 // ------------------------------------------------------------------- loop
 const clock = new THREE.Clock();
 let time = 0, frames = 0;
-const FINISH = track.path.total - 80;
 
 function frame() {
+  try { tick(); } catch (err) {
+    // A throw inside the loop used to end it: requestAnimationFrame is only
+    // rescheduled at the bottom, so one bad frame stopped the camera, the timer
+    // and the traffic while the watchdog kept painting a still frame that looked
+    // like a running game. Report it once and keep driving.
+    if (!window.__frameErr) { window.__frameErr = String(err && err.stack || err); console.error(err); }
+  }
+  requestAnimationFrame(frame);
+}
+
+function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
   time += dt;
   renderer.shadowMap.needsUpdate = (frames++ % 3) === 0;
 
   let throttle = 0, steer = 0;
-  if (!finished) {
+  if (!done) {
     if (keys.has('w') || keys.has('arrowup')) throttle = 1;
     if (keys.has('s') || keys.has('arrowdown')) throttle = -1;
     if (keys.has('a') || keys.has('arrowleft')) steer = -1;
     if (keys.has('d') || keys.has('arrowright')) steer = 1;
-  } else {
-    throttle = -0.5;
-  }
-  if (throttle > 0 && !running && !finished) { running = true; hud.msg.textContent = ''; }
+  } else throttle = -0.6;
+  if (throttle > 0 && !running && !done) { running = true; hud.msg.textContent = ''; }
 
-  rider.step(dt, throttle, steer, ground);
-  if (running && !finished) {
-    raceTime += dt;
-    if (ghost.length === 0 || raceTime - ghost[ghost.length - 4] > 0.05)
-      ghost.push(raceTime, rider.state.x, rider.state.z, rider.state.heading);
-  }
+  car.step(dt, throttle, steer, ground);
+  if (running && !done) lapTime += dt;
 
-  const loc = track.path.locate(rider.state.x, rider.state.z, s);
+  const loc = track.path.locate(car.state.x, car.state.z, s);
+  if (running && !done && prevS > track.path.total * 0.8 && loc.s < track.path.total * 0.2) {
+    const t = +lapTime.toFixed(2);
+    splits.push(t);
+    if (!best || t < best) { best = t; localStorage.setItem('dynamo.lap', String(t)); }
+    lap++;
+    lapTime = 0;
+    if (lap >= LAPS) {
+      done = true;
+      hud.msg.innerHTML = `<b>${splits.map(x => x.toFixed(2)).join(' &middot; ')}</b>`
+        + `${crashes} crash${crashes === 1 ? '' : 'es'} &nbsp; <span class="dim">R to reset</span>`;
+    }
+  }
+  prevS = loc.s;
   s = loc.s;
 
-  // Crashes come out of the collision, not out of a declared radius — see
-  // bike.js. All this does is count them.
-  if (rider.state.crash > 0 && !wasDown) { crashes++; downAt = s; }
-  if (wasDown && rider.state.crash <= 0) {
-    // up, pointing down the road, somewhere that is actually clear
+  // traffic is solid; the voxel world already handles everything else
+  if (!car.state.crash && car.state.speed > 60 && traffic.hits(car.state.x, car.state.z)) car.crash();
+  if (car.state.crash > 0 && !wasDown) { crashes++; downAt = s; }
+  if (wasDown && car.state.crash <= 0) {
     const spot = safeSpot(track.path, ground, downAt);
-    if (spot) { rider.respawn(spot.x, spot.z, spot.heading); s = spot.s; }
+    if (spot) { car.respawn(spot.x, spot.z, spot.heading); s = prevS = spot.s; }
   }
-  wasDown = rider.state.crash > 0;
+  wasDown = car.state.crash > 0;
 
-  if (running && !finished && s >= FINISH) {
-    finished = true;
-    const t = +raceTime.toFixed(2);
-    const better = !best || t < best;
-    if (better) {
-      best = t;
-      localStorage.setItem('dynamo.best', String(t));
-      localStorage.setItem('dynamo.ghost', JSON.stringify(ghost));
-    }
-    hud.msg.innerHTML = `<b>${t.toFixed(2)}s</b> &nbsp; ${crashes} crash${crashes === 1 ? '' : 'es'}`
-      + (better ? ' &nbsp; <span class="pb">new best</span>' : '') + ' &nbsp; <span class="dim">R to reset</span>';
-  }
+  car.present(dt);
+  traffic.update(dt, track.path.total);
+  life.update(time, dt, car.state.x, car.state.z);
 
-  rider.present(time, dt);
-
-  // ghost playback
-  if (ghostMesh && bestGhost && bestGhost.length >= 4) {
-    const gt = running ? raceTime : 0;
-    let i = 0;
-    while (i + 7 < bestGhost.length && bestGhost[i + 4] < gt) i += 4;
-    ghostMesh.root.position.set(bestGhost[i + 1], 0, bestGhost[i + 2]);
-    ghostMesh.root.rotation.y = bestGhost[i + 3];
-    ghostMesh.root.visible = gt > 0 && gt < bestGhost[bestGhost.length - 4] + 1;
-  }
-
-  // only the nearest handful of streetlights are on
   const near = LAMPS
-    .map(l => ({ l, d: (l.x - rider.state.x) ** 2 + (l.z - rider.state.z) ** 2 }))
+    .map(l => ({ l, d: (l.x - car.state.x) ** 2 + (l.z - car.state.z) ** 2 }))
     .sort((a, b) => a.d - b.d);
   for (let i = 0; i < near.length; i++) near[i].l.light.visible = i < LIVE_LAMPS;
 
-  // camera: trail behind the heading, look a little ahead of the wheel
-  const h = rider.state.heading;
-  camPos.set(
-    rider.state.x - Math.sin(h) * CAM.back,
-    CAM.up,
-    rider.state.z - Math.cos(h) * CAM.back,
-  );
+  // camera: trail the heading and look well up the road — at 80 km/h you are
+  // reading the corner, not the bonnet
+  const h = car.state.heading;
+  const shift = (keys.has('q') ? -1 : 0) + (keys.has('e') ? 1 : 0) + held;
+  const want = shift ? Math.sign(shift) * 1.15 : camYawWant;
+  camYaw += (want - camYaw) * Math.min(1, dt * 7);
+  const hc = h + camYaw;
+  const back = CAM.back * zoom, up = CAM.up * zoom;
+  camPos.set(car.state.x - Math.sin(hc) * back, up, car.state.z - Math.cos(hc) * back);
   camera.position.lerp(camPos, Math.min(1, dt * CAM.lag));
-  camAim.set(
-    rider.state.x + Math.sin(h) * CAM.ahead,
-    14,
-    rider.state.z + Math.cos(h) * CAM.ahead,
-  );
+  // Looking up the road only makes sense while the camera is behind you. The
+  // further it swings, the more it aims at the car itself.
+  const reach = CAM.ahead * Math.max(0, 1 - Math.abs(camYaw) / 1.2);
+  camAim.set(car.state.x + Math.sin(h) * reach, 16, car.state.z + Math.cos(h) * reach);
   camera.lookAt(camAim);
   sky.position.copy(camera.position);
   post.params.focus = camera.position.distanceTo(camAim);
-  moon.target.position.set(rider.state.x, 0, rider.state.z);
-  moon.position.set(rider.state.x - 300, 460, rider.state.z - 220);
+  moon.target.position.set(car.state.x, 0, car.state.z);
+  moon.position.set(car.state.x - 320, 470, car.state.z - 240);
 
-  // hud
-  const kmh = Math.round(rider.state.speed * 0.08 * 3.6);
-  hud.speed.textContent = `${kmh}`;
-  hud.lamp.style.width = `${Math.round(Math.min(1, rider.state.lamp / 0.7) * 100)}%`;
-  hud.lamp.classList.toggle('sat', rider.state.lamp >= 0.7);
-  hud.time.textContent = raceTime.toFixed(2);
-  const sec = SECTIONS.find(x => s >= x.from && s < x.to);
-  hud.sect.textContent = sec ? (sec.lit ? sec.name : sec.name + ' — no lights') : '';
-  hud.sect.classList.toggle('dark', sec ? !sec.lit : false);
+  hud.speed.textContent = `${Math.round(car.state.speed * 0.08 * 3.6)}`;
+  hud.time.textContent = lapTime.toFixed(2);
   hud.best.textContent = best ? `best ${best.toFixed(2)}s` : '';
+  hud.lap.textContent = `lap ${Math.min(lap + 1, LAPS)}/${LAPS}`;
+  const sec = sectionAt(s);
+  hud.sect.textContent = sec.lit ? sec.name : `${sec.name} — no lights`;
+  hud.sect.classList.toggle('dark', !sec.lit);
 
   post.render(scene, camera, time);
-  requestAnimationFrame(frame);
 }
 frame();
-setInterval(() => { if (!document.hidden) { renderer.shadowMap.needsUpdate = true; post.render(scene, camera, time); } }, 1000);
+setInterval(() => {
+  if (document.hidden) return;
+  renderer.shadowMap.needsUpdate = true;
+  post.render(scene, camera, time);
+}, 1000);
 
 window.DYNAMO = {
-  scene, camera, renderer, post, track, rider, ground,
+  scene, camera, renderer, post, track, car, ground, life, traffic,
   reset,
-  // The measurement. Prints the table and the verdict.
-  sim: () => {
-    const r = compare(track, look);
-    console.table(r.rows);
+  sim: (opts) => {
+    const r = compare(track, opts);
+    console.table(r.rows.map(({ policy, time, crashes, blindHits, avgSpeed, finished }) =>
+      ({ policy, time, crashes, blindHits, avgSpeed, finished })));
     console.log(r.verdict);
     return r;
   },
-  run: (policy, opts) => run(track, policy, { look, ...opts }),
+  run: (policy, opts) => run(track, policy, opts),
+  place: (atS, u = 0) => {
+    const f = { x: 0, z: 0, tx: 0, tz: 0, nx: 0, nz: 0 };
+    track.path.place(atS, u, f);
+    car.respawn(f.x, f.z, Math.atan2(f.tx, f.tz));
+    s = prevS = atS;
+  },
   voxels: track.voxels,
   buildMs: track.buildMs,
+  lapMetres: Math.round(track.lapLength * 0.08),
   ready: true,
 };
 document.body.classList.add('booted');

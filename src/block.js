@@ -264,14 +264,22 @@ function garageHouse(w, anchors) {
 
 // Everything else on the street. One recipe, seeded: the point of the row is
 // rhythm and variation, not seven bespoke houses.
-function house(w, anchors, s) {
+// Exported so the race track can build the SAME houses rather than growing its
+// own worse ones. Called into a temp world at the origin and blitted in
+// rotated — see VoxWorld.merge.
+export function house(w, anchors, s) {
   const { x, z, wid, dep, wallTop, dir, siding, sidingDark, trim, door, seed } = s;
   const y0 = GROUND + 6;
   const sidingFn = (px, py) => (py % (s.band || 4) === 0 ? sidingDark : siding);
   const fz = dir > 0 ? z + dep - 2 : z + 1;
   const R = (k) => rnd(seed * 7, k * 13, 3);
 
-  w.box(x, GROUND + 1, z, wid, 5, dep, s.base === 'brick' ? brickFn : 'brickDark');
+  // A shell, not a solid: the foundation's interior is under the house and its
+  // top is under the floor, so 30k voxels per house were being spent on
+  // something nobody can ever see. Matters most on the race track, which blits
+  // eighteen of these.
+  w.shell(x, GROUND + 1, z, wid, 5, dep, 2, s.base === 'brick' ? brickFn : 'brickDark',
+    { top: false, bottom: false });
   w.shell(x, y0, z, wid, wallTop, dep, 2, sidingFn, { top: false, bottom: false });
   gableEnds(w, x, y0 + wallTop, z, wid, dep, sidingFn);
   w.gable(x, y0 + wallTop, z, wid, dep, shingleFn, { eave: 3, thick: 3 });
