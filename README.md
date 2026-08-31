@@ -168,27 +168,73 @@ cheaper. A kid is 20 voxels tall, an adult 23, heads deliberately oversized.
 
 ## DYNAMO -- the circuit
 
-`race.html`, or **drive out** from the hub. A closed 507-metre lap: two long
-straights, two short ones, four ninety-degree bends, and half the circuit with
-the streetlights deliberately absent.
+`race.html`, or **drive out** from the hub. A closed 522-metre lap, 4.40M
+voxels, ~15s to build.
 
 **Cars, not bikes.** One voxel is 8cm, so a BMX wheel is six voxels across and
 the frame is a set of one-voxel tubes. Voxels are good at solid masses with
-panels and glass and lights and bad at thin tubes: the parked wagon in the hub
-reads as a car instantly, and the bike read as a smudge with a lamp on it. That
-only became obvious after building the bike.
+panels and glass and lights and bad at thin tubes: the parked wagon read as a
+car instantly, and the bike read as a smudge with a lamp on it.
 
-The carriageway is 128 voxels -- 10.2 metres. It was 88, which is a correct
-residential street and too tight to race on, because the only line past a skip
-was the one the parked cars were sitting in.
+The carriageway is **192 voxels -- 15.4 metres**, four lanes. It has been 88 (a
+residential street, too tight to race on) and 128 (two lanes, still one line
+past a skip). Everything about the cross-section derives from that one number,
+which has now changed three times and has to stay a one-line change.
 
 ### The mechanic
 
 Your headlights reach 280 voxels. At top speed your braking distance is 297.
-**At speed, you cannot stop inside your own beam** -- so on the lit half of the
-circuit the streetlights are doing the seeing for you, and on the unlit half
-they are not. That single relationship is the whole design, and it is why the
-numbers below are the ones they are rather than whatever felt right.
+**At speed you cannot stop inside your own beam** -- so on the lit half of the
+circuit the streetlights do the seeing for you, and on the unlit half they do
+not. That single relationship is the whole design.
+
+### Four different corners
+
+The first circuit had four ninety-degree bends at the same 340 radius: one
+braking decision learned once and then repeated. A closed loop of four
+right-angles with axis-aligned straights closes exactly when the opposite spans
+match, so the RADII are free and only two straights are solved for:
+
+    L3 = L1 + R1 + R4 - R2 - R3
+    L4 = L2 + R1 + R2 - R3 - R4
+
+R1 is a **260 hairpin** you brake hard for (38 km/h through it). R2 is a **520
+sweeper** you take nearly flat -- and it is unlit, so it is the one corner you
+commit to on faith. `buildPath()` measures the closure rather than trusting the
+algebra.
+
+### Eight districts
+
+One per leg, no two alike, because houses all the way round read as one street
+bent into a loop.
+
+| leg | lit | what is beside the road |
+| --- | --- | --- |
+| the parade | yes | terraced shopfronts with flats over them |
+| chapel corner | yes | a spire and a graveyard -- the landmark |
+| mill lane | **no** | a brick mill, silos, chain-link, its own yard lamps |
+| the long dark | **no** | trees, and nothing behind them |
+| the crescent | yes | the hub houses -- the only leg that gets them |
+| the top | yes | allotments, a playing field, a greenhouse |
+| the cut | **no** | the road in a brick cutting, under a signal gantry |
+| the last bend | **no** | barns, hay, field gates |
+
+They are built for a car at eighty in the dark, which sets three rules:
+silhouette first (a spire reads at 300 voxels, clapboard banding does not); lit
+windows are the life (an unlit mass at night is a hole in the fog); and shells,
+never solids.
+
+### People, and hitting them
+
+23 walkers, six with dogs, some standing at bus stops, one walking home past the
+mill in the dark. Six cars of traffic on their own business.
+
+Five **marked crossings** with belisha beacons, and somebody walking across each
+one. Hitting them is deliberately **not a crash**: they go down with the hub's
+ragdoll, you lose most of your speed carrying them, and the lap is still yours
+to finish. A pedestrian you clip for free is worse than no pedestrian at all;
+a pedestrian who ends your race is a coin toss. The stripes are the tell that
+says lift here.
 
 ### What it measured
 
@@ -198,50 +244,47 @@ corners *and* caps its speed to what it can actually see.
 
 | policy | lap | crashes | blind hits |
 | --- | --- | --- | --- |
-| steady 80% | **34.95s** | 0 | 0 |
-| cautious | 35.07s | 0 | 0 |
-| steady 65% | 37.67s | 0 | 0 |
-| steady 95% | 37.87s | 1 | 0 |
-| racing | 38.52s | 1 | 0 |
+| cautious | **40.99s** | 1 | 0 |
+| racing | 41.72s | 2 | 1 |
+| steady 95% | 44.56s | 3 | 2 |
+| steady 65% | 47.74s | 2 | 0 |
+| steady 80% | 49.58s | 3 | 1 |
 
-**Cautious beats racing by 3.45s. The dark is doing work.** Racing loses a lap
-to the broken-down car on the unlit stretch; cautious gets round clean.
+`CAUTIOUS WINS -- level on time (0.73s) and 1 fewer blind hit; racing is not
+buying anything.`
 
 The harness is deterministic -- no RNG in the driver or the physics -- so each
-row is one exact answer, not a sample. Repeating a run changes nothing, and a
-"twenty-one run sweep" here would be one run reported twenty-one times.
+row is one exact answer, not a sample. A "twenty-one run sweep" here would be
+one run reported twenty-one times.
 
 ### What it took to get a readable number
 
-Four separate bugs, each of which presented as a design finding:
+Six bugs, each of which presented as a design finding:
 
 - **`locate()` could not wrap.** The nearest-point search clamped its window to
-  `[0, total]`, so arc-length pinned to the end of the lap and never came back
-  round to zero. Presented as "every policy fails to finish"; was arithmetic.
-- **Parked cars were rotated to face the road, like houses.** That parks them
-  broadside across the carriageway. Presented as "nobody can complete a lap".
-- **Parked cars sat in the dodge lane.** At `ROAD_HALF - 13` a 26-wide car
-  spans u 18..44, which is exactly where a driver avoiding a skip goes.
-  Presented as two crashes on clear road with nothing to hit.
-- **The driver waited before reacting, then moved sideways instantly.** The
-  avoidance gate made it wait `WARNING` seconds after sighting and *then* start
-  steering -- a dead time followed by teleporting. Reaction is a delay; getting
-  across is a distance; they are not the same number. Presented as "the
-  lighting is decoration", twice.
+  `[0, total]`, so arc-length pinned at the end of the lap and never came back
+  round to zero. Presented as "no policy finishes"; was arithmetic.
+- **Parked cars used the HOUSE rotation**, which faces the road -- parking every
+  one of them broadside across the carriageway.
+- **Parked cars sat in the dodge lane**, exactly where a driver avoiding a skip
+  goes. Presented as two crashes on clear road with nothing to hit.
+- **The driver waited before reacting, then moved sideways instantly.** Reaction
+  is a delay; getting across is a distance; they are not the same number. This
+  one reported the lighting as decoration twice.
+- **A hedge was standing in the carriageway.** Pulling the frontages in behind
+  the pavement put a hedge run at u=93 on a road with a 96-voxel half-width.
+  `buildTrack()` now marches the whole lap and asks the collision field whether
+  the road is clear -- you do not find that by reading the code.
+- **The verdict read time alone**, and called a 0.31s gap "a paint job" while
+  racing was taking two blind hits to cautious's none. It now reads time AND
+  risk, and a tie is a result rather than a failure to find a winner.
 
-The last one is the one worth keeping: **a mechanic can measure as decorative
-because the thing measuring it is wrong.** The lighting was working all along.
-
-### Life
-
-Pedestrians pace the pavements in track coordinates, one in three walking a
-dog, and they step back off the kerb when a car comes at them. Three more cars
-drive the loop on their own business and are solid. Everything is culled past
-900 voxels, so the cost is a dozen figures rather than a town.
+The lesson worth keeping: **a mechanic can measure as decorative because the
+thing measuring it is wrong.**
 
 ### Still open
 
-- **The circuit is one mesh.** 3.35M voxels, ~9s to build. This is the second
-  independent confirmation that a real track needs chunking.
+- **The circuit is one mesh.** Third confirmation that a real track needs
+  chunking; ~15s to build is the cost of not having it.
 - **Oncoming headlights bloom into a blob** wider than the car carrying them.
   Reads as night dazzle, but it hides the car.
