@@ -86,7 +86,16 @@ export function createDriver(track, opts = {}) {
       if (ahead < -path.total / 2) ahead += path.total;
       if (ahead < 0 || ahead > 460 || !seen.has(h)) continue;
       if (t - seen.get(h) < REACT) continue;
-      targetU = h.u > 0 ? -(ROAD_HALF - 34) : (ROAD_HALF - 34);
+      // A FRACTION of the road, not a fixed inset. `ROAD_HALF - 34` is a
+      // sensible line on a 108 road and lands almost on the centreline of a
+      // narrow one, so the driver would swerve four voxels and hit the thing.
+      // 0.685 is not arbitrary: it is the 74-voxel lane the Parade was tuned
+      // and measured with, expressed as a fraction of its 108 half-width. Going
+      // proportional to make the Old Town work moved the Parade's line and
+      // turned its lighting mechanic back into a paint job -- a fix for one
+      // track silently retuning another is exactly what the assays are for.
+      const lane = ROAD_HALF * 0.685;
+      targetU = h.u > 0 ? -lane : lane;
       break;
     }
 

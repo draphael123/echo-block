@@ -17,6 +17,8 @@ export default {
   blurb: 'flat, open and always wet',
   heading: 270,
 
+  asks: 'grip',
+  lapMetres: 701,
   road: { half: HALF, kerb: 5, pave: 30, verge: 20, apron: 8 },
 
   // Four long sweeps and two kinks: quays are straight and the corners are

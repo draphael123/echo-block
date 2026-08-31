@@ -17,6 +17,8 @@ export default {
   blurb: 'the town edge, wide and half-lit',
   heading: 180,
 
+  asks: 'sight',
+  lapMetres: 522,
   road: { half: HALF, kerb: 5, pave: 52, verge: 14, apron: 6 },
 
   // Two straights left free; shape.js solves them so the loop closes exactly.

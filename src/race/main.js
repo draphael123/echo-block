@@ -18,6 +18,7 @@ import { buildSmoke, neonFlicker } from '../fx.js';
 import * as Garage from './garage.js';
 import { mountGarage } from '../garage-ui.js';
 import { compare, run } from './sim.js';
+import { assay, parts } from './assay.js';
 
 const canvas = document.getElementById('view');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
@@ -173,15 +174,10 @@ const keys = new Set();
 // Weather. One number, and it moves the look, the grip and the sight line
 // together -- which is the cheapest content this track can be given, because it
 // asks the same questions as a dry lap and hands you less to answer them with.
-// A track can be wet BY DEFAULT, and the Docks is: it was designed around a
-// surface you cannot trust and shipped bone dry, because the spec carried a
-// `wet` field that nothing ever read. X still toggles it anywhere.
-let wet = track.spec.wet || 0, wetWant = wet;
-function setWeather(v) {
-  wetWant = Math.max(0, Math.min(1, v));
-  hud.msg.textContent = wetWant > 0.5 ? 'rain' : 'the road is drying';
-  msgUntil = time + 1.8;
-}
+// Weather belongs to the CIRCUIT, not to a key. It was a toggle while it was
+// being built and that made it a novelty; as a property of the place it is a
+// reason the Docks are the Docks. You do not choose the weather.
+const wet = track.spec.wet || 0;
 
 const audio = createAudio();
 addEventListener('keydown', (e) => {
@@ -192,10 +188,8 @@ addEventListener('keydown', (e) => {
   keys.add(k);
   if (k === 'r') reset();
   if (k === 'v') camYawWant = camYawWant ? 0 : Math.PI;   // latched look-back
-  if (k === 'h') hud.help.classList.toggle('hidden');
+  if (k === 'h') { hud.help.classList.toggle('hidden'); hud.hint.classList.toggle('hidden'); }
   if (k === 'g') toggleGarage();
-  if (k === 'x') setWeather(wetWant > 0.5 ? 0 : 1);
-  if (k === 'c') { savefile.paint = (savefile.paint + 1) % BODIES.length; Garage.save(savefile); rebuildCar(); paintGarage(); }
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
@@ -232,7 +226,10 @@ const hud = {
   drift: document.getElementById('drift'),
   gear: document.getElementById('gear'),
   pos: document.getElementById('pos'),
+  circuit: document.getElementById('circuit'),
+  hint: document.getElementById('hint'),
 };
+hud.circuit.textContent = track.name;
 
 const LAPS = 3;
 let lapTime = 0, lap = 0, running = false, done = false;
@@ -356,8 +353,6 @@ function tick() {
     if (spot) { car.respawn(spot.x, spot.z, spot.heading, track.elev(spot.s) - 1); s = prevS = spot.s; }
   }
 
-  // eases in over a few seconds, so weather arrives rather than switching
-  wet += (wetWant - wet) * Math.min(1, dt * 0.5);
   car.setWet(wet);
   rival.car.setWet(wet);
   post.params.wet = wet * 0.85;
@@ -440,7 +435,7 @@ function tick() {
   hud.pos.classList.toggle('behind', gap < 0);
 
   const sec = sectionAt(s);
-  hud.sect.textContent = sec.lit ? sec.name : `${sec.name} — no lights`;
+  hud.sect.textContent = sec.name;
   hud.sect.classList.toggle('dark', !sec.lit);
 
   post.render(scene, camera, time);
@@ -473,6 +468,9 @@ window.DYNAMO = {
     return r;
   },
   run: (policy, opts) => run(track, policy, opts),
+  // Does THIS circuit do what it claims? Each track declares its own question.
+  assay: () => assay(track),
+  parts: () => parts(track),
   place: (atS, u = 0) => {
     const f = { x: 0, z: 0, tx: 0, tz: 0, nx: 0, nz: 0 };
     track.path.place(atS, u, f);

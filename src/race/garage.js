@@ -9,7 +9,15 @@
 // LAMPS is the one that matters. The circuit is built around what you can see
 // in the dark, so buying reach is buying permission to carry speed through the
 // unlit half — the upgrade tree and the level design are the same idea.
+// ONE SAVE.
+//
+// This was three separate localStorage keys pretending not to be a save system:
+// the garage in dynamo.save, the best lap in dynamo.lap, and the kid you dressed
+// in echo-block.look — written by different modules, none of them aware of the
+// others, and no way to clear the lot. It is one record now, versioned, and it
+// migrates the old keys on first load so nobody loses their car.
 const KEY = 'dynamo.save';
+const VERSION = 2;
 
 export const PARTS = [
   {
@@ -34,14 +42,56 @@ export const PARTS = [
   },
 ];
 
-const BLANK = { money: 0, best: null, races: 0, paint: 0, parts: { engine: 0, brakes: 0, tyres: 0, lamps: 0 } };
+const BLANK = {
+  v: VERSION,
+  money: 0, races: 0, paint: 0,
+  parts: { engine: 0, brakes: 0, tyres: 0, lamps: 0 },
+  bests: {},              // per circuit, because one number for four tracks is a lie
+  look: null,             // what the kid looks like; null until they choose
+  track: 'parade',
+};
+
+const fresh = () => ({ ...BLANK, parts: { ...BLANK.parts }, bests: {} });
 
 export function load() {
+  let s;
+  try { s = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { s = null; }
+  const out = s
+    ? { ...fresh(), ...s, parts: { ...BLANK.parts, ...(s.parts || {}) }, bests: { ...(s.bests || {}) } }
+    : fresh();
+
+  if (!s || (s.v || 1) < VERSION) {
+    // pull in whatever the old scattered keys were holding
+    try {
+      const look = JSON.parse(localStorage.getItem('echo-block.look') || 'null');
+      if (look && !out.look) out.look = look;
+      const lap = +(localStorage.getItem('dynamo.lap') || 0);
+      if (lap && out.bests.parade === undefined) out.bests.parade = lap;
+      const tr = localStorage.getItem('dynamo.track');
+      if (tr) out.track = tr;
+    } catch { /* private window */ }
+    out.v = VERSION;
+    save(out);
+  }
+  return out;
+}
+
+// A lap time, kept per circuit. Returns true if it is a new best.
+export function recordLap(s, trackId, seconds) {
+  const prev = s.bests[trackId];
+  if (prev && prev <= seconds) return false;
+  s.bests[trackId] = seconds;
+  save(s);
+  return true;
+}
+
+export function wipe() {
   try {
-    const raw = JSON.parse(localStorage.getItem(KEY) || 'null');
-    if (!raw) return { ...BLANK, parts: { ...BLANK.parts } };
-    return { ...BLANK, ...raw, parts: { ...BLANK.parts, ...(raw.parts || {}) } };
-  } catch { return { ...BLANK, parts: { ...BLANK.parts } }; }
+    localStorage.removeItem(KEY);
+    localStorage.removeItem('echo-block.look');
+    localStorage.removeItem('dynamo.lap');
+    localStorage.removeItem('dynamo.track');
+  } catch { /* private window */ }
 }
 
 export function save(s) {

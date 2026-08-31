@@ -8,7 +8,10 @@
 //
 // Lit throughout, because darkness is not the constraint here — width is. Using
 // the same trick twice would make the second track a re-run of the first.
-const HALF = 60;
+// 46, not 60. The assay measured the first version at 4.7 car widths of usable
+// corridor -- wider than it sounds, because a car is only 26 voxels -- and
+// reported the narrowness as set dressing, which it was. This is 3.5.
+const HALF = 46;
 const H = (f) => Math.round(HALF * f);
 
 export default {
@@ -19,7 +22,9 @@ export default {
 
   // A tighter cross-section all the way through: a real footway, but half of
   // what the Parade has, and almost no verge before the buildings start.
-  road: { half: HALF, kerb: 4, pave: 26, verge: 6, apron: 4 },
+  asks: 'width',
+  lapMetres: 359,
+  road: { half: HALF, kerb: 4, pave: 30, verge: 6, apron: 4 },
 
   // Six legs and six corners, none of them ninety degrees. The closure solver
   // makes this shape possible at all — it could not be hand-derived the way
@@ -56,12 +61,12 @@ export default {
   ],
 
   hazards: [
-    { s: 520, u: H(0.5), r: 22, kind: 'works' },
-    { s: 1420, u: H(-0.45), r: 24, kind: 'broken' },
-    { s: 2280, u: H(0.42), r: 22, kind: 'skip' },
-    { s: 3120, u: H(-0.5), r: 24, kind: 'works' },
-    { s: 3900, u: H(0.45), r: 24, kind: 'broken' },
-    { s: 4400, u: H(-0.4), r: 22, kind: 'works' },
+    { s: 520, u: H(0.62), r: 18, kind: 'works' },
+    { s: 1420, u: H(-0.6), r: 20, kind: 'broken' },
+    { s: 2280, u: H(0.58), r: 18, kind: 'skip' },
+    { s: 3120, u: H(-0.62), r: 18, kind: 'works' },
+    { s: 3900, u: H(0.6), r: 20, kind: 'broken' },
+    { s: 4400, u: H(-0.58), r: 18, kind: 'works' },
   ],
 
   crossings: [960, 2640, 4180],

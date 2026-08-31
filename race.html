@@ -9,64 +9,88 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: #05070d; overflow: hidden; }
   #view { display: block; width: 100vw; height: 100vh; }
+  /* THE DASH.
+     The old one was a debug overlay wearing a HUD's clothes: every key in the
+     game listed in the corner, a console hint on screen, and everything in
+     letterspaced uppercase monospace including things that are not text. This
+     is meant to read as an instrument binnacle from 1986 — a big soft-edged
+     speed readout, a small amber strip for the lap, and nothing else unless
+     you ask for it. */
   #ui {
     position: fixed; inset: 0; pointer-events: none;
-    font: 12px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    color: #cfd6e4; letter-spacing: .05em; text-transform: uppercase;
-    text-shadow: 0 1px 3px rgba(0,0,0,.9);
+    font: 500 12px/1.4 "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: #b9c3d4;
+    text-shadow: 0 1px 4px rgba(0,0,0,.85);
   }
   #ui > * { position: absolute; }
 
-  /* speed and the lamp, bottom left — the two numbers the game is about */
-  #dash { left: 24px; bottom: 22px; display: grid; gap: 8px; }
-  #speed { font-size: 46px; line-height: .9; color: #f3e6cf; letter-spacing: .02em; }
-  #speed::after { content: ' km/h'; font-size: 12px; color: #7d8799; letter-spacing: .16em; }
-  #lap { font-size: 11px; color: #9fb0c8; letter-spacing: .16em; margin-top: 2px; }
-
-  #clock { right: 24px; top: 20px; text-align: right; }
-  #time { font-size: 34px; line-height: 1; color: #f3e6cf; }
-  #best { font-size: 11px; color: #7d8799; letter-spacing: .16em; }
-
-  #sect { left: 24px; top: 20px; font-size: 12px; color: #9fb0c8; letter-spacing: .18em; }
-  #sect.dark { color: #ffb45c; }
-
-  #msg {
-    left: 50%; top: 46%; transform: translate(-50%, -50%); text-align: center;
-    font-size: 15px; letter-spacing: .18em; color: #cfd6e4;
+  /* speed, bottom left, on its own and large enough to read peripherally */
+  #dash { left: 30px; bottom: 26px; }
+  #speed {
+    font: 300 62px/.82 "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: #f6ecda; letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
   }
-  #msg b { color: #f3e6cf; font-size: 30px; display: block; margin-bottom: 6px; letter-spacing: .04em; }
-  #msg .pb { color: #ffb45c; }
-  #msg .dim { color: #5b657a; }
-
-  #gear {
-    color: #ffd9a0; letter-spacing: .3em; font-size: 15px; min-height: 18px;
+  #speed::after {
+    content: 'km/h'; font-size: 11px; font-weight: 600; color: #6d7688;
+    letter-spacing: .22em; margin-left: 9px; vertical-align: 14px;
   }
+  #gear { color: #ffc98a; font: 600 14px/1 sans-serif; letter-spacing: .3em; min-height: 15px; margin-top: 7px; }
   #drift {
-    color: #ff8a4c; letter-spacing: .34em; font-size: 11px; margin-top: 2px;
-    opacity: 0; transition: opacity .12s;
+    color: #ff9a5c; font: 700 10px/1 sans-serif; letter-spacing: .4em;
+    opacity: 0; transition: opacity .1s; margin-top: 3px;
   }
   #drift.on { opacity: 1; }
 
-  #pos { color: #9ce0a8; letter-spacing: .18em; font-size: 13px; margin-top: 4px; }
+  /* the lap strip, top right */
+  #clock { right: 30px; top: 24px; text-align: right; }
+  #time {
+    font: 300 34px/1 "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: #f6ecda; font-variant-numeric: tabular-nums; letter-spacing: -.01em;
+  }
+  #lap { font-size: 10px; font-weight: 600; letter-spacing: .28em; color: #7f8a9c; margin-top: 4px; }
+  #best { font-size: 10px; color: #5d6678; letter-spacing: .1em; margin-top: 3px; }
+  #pos { font: 700 12px/1 sans-serif; letter-spacing: .16em; color: #9ce0a8; margin-top: 8px; }
   #pos.behind { color: #ff8a6a; }
 
-  #cam {
-    right: 24px; bottom: 126px; display: flex; gap: 6px; pointer-events: auto;
+  /* where you are, top left, quiet unless the lights are out */
+  #where { left: 30px; top: 24px; }
+  #circuit { font-size: 10px; font-weight: 700; letter-spacing: .3em; color: #6d7688; }
+  #sect { font-size: 14px; font-weight: 500; letter-spacing: .06em; color: #aebbcd; margin-top: 4px; }
+  #sect.dark { color: #ffb45c; }
+  #sect.dark::after { content: ' \00b7 no lights'; font-size: 10px; letter-spacing: .18em; opacity: .75; }
+
+  #msg {
+    left: 0; right: 0; top: 42%; text-align: center; color: #93a0b4;
+    font-size: 13px; letter-spacing: .22em; font-weight: 600;
   }
+  #msg b { color: #f6ecda; font-size: 26px; display: block; margin-bottom: 8px; letter-spacing: .04em; }
+  #msg .dim { color: #5b657a; font-weight: 500; }
+
+  /* the camera cluster, small and out of the way */
+  #cam { right: 30px; bottom: 26px; display: flex; gap: 5px; pointer-events: auto; opacity: .5; transition: opacity .15s; }
+  #cam:hover { opacity: 1; }
   #cam button {
-    width: 34px; height: 30px; border: 1px solid #2b3547; border-radius: 4px;
-    background: rgba(10, 15, 26, .62); color: #8d97ab; font: inherit; font-size: 12px;
+    width: 30px; height: 26px; border: 1px solid #2b3547; border-radius: 3px;
+    background: rgba(10, 15, 26, .5); color: #8d97ab; font: inherit; font-size: 11px;
     cursor: pointer; touch-action: none; -webkit-user-select: none; user-select: none;
   }
   #cam button:hover { color: #ffd9a0; border-color: #4a586e; }
-  #cam .lbl { align-self: center; margin-right: 4px; opacity: .45; font-size: 9px; letter-spacing: .18em; }
 
-  #help { right: 24px; bottom: 22px; text-align: right; opacity: .5; line-height: 1.8; }
+  /* the key list is OFF by default. It was the single most cluttering thing on
+     screen and you only need it once. */
+  #help {
+    right: 30px; bottom: 62px; text-align: right; color: #78839a;
+    font-size: 11px; line-height: 1.9; letter-spacing: .04em;
+  }
   #help.hidden { display: none; }
   #help b { color: #ffd9a0; font-weight: 600; }
+  #hint { right: 30px; bottom: 62px; font-size: 10px; letter-spacing: .18em; color: #4d566a; }
+  #hint.hidden { display: none; }
+
   #back {
-    left: 24px; top: 48px; pointer-events: auto; color: #7d8799;
-    text-decoration: none; letter-spacing: .16em; font-size: 10px;
+    left: 30px; top: 62px; pointer-events: auto; color: #5d6678;
+    text-decoration: none; letter-spacing: .12em; font-size: 10px; font-weight: 600;
   }
   #back:hover { color: #ffd9a0; }
 
@@ -84,27 +108,25 @@
 <body>
 <canvas id="view"></canvas>
 <div id="ui">
-  <div id="sect"></div>
+  <div id="where"><div id="circuit"></div><div id="sect"></div></div>
   <a id="back" href="./index.html">&larr; back to the block</a>
-  <div id="dash"><div id="speed">0</div><div id="gear"></div><div id="drift">DRIFT</div></div>
-  <div id="clock"><div id="time">0.00</div><div id="best"></div><div id="lap"></div><div id="pos"></div></div>
+  <div id="dash"><div id="speed">0</div><div id="gear"></div><div id="drift">drift</div></div>
+  <div id="clock"><div id="time">0.00</div><div id="lap"></div><div id="best"></div><div id="pos"></div></div>
   <div id="msg">accelerate to start</div>
   <div id="cam">
-    <span class="lbl">CAM</span>
     <button id="camL" title="look left (q)">&#9668;</button>
     <button id="camB" title="look behind (v)">&#8635;</button>
     <button id="camR" title="look right (e)">&#9658;</button>
     <button id="zOut" title="zoom out">&minus;</button>
     <button id="zIn" title="zoom in">+</button>
   </div>
-  <div id="help">
+  <div id="help" class="hidden">
     <b>w</b> throttle &nbsp; <b>s</b> brake &nbsp; <b>a</b>/<b>d</b> steer<br>
-    <b>space</b> drift &nbsp; <b>s</b> held at a stop &rarr; reverse<br>
-    <b>q</b>/<b>e</b> look &nbsp; <b>v</b> look back<br>
-    <b>scroll</b> zoom &nbsp;
-    <b>g</b> garage &nbsp; <b>x</b> weather &nbsp; <b>m</b> sound &nbsp; <b>c</b> repaint &nbsp; <b>r</b> reset &nbsp; <b>h</b> hide<br>
-    <span style="opacity:.7">console: <b>DYNAMO.sim()</b></span>
+    <b>space</b> drift &nbsp; <b>s</b> at a stop &rarr; reverse<br>
+    <b>q</b>/<b>e</b> look &nbsp; <b>v</b> behind &nbsp; <b>scroll</b> zoom<br>
+    <b>g</b> garage &nbsp; <b>m</b> sound &nbsp; <b>r</b> reset
   </div>
+  <div id="hint"><b>h</b> &mdash; controls</div>
 </div>
 <div id="boot"><div>building the circuit…</div><small id="bootmsg"></small></div>
 

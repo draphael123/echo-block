@@ -6,6 +6,8 @@ import { buildBlock, BOUNDS, ROAD } from './block.js';
 import { buildSky, buildLights, tvFlicker } from './lights.js';
 import { buildPerson, buildDog, CAST, INDOOR_CAST, MECHANIC, LOOKS } from './people.js';
 import { mountGarage } from './garage-ui.js';
+import { mountTrackSelect } from './track-select.js';
+import { mountLooks } from './looks-ui.js';
 import * as Garage from './race/garage.js';
 import { PALETTE } from './palette.js';
 import { buildTraffic } from './traffic.js';
@@ -52,6 +54,10 @@ const cat = buildCat([28, -28], [28, 20], 2);
 weather.add(leaves.points, smoke.points, cat.root);
 const round = createRound(block.anchors, scene);
 
+// The save, loaded before anything that reads it: the player's clothes come out
+// of here, so it has to exist before the cast is built.
+const savefile = Garage.load();
+
 // ---------------------------------------------------------------- people
 const peopleGroup = new THREE.Group();
 peopleGroup.name = 'people';
@@ -62,7 +68,11 @@ scene.add(peopleGroup);
 const indoorSpecs = INDOOR_CAST
   .filter(s => block.anchors[s.key])
   .map(s => ({ ...s, pos: block.anchors[s.key] }));
-const folk = [...CAST, ...indoorSpecs, MECHANIC].map(spec => buildPerson(spec));
+// Whatever you were last wearing. Read from the save rather than from a key of
+// its own, so a wiped game gives you the intro again.
+const savedLook = savefile.look;
+const folk = [...CAST, ...indoorSpecs, MECHANIC]
+  .map(spec => buildPerson(spec.player && savedLook ? { ...spec, ...savedLook } : spec));
 let player = folk.find(p => p.data.player);
 let npcs = folk.filter(p => p !== player);
 const biscuit = buildDog({ pos: [58, 2, 40], path: [[58, 40], [-172, 40]], speed: 1 });
@@ -97,8 +107,11 @@ for (const p of folk)
 const look = { ...player.data };
 function rebuildPlayer(patch) {
   Object.assign(look, patch);
-  // the track prototype reads this, so the kid you dressed is the kid who rides
-  try { localStorage.setItem('echo-block.look', JSON.stringify(look)); } catch {}
+  // One save owns this now, along with the money and the lap times. It used to
+  // be its own localStorage key written by this function alone, which is why
+  // there was no way to clear a game or to change your mind later.
+  savefile.look = { ...(savefile.look || {}), ...patch };
+  Garage.save(savefile);
   const keep = player.root.position.clone(), face = player.root.rotation.y;
   peopleGroup.remove(player.root);
   player.root.traverse(o => {
@@ -318,8 +331,26 @@ let nearBox = null;
 // The garage counter, shared with the circuit. Talking to Verity opens it,
 // which is the whole reason the hub exists: the money you win out there is
 // spent in here.
-const savefile = Garage.load();
 const garage = mountGarage({ save: savefile, closeHint: 'ESC or E to close' });
+
+// RIDE OUT asks where. It used to just leave, and the circuit you got was
+// whatever was last written to localStorage by a menu you had to find first.
+// The wardrobe, on foot. K anywhere in the hub.
+const wardrobe = mountLooks({
+  save: savefile,
+  current: () => look,
+  onPick: (key, v) => rebuildPlayer({ [key]: v }),
+  closeHint: 'K or ESC to close',
+});
+
+const picker = mountTrackSelect({
+  save: savefile,
+  onGo: () => { location.href = './race.html'; },
+});
+document.getElementById('rideout').addEventListener('click', (e) => {
+  e.preventDefault();
+  picker.show();
+});
 
 function interact() {
   if (garage.isOpen()) { garage.close(); return; }
@@ -428,8 +459,9 @@ const ui = createUI({
 addEventListener('keydown', (e) => {
   if (e.key === 'Tab') { e.preventDefault(); ui.toggle(); return; }
   if (intro.isUp()) return;
-  if (e.key === 'Escape') { garage.close(); talk.hide(); return; }
+  if (e.key === 'Escape') { picker.hide(); garage.close(); wardrobe.close(); talk.hide(); return; }
   const k = e.key.toLowerCase();
+  if (k === 'k' && mode === 'follow') { wardrobe.toggle(); return; }
   if (k === 'e' && mode === 'follow') { interact(); return; }
   if (k === 'c') { mode === 'follow' ? applyShot(shot) : followMode(); return; }
   if (mode === 'follow') {

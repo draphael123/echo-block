@@ -16,6 +16,8 @@ export default {
   blurb: 'fast, blind crests, two tunnels',
   heading: 0,
 
+  asks: 'crests',
+  lapMetres: 698,
   road: { half: HALF, kerb: 6, pave: 22, verge: 26, apron: 8 },
 
   shape: {
@@ -45,9 +47,17 @@ export default {
   // The big one. Nearly ten metres top to bottom, so crests genuinely hide the
   // road over them, which is the whole mechanic of this circuit.
   profile: [
-    [0, 0], [1000, 42], [2000, 76], [2900, 40],
-    [3800, -18], [4700, -46], [5600, -10],
-    [6500, 48], [7300, 80], [8100, 36], [8560, 6],
+    // SHARP, not swelling. The first version put 80 voxels of rise across a
+    // thousand, which is a hill you can see over the whole way up; the assay
+    // measured 3% of the lap as blind and called the crests scenery. These are
+    // the same total relief gathered into shorter brows -- rise 40-ish over 400
+    // -- which is what actually hides a road from a driver sitting 1.6m up.
+    [0, 0], [420, 8], [820, 52], [1220, 16],
+    [1900, 34], [2300, 80], [2700, 30],
+    [3400, -14], [4000, -44], [4500, -16],
+    [5000, 26], [5400, 72], [5800, 26],
+    [6500, 44], [6900, 88], [7300, 40],
+    [7900, 12], [8400, 4],
   ],
 
   hazards: [
