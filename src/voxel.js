@@ -116,6 +116,55 @@ export class VoxWorld {
   // the scene) and a glow geometry (unlit, feeds the bloom pass).
   // They must be separate: three's emissive is a per-MATERIAL uniform, so one
   // mesh cannot have some voxels emit and others not.
+  // Stamp another world into this one, optionally mirrored in Z.
+  //
+  // Some builders only make sense written facing one way — a shopfront has a
+  // stall riser, a fascia and an awning that all have to agree about which
+  // side is "out". Rather than thread a direction through every line of one,
+  // build it once at the origin and blit it in flipped.
+  merge(other, opts) {
+    const { ox = 0, oy = 0, oz = 0, mirrorZ = false } = opts || {};
+    for (const [k, name] of other.v) {
+      const z = (k % SPAN) - OFF;
+      const y = (Math.floor(k / SPAN) % SPAN) - OFF;
+      const x = Math.floor(k / (SPAN * SPAN)) - OFF;
+      this.set(x + ox, y + oy, (mirrorZ ? -z : z) + oz, name);
+    }
+    return this;
+  }
+
+  // A top-down field for walking on: per column, the FLOOR you would stand on
+  // and whether there is HEADROOM above it.
+  //
+  // A single "highest voxel" number cannot express a doorway — the lintel is
+  // higher than the floor, so the column looks as solid as the wall beside it.
+  // Two passes fix that: first the highest surface at or below `floorMax`
+  // (ground, kerb, a porch deck, a shop floor), then whether anything sits in
+  // the `head` voxels directly above it. A door has a floor and clear
+  // headroom; a wall has no gap; a tree canopy and an overhead wire are far
+  // enough above the floor to be walked under.
+  walkField(x0, x1, z0, z1, floorMax, head) {
+    const w = x1 - x0, d = z1 - z0;
+    const floor = new Int16Array(w * d).fill(-999);
+    const blocked = new Uint8Array(w * d);
+    const cells = [];
+    for (const k of this.v.keys()) {
+      const z = (k % SPAN) - OFF;
+      const x = Math.floor(k / (SPAN * SPAN)) - OFF;
+      if (x < x0 || x >= x1 || z < z0 || z >= z1) continue;
+      const y = (Math.floor(k / SPAN) % SPAN) - OFF;
+      const i = (x - x0) * d + (z - z0);
+      cells.push(i, y);
+      if (y <= floorMax && y > floor[i]) floor[i] = y;
+    }
+    for (let n = 0; n < cells.length; n += 2) {
+      const i = cells[n], y = cells[n + 1], f = floor[i];
+      if (f === -999) continue;
+      if (y > f && y <= f + head) blocked[i] = 1;
+    }
+    return { x0, z0, w, d, floor, blocked };
+  }
+
   // solidBelow  — treat everything under this height as filled. Gives props
   //               correct contact AO where they meet the ground slab.
   // noFloorBelow — drop every downward-facing quad at or below this height.

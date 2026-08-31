@@ -49,6 +49,9 @@ export function createUI(ctx) {
       ['shaft', 'light shaft', 0, 0.5, 0.005, () => rig.cones[0]?.material.uniforms.uStrength.value ?? 0,
         v => rig.cones.forEach(c => c.material.uniforms.uStrength.value = v)],
     ]],
+    ['Walking', [
+      ['walkSpeed', 'move speed', 0.3, 2.5, 0.05, () => ctx.walkSpeed(), v => ctx.walkSpeed(v)],
+    ]],
   ];
 
   const TOGGLES = [
@@ -60,6 +63,9 @@ export function createUI(ctx) {
     ['moths', 'moths', () => rig.moths ? rig.moths.points.visible : false,
       v => { if (rig.moths) rig.moths.points.visible = v; }],
     ['people', 'people', () => ctx.people(), v => ctx.people(v)],
+    ['traffic', 'traffic', () => ctx.traffic(), v => ctx.traffic(v)],
+    ['torch', 'flashlight', () => ctx.torch(), v => ctx.torch(v)],
+    ['follow', 'follow the player', () => ctx.follow(), v => ctx.follow(v)],
     ['parallax', 'camera drift', () => ctx.parallax(), v => ctx.parallax(v)],
   ];
 
@@ -76,7 +82,7 @@ export function createUI(ctx) {
   root.append(body);
 
   const shotRow = el('div', 'group');
-  shotRow.append(el('h4', null, 'shot'));
+  shotRow.append(el('h4', null, 'camera — cut to a framing'));
   const shotWrap = el('div', 'shots');
   shots.forEach((name, i) => {
     const b = el('button', 'shotbtn', `${i + 1}  ${name}`);
@@ -181,12 +187,22 @@ export function createIntro(onStart) {
   inner.append(el('h1', null, 'ECHO BLOCK'));
   inner.append(el('p', 'sub', 'one street, 1986, after everyone has gone in'));
   inner.append(el('p', 'blurb',
-    'A look-development diorama — no mechanics, no player. Every prop is built from ' +
-    'the same size cube as the houses, lit almost entirely by a sodium streetlight, ' +
-    'two porch bulbs and a television.'));
+    'You are Row, and you are not going home yet. Walk the street, talk to the ' +
+    'neighbours, stay out of the road. Every prop here is built from the same size ' +
+    'cube as the houses, lit almost entirely by five sodium streetlights, a handful ' +
+    'of porch bulbs and somebody’s television.'));
   const btn = el('button', 'start', 'walk the block');
   inner.append(btn);
-  inner.append(el('p', 'keys', 'space cut shot  ·  tab settings  ·  p post on/off'));
+  const rows = el('div', 'ctrl');
+  for (const [k, what] of [
+    ['W A S D', 'walk'], ['shift', 'run'], ['E', 'talk'],
+    ['C', 'camera mode'], ['tab', 'settings'],
+  ]) {
+    const r = el('div', 'ctrl-row');
+    r.append(el('kbd', null, k), el('span', null, what));
+    rows.append(r);
+  }
+  inner.append(rows);
   wrap.append(inner);
   document.body.append(wrap);
 

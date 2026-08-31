@@ -17,11 +17,14 @@
 import * as THREE from 'three';
 import { VoxWorld, meshWorld, hash3 } from './voxel.js';
 import { PALETTE, tint } from './palette.js';
+import { FLOOR_MAX, HEAD } from './walk.js';
 import * as P from './props.js';
+import * as S from './street.js';
+import { shopParade } from './shops.js';
 
 export const GROUND = 2;
 export const ROAD = { z0: 46, z1: 118 };
-export const BOUNDS = { x0: -400, x1: 300, z0: -122, z1: 268 };
+export const BOUNDS = { x0: -400, x1: 380, z0: -122, z1: 268 };
 
 const rnd = (x, z, s = 0) => hash3(x, s, z);
 const shingleFn = (px, py, pz) => (rnd(px, pz, py) > 0.8 ? 'shingleDark' : 'shingle');
@@ -42,6 +45,7 @@ const WALKS = [
   { x0: 218, x1: 230, z0: -30, z1: 42 },
   { x0: -60, x1: -48, z0: 122, z1: 206 },
   { x0: 96, x1: 108, z0: 122, z1: 206 },
+  { x0: 164, x1: 296, z0: -32, z1: 30 },      // the shop forecourt
 ];
 const inAny = (list, x, z) => list.some(d => x >= d.x0 && x < d.x1 && z >= d.z0 && z < d.z1);
 
@@ -314,8 +318,6 @@ const ROSTER = [
     siding: 'sidingB', sidingDark: 'sidingBdark', trim: 'trimB', door: 'doorBlue', base: 'brick' },
   { x: -410, wid: 92, wallTop: 44, dir: 1, seed: 11, band: 4,
     siding: 'sidingA', sidingDark: 'sidingAdark', trim: 'trimA', door: 'doorRed' },
-  { x: 190, wid: 100, wallTop: 42, dir: 1, seed: 19, band: 4,
-    siding: 'sidingB', sidingDark: 'sidingBdark', trim: 'trimA', door: 'doorRed', base: 'brick' },
   // near side, fronts facing -Z
   { x: -262, wid: 100, wallTop: 42, dir: -1, seed: 5, band: 4, near: true,
     siding: 'sidingA', sidingDark: 'sidingAdark', trim: 'trimA', door: 'doorBlue' },
@@ -399,7 +401,7 @@ function dressing(w, anchors) {
   P.trashBin(w, 30, GROUND, 34);
   w.stamp(P.MAILBOX, 62, GROUND, 22);
   P.hedge(w, 34, GROUND, -28, 108, 7, 10, 'x');
-  P.tree(w, 150, GROUND, -14, 38, 17);
+  P.tree(w, 152, GROUND, -14, 38, 17);
   P.leafPile(w, 74, GROUND, -12, 7);
 
   // ---- the rest of the row, dressed off a seed so no two lots match
@@ -418,6 +420,48 @@ function dressing(w, anchors) {
     if (R(9) > 0.6) P.lawnChair(w, h.x + 20, GROUND + 4, lawnZ - out * 6);
     if (R(3) > 0.55) w.stamp(P.GNOME, h.x + 8, GROUND, lawnZ);
   }
+
+  // ---- council property. Anchors are returned so the rig can light the
+  // shelter's strip and the phone box's interior.
+  anchors.shelter = S.busShelter(w, -166, GROUND, 24, 1);
+  anchors.phone = S.phoneBox(w, 108, GROUND, 26);
+  S.bench(w, -244, GROUND, 26, 1);
+  // clear of the shop door (x 218-233) — a bench across a doorway is a wall
+  S.bench(w, 176, GROUND, -14, 1);
+  S.bench(w, 250, GROUND, -14, 1);
+  P.trashBin(w, 242, GROUND, -12);
+  P.trashBin(w, 250, GROUND, -12, { lidOff: true });
+  S.milkCrates(w, 288, GROUND, -18, 3);
+  S.signPost(w, 300, GROUND, 30, 'stop');
+  S.signPost(w, -352, GROUND, 30, 'street');
+  S.signPost(w, 4, GROUND, 130, 'street');
+  for (const dx of [-300, -120, 60, 220]) S.drain(w, dx, 0, ROAD.z0 + 1);
+  for (const dx of [-250, -40, 170]) S.drain(w, dx, 0, ROAD.z1 - 6);
+  // a bit of roadworks: something for the cars to swerve round
+  S.barrier(w, 316, GROUND, ROAD.z0 + 8, 30);
+  for (const cx of [308, 348, 328]) S.roadCone(w, cx, 0, ROAD.z0 + 4);
+  S.skip(w, -238, GROUND, -22);
+
+  // ---- back-of-lot life
+  S.swingSet(w, -196, GROUND, 150);
+  S.clothesline(w, 60, GROUND, 176, 46);
+  S.clothesline(w, -300, GROUND, -60, 40);
+  S.satelliteDish(w, 88, GROUND + 52, -40);
+  S.satelliteDish(w, 62, GROUND + 50, 250);
+  S.satelliteDish(w, -232, GROUND + 48, -44);
+  S.treehouse(w, -146, GROUND + 30, -8);
+  S.wheelbarrow(w, -288, GROUND, -14);
+  S.milkCrates(w, 122, GROUND, 132, 3);
+  S.milkCrates(w, -180, GROUND, 132, 2);
+  S.flowerBed(w, -60, GROUND, -22, 26, 8);
+  S.flowerBed(w, 74, GROUND, 148, 30, 9);
+  S.flowerBed(w, -286, GROUND, -20, 22, 8);
+  P.tree(w, -196, GROUND, 8, 42, 19);
+  P.tree(w, 316, GROUND, 6, 36, 16);
+  P.tree(w, -78, GROUND, 138, 40, 18);
+  P.tree(w, 178, GROUND, 140, 34, 15);
+  P.hedge(w, -320, GROUND, 130, 60, 7, 10, 'x');
+  P.picketFence(w, -66, GROUND, 138, 54, 'z');
 
   // two cars parked at the kerb, one each side, laid along the street
   P.wagon(P.transposeXZ(w), ROAD.z0 + 5, GROUND - 2, -300);
@@ -441,6 +485,23 @@ export function buildBlock() {
   backdrop(w);
   heroHouse(w, anchors);
   garageHouse(w, anchors);
+  // The parade is authored with its front at local z=0 facing -Z, then blitted
+  // in MIRRORED so it fronts the road from the far side. It has to face away
+  // from the follow camera: a doorway you enter by walking toward the lens is
+  // a doorway the camera cannot follow you through.
+  const SHOP_X = 172, SHOP_Z = -30;
+  const parade = new VoxWorld(), paradeLid = new VoxWorld();
+  const local = { porches: [], spills: [] };
+  anchors.shop = shopParade(parade, paradeLid, local, 0, 0);
+  w.merge(parade, { ox: SHOP_X, oz: SHOP_Z, mirrorZ: true });
+  // The lid is meshed on its own so it can be taken away when the player is
+  // inside. All of it sits above the walk field's headroom band, so leaving it
+  // out of the collision world changes nothing.
+  const lidWorld = new VoxWorld().merge(paradeLid, { ox: SHOP_X, oz: SHOP_Z, mirrorZ: true });
+  const flip = (p) => [p[0] + SHOP_X, p[1], SHOP_Z - p[2]];
+  anchors.shopLights = (local.shopLights || []).map(flip);
+  anchors.signLights = (local.signLights || []).map(flip);
+  anchors.shopDoor = flip(local.door);
   for (const h of ROSTER)
     house(w, anchors, { ...h, z: h.dir > 0 ? FAR_Z : NEAR_Z, dep: HOUSE_DEP });
   dressing(w, anchors);
@@ -448,6 +509,8 @@ export function buildBlock() {
   const group = new THREE.Group();
   group.name = 'block';
   group.add(meshWorld(w, PALETTE, { name: 'block', solidBelow: 0, noFloorBelow: GROUND - 1 }));
+  const shopLid = meshWorld(lidWorld, PALETTE, { name: 'shopLid' });
+  group.add(shopLid);
 
   // The television. Its own mesh because emissive is a per-material uniform:
   // to flicker it, it has to be a material of its own.
@@ -458,5 +521,11 @@ export function buildBlock() {
   tvMesh.name = 'tv';
   group.add(tvMesh);
 
-  return { group, anchors, tvMaterial: tvMat, voxels: w.size };
+  // The collision field is derived from the voxels that were actually built,
+  // so nobody has to keep a parallel list of colliders honest. The ceiling
+  // keeps tree canopies, porch roofs and overhead wires out of it — those are
+  // things you walk UNDER.
+  const field = w.walkField(BOUNDS.x0, BOUNDS.x1, BOUNDS.z0, BOUNDS.z1, FLOOR_MAX, HEAD);
+
+  return { group, anchors, tvMaterial: tvMat, voxels: w.size + lidWorld.size, field, shopLid };
 }

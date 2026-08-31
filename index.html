@@ -19,6 +19,13 @@
   #shot { top: 18px; left: 20px; font-size: 13px; color: #ffd9a0; }
   #stats { bottom: 16px; left: 20px; opacity: .45; text-transform: none; }
   #help { bottom: 16px; right: 20px; text-align: right; opacity: .55; }
+  #prompt {
+    left: 50%; bottom: 76px; transform: translateX(-50%);
+    color: #ffd9a0; font-size: 12px; letter-spacing: .16em;
+    padding: 6px 14px; border: 1px solid rgba(255,180,92,.28);
+    background: rgba(8,11,18,.55); border-radius: 2px; white-space: nowrap;
+  }
+  #prompt:empty { display: none; }
   #help.hidden { display: none; }
   #help b { color: #ffd9a0; font-weight: 600; }
   #boot {
@@ -55,7 +62,12 @@
     text-transform: uppercase; font-size: 12px;
   }
   .intro .blurb { margin: 0 0 2em; color: #8894ab; }
-  .intro .keys { margin: 1.4em 0 0; color: #5b657a; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+  .ctrl { margin: 1.8em 0 0; display: grid; gap: 6px; }
+  .ctrl-row { display: grid; grid-template-columns: 92px 1fr; gap: 12px; align-items: center; color: #6d7789; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
+  .ctrl kbd {
+    font: inherit; text-align: center; padding: 3px 0; border-radius: 2px;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); color: #cfd6e4;
+  }
   .start {
     font: inherit; letter-spacing: .16em; text-transform: uppercase;
     padding: 12px 26px; cursor: pointer; color: #0a0d15;
@@ -152,9 +164,10 @@
 <div id="ui">
   <div id="shot"></div>
   <div id="stats"></div>
+  <div id="prompt"></div>
   <div id="help">
-    <b>click</b> a person to talk &nbsp; <b>space</b> cut shot &nbsp; <b>tab</b> settings<br>
-    <b>f</b> / <b>shift+f</b> focus &nbsp; <b>e</b> exposure &nbsp; <b>h</b> hide
+    <b>wasd</b> walk &nbsp; <b>shift</b> run &nbsp; <b>e</b> talk &nbsp; <b>c</b> camera<br>
+    <b>tab</b> settings &nbsp; <b>p</b> post on/off &nbsp; <b>h</b> hide
   </div>
 </div>
 <button id="gear">settings</button>

@@ -92,6 +92,21 @@ const RAW = {
   dogFurDark:   ['#3a2c1f', 0.16],
   torchBody:    ['#5c4f3a', 0.10],
 
+  // --- street furniture ---------------------------------------------------
+  signRed:      ['#7c2f28', 0.10],
+  signWhite:    ['#8f8a7e', 0.10],
+  signGreen:    ['#2f4a3a', 0.10],
+  phoneRed:     ['#7e2b26', 0.10],
+  coneOrange:   ['#8a4526', 0.12],
+  skipSteel:    ['#3f4a52', 0.16],
+  skipRust:     ['#5c3a28', 0.24],
+  fabricPale:   ['#7d786a', 0.14],
+  fabricBlue:   ['#42586e', 0.14],
+  flowerA:      ['#6e3a4a', 0.22],
+  flowerB:      ['#6a5a2e', 0.22],
+  flowerC:      ['#55406a', 0.22],
+  slatWood:     ['#57452f', 0.20],
+
   // --- night sky / far --------------------------------------------------
   hillFar:      ['#2b3448', 0.10],
 };
@@ -111,6 +126,11 @@ const RAW_EMIT = {
   torchLens:    ['#fff0c4', 2.6],
   radioDial:    ['#ff9a5c', 1.8],
   cigarette:    ['#ff6a3c', 2.0],
+  phoneGlow:    ['#ffe0a8', 1.7],
+  headLight:    ['#fff4d6', 6.0],
+  shelterTube:  ['#cfe4ff', 2.2],
+  stripLight:   ['#dfeaff', 0.95],
+  chillGlow:    ['#bcd8f2', 0.8],
 };
 
 function toLinear(hex) {

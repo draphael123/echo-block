@@ -4,10 +4,12 @@ A look-development diorama: one suburban block, at night, in voxels — built to
 answer a single question, *can a browser get to the look and feel of* Echo
 Generation *(Cococucumber, 2021)?*
 
-Seven houses down both sides of one street, five people who each have a small
-mundane reason to still be outside, and a dog. No mechanics and no player —
-click a person and they talk, and that is the whole of it.
+Houses down both sides of one street, a parade of shops you can walk into,
+traffic, four neighbours who each have a small mundane reason to still be
+outside, and a dog. You are Row; you are not going home yet.
 Live: **[echo-block.vercel.app](https://echo-block.vercel.app)**
+
+**WASD** walk · **shift** run · **E** talk · **C** camera mode · **tab** settings
 
 ```bash
 npm run dev        # http://localhost:5833
@@ -45,14 +47,52 @@ Ranked, because the ordering is the finding:
 | `src/props.js` | the clutter library |
 | `src/block.js` | the street, the seven houses, prop placement |
 | `src/people.js` | the cast: rigid voxel limbs on a joint hierarchy, and their lines |
+| `src/street.js` | council property — shelter, phone box, signs, skip, swings |
+| `src/shops.js` | the parade, and the one building with an interior |
+| `src/traffic.js` | two cars on a loop, with the only moving light in the scene |
+| `src/walk.js` | collision: floor + headroom, derived from the voxels themselves |
 | `src/lights.js` | rig, sky shader, fake volumetric shaft, TV flicker |
 | `src/post.js` | hand-rolled bloom + DOF + ACES + grade chain |
 | `src/ui.js` | title card and settings drawer |
 
-Press **tab** in the running page for the settings drawer — every number that
-decides the look is a slider, and the values persist to `localStorage`.
-"copy values as json" dumps a tuned set to paste back into the source.
-**Space** cuts between the six framings; **click a person** to talk to them.
+Press **tab** for the settings drawer — every number that decides the look is a
+slider, and the values persist to `localStorage`. "copy values as json" dumps a
+tuned set to paste back into the source. **C** swaps between following the
+player and the six fixed look-dev framings, which **space** cuts between.
+
+## Walking
+
+Collision runs against a field derived from the voxels that were actually
+built, not a hand-maintained list of boxes. The scene comes out of sixty
+different prop functions and nobody was ever going to keep a parallel list of
+colliders honest.
+
+Two rules do all of it. A **step** height means you can climb a kerb or a porch
+tread and nothing taller, which gets kerbs, steps, hedges, bins, tree trunks
+and house walls for free. A **headroom** test means you can only stand where
+there is clear space above the floor — and that second rule is the one that
+makes a doorway possible. With a plain height map the column under a lintel is
+as tall as the wall beside it, and you can never walk through anything.
+
+## Marlow's
+
+The shops are built as the opposite of the houses on purpose: brick not
+clapboard, a flat roof with a parapet not a gable, a glazed front not punched
+windows. A street where every building is built the same way reads as a texture
+rather than a place.
+
+The store is the only thing with an interior, and it needed three things the
+houses never did — a floor inside, a doorway that is a HOLE rather than a door
+slab, and a lintel high enough to clear the headroom band. It also needed the
+camera solved: a trailing camera outside is looking at the back of a brick wall
+the moment you step through the door, and a camera *inside* a 75-voxel room
+needs a wide lens, which is the one thing this look cannot afford. So the roof,
+fascia, awning and shopfront are meshed separately and taken away while you are
+inside. All of it sits above the headroom band, so leaving the lid out of the
+collision world changes nothing.
+
+The door also has to face AWAY from the follow camera, which is why the parade
+is authored front-forward and blitted in mirrored.
 
 ## The street
 
@@ -91,10 +131,13 @@ cheaper. A kid is 20 voxels tall, an adult 23, heads deliberately oversized.
   thin beats hollow and deep. (Tree canopies are the exception: they are ragged
   enough that you see into them, and hollow reads better.)
 - **The forward renderer loops every light per pixel.** A row of houses each
-  contributing three window-spill point lights is a frame-rate cliff, so the
-  spills are capped at twelve nearest and the far ends of the street stay
-  emissive-only. Shadow maps refresh every fourth frame rather than every
-  frame; the block is static and only the people move.
+  contributing three window-spill point lights is a frame-rate cliff, so porch
+  bulbs and window spill are both capped to the nearest few and the far ends of
+  the street stay emissive-only. Shadow maps refresh every third frame; the
+  block is static and only the people and the cars move.
+- **A walk cycle has to be driven by distance, not by the clock.** Drive it off
+  time and the legs keep scissoring while the player stands still, which is the
+  most obvious tell that a character is a puppet with a timer attached.
 
 ## Credits
 

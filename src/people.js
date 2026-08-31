@@ -21,39 +21,86 @@ function part(build) {
 }
 
 // ------------------------------------------------------------------ bodies
+// A cube with hair painted on it reads as a Minecraft head, which is the wrong
+// game. The corners come off, the hair OVERHANGS the brow and the back of the
+// neck, and there is an actual neck under it — three cheap changes that put
+// the characters at the same level of detail as the houses they stand in
+// front of, which is the whole problem with under-modelled people in a
+// well-modelled street.
 function makeHead(s) {
-  const d = s.kid ? 7 : 6;
+  const d = s.kid ? 7 : 6, h = (d >> 1);
   return part(w => {
-    w.box(-(d >> 1), 0, -(d >> 1), d, d, d, s.skin);
-    // hair: a cap over the crown and down the back
-    w.box(-(d >> 1), d - 2, -(d >> 1), d, 2, d, s.hair);
-    w.box(-(d >> 1), d - 5, -(d >> 1), d, 3, 1, s.hair);
-    if (s.hairStyle === 'fringe') w.box(-(d >> 1), d - 3, (d >> 1), d, 1, 1, s.hair);
-    if (s.hairStyle === 'bald') { w.box(-(d >> 1), d - 2, -(d >> 1), d, 2, d, s.skin); w.box(-(d >> 1), d - 4, -(d >> 1), d, 3, 1, s.hair); }
-    if (s.cap) { w.box(-(d >> 1) - 1, d - 2, -(d >> 1) - 1, d + 2, 2, d + 1, s.cap); w.box(-2, d - 3, (d >> 1), 4, 1, 2, s.cap); }
-    // eyes, one voxel each, on the +Z face
+    w.box(-h, 0, -h, d, d, d, s.skin);
+    // knock the top corners off so the skull is not a die
+    for (const cx of [-h, h]) for (const cz of [-h, h]) {
+      w.clear(cx, d - 1, cz);
+      w.clear(cx, d - 2, cz);
+    }
+    w.clear(-h, 0, -h); w.clear(h, 0, -h);            // and the jaw corners
+    w.set(-h - 1, Math.round(d * 0.45), 0, s.skin);   // ears
+    w.set(h + 1, Math.round(d * 0.45), 0, s.skin);
+
+    if (s.hairStyle !== 'bald') {
+      w.box(-h - 1, d - 3, -h - 1, d + 2, 4, d + 2, s.hair);     // crown, proud
+      w.box(-h - 1, d - 7, -h - 1, d + 2, 5, 1, s.hair);         // down the back
+      for (const cx of [-h - 1, h + 1]) w.box(cx, d - 6, -h - 1, 1, 4, d + 1, s.hair);
+      if (s.hairStyle === 'fringe') {
+        w.box(-h, d - 4, h + 1, d, 2, 1, s.hair);                // overhangs the brow
+        w.box(-h + 1, d - 5, h + 1, 3, 1, 1, s.hair);
+      }
+      if (s.hairStyle === 'long') w.box(-h - 1, d - 11, -h - 1, d + 2, 6, 2, s.hair);
+    } else {
+      w.box(-h - 1, d - 6, -h - 1, d + 2, 3, 1, s.hair);         // what is left
+      for (const cx of [-h - 1, h + 1]) w.box(cx, d - 6, -h - 1, 1, 3, 4, s.hair);
+    }
+    if (s.cap) {
+      w.box(-h - 1, d - 2, -h - 1, d + 2, 2, d + 2, s.cap);
+      w.box(-2, d - 3, h + 1, 5, 1, 2, s.cap);                   // the peak
+    }
+    // eyes, one voxel each, set into the brow rather than painted flat on it
     const ey = Math.round(d * 0.45);
-    w.set(-2, ey, (d >> 1), 'hairDark');
-    w.set(2, ey, (d >> 1), 'hairDark');
+    w.set(-2, ey, h, 'hairDark');
+    w.set(2, ey, h, 'hairDark');
+    w.set(0, ey - 1, h + 1, s.skin);                             // nose
     if (s.glasses) {
-      w.box(-3, ey, (d >> 1), 7, 1, 1, 'chrome');
-      w.set(-3, ey + 1, (d >> 1), 'chrome'); w.set(3, ey + 1, (d >> 1), 'chrome');
-      w.set(-2, ey, (d >> 1), 'hairDark'); w.set(2, ey, (d >> 1), 'hairDark');
+      w.box(-3, ey, h + 1, 7, 1, 1, 'chrome');
+      w.set(-3, ey + 1, h + 1, 'chrome'); w.set(3, ey + 1, h + 1, 'chrome');
+      w.set(-2, ey, h + 1, 'hairDark'); w.set(2, ey, h + 1, 'hairDark');
     }
   });
 }
 
+// A torso that TAPERS. A straight extruded slab is the single biggest reason
+// blocky characters read as toys: real shoulders are wider than the waist, and
+// two voxels of difference is enough to see.
 function makeTorso(s) {
   const wid = s.kid ? 8 : 9, hgt = s.kid ? 7 : 9, dep = 5;
+  const hw = wid >> 1, hd = dep >> 1;
   return part(w => {
-    w.box(-(wid >> 1), 0, -(dep >> 1), wid, hgt, dep, s.shirt);
-    // a collar and a hem, so it is not one flat slab of colour
-    w.box(-(wid >> 1), hgt - 1, -(dep >> 1), wid, 1, dep, s.collar || s.shirt);
-    w.box(-(wid >> 1), 0, -(dep >> 1), wid, 1, dep, s.trouser);
+    for (let j = 0; j < hgt; j++) {
+      const t = j / (hgt - 1);
+      const cut = t > 0.55 ? 0 : 1;                     // narrow at the waist
+      w.box(-hw + cut, j, -hd, wid - cut * 2, 1, dep, s.shirt);
+    }
+    w.box(-hw, hgt - 1, -hd, wid, 1, dep, s.shirt);     // shoulders, full width
+    w.box(-hw + 1, 0, -hd, wid - 2, 1, dep, s.trouser); // waistband
+    // a collar with a notch, and a placket down the front
+    w.box(-2, hgt - 1, hd, 5, 1, 1, s.collar || 'shirtCream');
+    w.box(-3, hgt - 2, hd, 2, 1, 1, s.collar || 'shirtCream');
+    w.box(2, hgt - 2, hd, 2, 1, 1, s.collar || 'shirtCream');
+    for (let j = 1; j < hgt - 2; j++) w.set(0, j, hd, s.collar || 'shirtCream');
     if (s.jacket) {
-      w.box(-(wid >> 1) - 1, 1, -(dep >> 1) - 1, 1, hgt - 2, dep + 2, s.jacket);
-      w.box((wid >> 1), 1, -(dep >> 1) - 1, 1, hgt - 2, dep + 2, s.jacket);
-      w.box(-(wid >> 1) - 1, 1, -(dep >> 1) - 1, wid + 2, hgt - 2, 1, s.jacket);
+      for (let j = 1; j < hgt - 1; j++) {
+        w.box(-hw - 1, j, -hd - 1, 1, 1, dep + 2, s.jacket);
+        w.box(hw, j, -hd - 1, 1, 1, dep + 2, s.jacket);
+        w.box(-hw - 1, j, -hd - 1, wid + 2, 1, 1, s.jacket);
+      }
+      w.box(-hw - 1, hgt - 2, hd, 3, 2, 1, s.jacket);   // lapels
+      w.box(hw - 1, hgt - 2, hd, 3, 2, 1, s.jacket);
+    }
+    if (s.bag) {                                        // a strap across the chest
+      for (let j = 0; j < hgt - 1; j++) w.set(-2 + Math.round(j * 0.4), j, hd, s.bag);
+      w.box(hw, 0, -hd - 3, 3, 5, 5, s.bag);
     }
   });
 }
@@ -61,17 +108,22 @@ function makeTorso(s) {
 function makeLeg(s) {
   const h = s.kid ? 6 : 8;
   return part(w => {
-    w.box(-1, -h, -1, 3, h, 3, s.trouser);
-    w.box(-1, -h, -1, 3, 1, 4, s.shoe || 'shoe');
+    w.box(-1, -h + 1, -1, 3, h - 1, 3, s.trouser);
+    // the shoe sticks out in FRONT of the leg. Without it a walk cycle is two
+    // rectangles pivoting and the feet never read as feet.
+    w.box(-1, -h, -1, 3, 1, 5, s.shoe || 'shoe');
+    w.box(-1, -h + 1, 1, 3, 1, 3, s.shoe || 'shoe');
   });
 }
 
 function makeArm(s, side) {
   const h = s.kid ? 7 : 9;
+  const sleeve = s.jacket || s.shirt;
   return part(w => {
-    w.box(-1, -h, -1, 2, h, 3, s.shirt);
-    w.box(-1, -h, -1, 2, 2, 3, s.skin);          // the hand
-    if (s.torch && side > 0) {                    // a flashlight in the right hand
+    w.box(-1, -h + 2, -1, 2, h - 2, 3, sleeve);
+    w.box(-1, -h + 2, -1, 2, 1, 3, s.cuff || sleeve);   // cuff
+    w.box(-1, -h, -1, 2, 2, 2, s.skin);                 // the hand, narrower
+    if (s.torch && side > 0) {
       w.box(-1, -h - 4, 0, 2, 4, 2, 'torchBody');
       w.box(-1, -h - 5, 0, 2, 1, 2, 'torchLens');
     }
@@ -114,8 +166,9 @@ export function buildPerson(spec) {
   armR.position.set(ax, shoulderY, 0);
   torso.add(armL, armR);
 
+  torso.add(part(w => w.box(-1, torsoH - 1, -1, 3, 2, 3, s.skin)));   // neck
   const head = new THREE.Group();
-  head.position.y = torsoH;
+  head.position.y = torsoH + 1;
   head.add(makeHead(s));
   torso.add(head);
 
@@ -153,8 +206,23 @@ export function buildPerson(spec) {
   const seed = (s.name.charCodeAt(0) * 37 + s.name.length * 11) % 100 / 100;
   const path = s.path;                       // [[x,z],[x,z]] to pace between
   let travel = seed, dir = 1;
+  let motion = 0, phase = seed * 6;          // for externally driven walking
 
-  function update(t) {
+  // The walk cycle is driven by DISTANCE, not by the clock. Drive it off time
+  // and the legs keep scissoring while the player stands still, which is the
+  // single most obvious tell that a character is a puppet with a timer.
+  function stride(amount, gait) {
+    const sw = Math.sin(phase) * amount;
+    legL.rotation.x = sw * 0.62;
+    legR.rotation.x = -sw * 0.62;
+    armL.rotation.x = -sw * 0.48 - (s.torch ? 0.2 * amount : 0);
+    armR.rotation.x = sw * 0.48 - (s.torch ? 0.55 : 0);
+    body.position.y = Math.abs(Math.sin(phase)) * 0.5 * amount;
+    torso.rotation.y = Math.sin(phase) * 0.06 * amount;
+    torso.rotation.x = 0.05 * amount * gait;
+  }
+
+  function update(t, dt = 1 / 60) {
     const k = t + seed * 20;
 
     if (s.pose === 'sit') {
@@ -164,38 +232,55 @@ export function buildPerson(spec) {
       body.position.y = Math.sin(k * 1.1) * 0.12;
       armL.rotation.x = -0.5 + Math.sin(k * 0.7) * 0.05;
       armR.rotation.x = -0.5 - Math.sin(k * 0.6) * 0.05;
-    } else if (path) {
-      // a slow pace between two points, turning at each end
-      travel += dir * 0.055 * (s.speed || 1) * 0.016;
+      return;
+    }
+
+    if (s.driven) {
+      // motion is 0..1 of top speed, set by whoever is steering this body
+      phase += motion * dt * 11;
+      if (motion > 0.02) {
+        stride(Math.min(1, motion * 1.15), motion);
+        head.rotation.y *= 0.9; head.rotation.x *= 0.9;
+      } else {
+        stride(0, 0);
+        body.position.y = Math.sin(k * 1.3) * 0.22;
+        armR.rotation.x = -(s.torch ? 0.55 : 0) - Math.sin(k * 0.8) * 0.09;
+        armL.rotation.x = Math.sin(k * 0.9) * 0.09;
+        head.rotation.y = Math.sin(k * 0.31) * Math.sin(k * 0.17) * 0.5;
+      }
+      return;
+    }
+
+    if (path) {
+      travel += dir * 0.055 * (s.speed || 1) * dt;
       if (travel > 1) { travel = 1; dir = -1; }
       if (travel < 0) { travel = 0; dir = 1; }
       const [a, b] = path;
-      const px = a[0] + (b[0] - a[0]) * travel;
-      const pz = a[1] + (b[1] - a[1]) * travel;
-      root.position.x = px; root.position.z = pz;
+      root.position.x = a[0] + (b[0] - a[0]) * travel;
+      root.position.z = a[1] + (b[1] - a[1]) * travel;
       root.rotation.y = Math.atan2((b[0] - a[0]) * dir, (b[1] - a[1]) * dir);
-      const step = k * 3.4;
-      legL.rotation.x = Math.sin(step) * 0.62;
-      legR.rotation.x = -Math.sin(step) * 0.62;
-      armL.rotation.x = -Math.sin(step) * 0.48;
-      armR.rotation.x = Math.sin(step) * 0.48;
-      body.position.y = Math.abs(Math.sin(step)) * 0.5;
-      torso.rotation.y = Math.sin(step) * 0.06;
-    } else {
-      // idle: breathe, shift weight, and look around now and then
-      body.position.y = Math.sin(k * 1.3) * 0.22;
-      torso.rotation.z = Math.sin(k * 0.6) * 0.02;
-      armL.rotation.x = Math.sin(k * 0.9) * 0.09 - (s.armsFolded ? 1.2 : 0);
-      armR.rotation.x = -Math.sin(k * 0.8) * 0.09 - (s.armsFolded ? 1.2 : 0) - (s.torch ? 0.55 : 0);
-      if (s.armsFolded) { armL.rotation.z = 0.5; armR.rotation.z = -0.5; }
-      const glance = Math.sin(k * 0.31) * Math.sin(k * 0.17);
-      head.rotation.y = glance * 0.7;
-      head.rotation.x = Math.sin(k * 0.23) * 0.12;
+      phase += dt * 3.4 * 2;
+      stride(1, 1);
+      return;
     }
+
+    // idle: breathe, shift weight, and look around now and then
+    body.position.y = Math.sin(k * 1.3) * 0.22;
+    torso.rotation.z = Math.sin(k * 0.6) * 0.02;
+    armL.rotation.x = Math.sin(k * 0.9) * 0.09 - (s.armsFolded ? 1.2 : 0);
+    armR.rotation.x = -Math.sin(k * 0.8) * 0.09 - (s.armsFolded ? 1.2 : 0) - (s.torch ? 0.55 : 0);
+    if (s.armsFolded) { armL.rotation.z = 0.5; armR.rotation.z = -0.5; }
+    const glance = Math.sin(k * 0.31) * Math.sin(k * 0.17);
+    head.rotation.y = glance * 0.7;
+    head.rotation.x = Math.sin(k * 0.23) * 0.12;
   }
 
   update(0);
-  return { root, pick, update, lights, data: s };
+  return {
+    root, pick, update, lights, data: s, head,
+    setMotion: (v) => { motion = v; },
+    height: legH + torsoH + (s.kid ? 7 : 6),
+  };
 }
 
 // ------------------------------------------------------------------- dog
@@ -229,10 +314,10 @@ export function buildDog(spec) {
   const seed = 0.31;
   const path = s.path;
   let travel = seed, dir = 1;
-  function update(t) {
+  function update(t, dt = 1 / 60) {
     const k = t + seed * 20;
     if (path) {
-      travel += dir * 0.055 * (s.speed || 1) * 0.016;
+      travel += dir * 0.055 * (s.speed || 1) * dt;
       if (travel > 1) { travel = 1; dir = -1; }
       if (travel < 0) { travel = 0; dir = 1; }
       const [a, b] = path;
@@ -258,10 +343,12 @@ export function buildDog(spec) {
 export const CAST = [
   {
     name: 'Row',
-    role: 'the kid with the flashlight',
+    role: 'you',
+    player: true, driven: true,
     kid: true, skin: 'skinLight', hair: 'hairGinger', hairStyle: 'fringe',
-    shirt: 'shirtRed', trouser: 'jeans', torch: true, torchAim: [-8, 0],
-    pos: [-38, 2, 22], face: -2.2,
+    shirt: 'shirtRed', trouser: 'jeans', torch: true, torchAim: [0, 0],
+    collar: 'shirtCream', bag: 'trouserTan',
+    pos: [-38, 2, 60], face: Math.PI,
     lines: [
       'My bike’s in the yard. I’m not going home yet.',
       'You hear that? Under the streetlight it hums. It gets louder after eleven.',
@@ -274,6 +361,7 @@ export const CAST = [
     role: 'three doors down, still up',
     skin: 'skinLight', hair: 'hairGrey', hairStyle: 'bald', glasses: true,
     shirt: 'shirtPlaid', trouser: 'trouserTan', pose: 'sit', radio: true, smoke: true,
+    collar: 'fabricPale',
     pos: [-62, 6, -20], face: 0.5,
     lines: [
       'Ball game’s in the tenth. I’m not going in until it’s over.',
@@ -285,7 +373,8 @@ export const CAST = [
     name: 'Mrs Okonjo',
     role: 'the porch, arms folded',
     skin: 'skinDeep', hair: 'hairDark', shirt: 'shirtGreen', trouser: 'trouserGrey',
-    armsFolded: true, pos: [-72, 11, -12], face: 0.15,
+    armsFolded: true, hairStyle: 'long', collar: 'fabricPale',
+    pos: [-72, 11, -12], face: 0.15,
     lines: [
       'Bins go out tonight. Nobody remembers but me.',
       'That boy has been up and down this street since supper.',
@@ -296,7 +385,8 @@ export const CAST = [
     name: 'Deb',
     role: 'walking Biscuit',
     skin: 'skinMid', hair: 'hairBrown', shirt: 'shirtCream', trouser: 'jeans',
-    jacket: 'shirtBlue', pos: [40, 2, 34], face: 1.5,
+    jacket: 'shirtBlue', hairStyle: 'long', cuff: 'trouserGrey',
+    pos: [40, 2, 34], face: 1.5,
     path: [[40, 34], [-190, 34]], speed: 1,
     lines: [
       'Last loop. She’ll pull all the way to the corner and then refuse to come back.',
@@ -308,7 +398,7 @@ export const CAST = [
     name: 'Sam',
     role: 'papers, tomorrow’s round',
     kid: true, skin: 'skinMid', hair: 'hairDark', cap: 'shirtBlue',
-    shirt: 'shirtCream', trouser: 'jeans',
+    shirt: 'shirtCream', trouser: 'jeans', bag: 'shirtGreen',
     pos: [62, 2, 26], face: 2.9,
     lines: [
       'Folding for the morning round. Ninety-one houses, and eleven of them tip.',

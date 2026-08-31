@@ -169,7 +169,11 @@ export function buildLights(scene, anchors) {
     return l;
   };
 
-  rig.porches = (anchors.porches || []).map(p => bulb(p.pos, 0xffc98a, p.power, p.dist));
+  // Same cap, same reason as the spills below: the far end of the street can
+  // be emissive-only without anyone noticing.
+  const porches = (anchors.porches || []).slice()
+    .sort((a, b) => Math.abs(a.pos[0]) - Math.abs(b.pos[0])).slice(0, 6);
+  rig.porches = porches.map(p => bulb(p.pos, 0xffc98a, p.power, p.dist));
   rig.porchA = rig.porches[0];
   rig.porchB = rig.porches[1] || rig.porches[0];
 
@@ -180,13 +184,26 @@ export function buildLights(scene, anchors) {
   // fragment shader for every pixel, so an unbounded row of houses each
   // contributing three point lights is a frame-rate cliff — the far ends of
   // the street are small in frame and lose nothing by going emissive-only.
-  const SPILL_CAP = 12;
+  const SPILL_CAP = 8;
   const spills = (anchors.spills || [])
     .slice()
     .sort((a, b) => (Math.abs(a.pos[0]) - Math.abs(b.pos[0])))
     .slice(0, SPILL_CAP);
   rig.spills = spills.map(s => bulb(s.pos, 0xffb45c, s.power, s.dist));
   rig.spillDropped = (anchors.spills || []).length - spills.length;
+
+  // Inside the store. Fluorescent, i.e. the wrong colour temperature for the
+  // whole rest of the street, which is exactly why a lit shopfront reads from
+  // the far end of the road.
+  rig.shop = (anchors.shopLights || []).map(p => bulb(p, 0xd8ecff, 6500, 105));
+  rig.signs = (anchors.signLights || []).map((p, i) =>
+    bulb(p, i ? 0xcfe4ff : 0xff8fa8, 5000, 70));
+
+  // The shelter's strip light and the phone box glow: both are places a
+  // player will stand, and both are the wrong colour temperature for the
+  // street, which is the point.
+  if (anchors.shelter) rig.shelter = bulb(anchors.shelter, 0xcfe4ff, 7000, 90);
+  if (anchors.phone) rig.phone = bulb(anchors.phone, 0xffe0a8, 4200, 70);
 
   // The television. Flickers on its own clock, drives both the point light and
   // the emissive plane in block.js.
