@@ -84,6 +84,7 @@ export function run(track, policyName, opts = {}) {
     if (prevS > path.total * 0.8 && loc.s < path.total * 0.2) lap++;   // crossed the line
     prevS = loc.s;
     s = loc.s;
+    c.state.offRoad = Math.abs(loc.u) > ROAD_HALF - 4;
 
     if (opts.trace && t >= nextTrace) {
       nextTrace += 1;
@@ -110,10 +111,10 @@ export function run(track, policyName, opts = {}) {
       if (ahead < -path.total / 2) ahead += path.total;
       if (ahead < 0 || ahead > 460 || !seen.has(h)) continue;
       if (t - seen.get(h) < REACT) continue;
-      // 26 in from the edge, not 18: the lateral controller overshoots its
-      // target by about eight voxels and the car is eighteen wide, so aiming at
-      // 18 put the outside wheels on the kerb every time.
-      targetU = h.u > 0 ? -(ROAD_HALF - 26) : (ROAD_HALF - 26);
+      // 34 in from the edge. The lateral controller overshoots by ten to
+      // fifteen voxels and the car is eighteen wide, so anything closer than
+      // this puts the outside wheels over the kerb line on every single dodge.
+      targetU = h.u > 0 ? -(ROAD_HALF - 34) : (ROAD_HALF - 34);
       break;
     }
 
@@ -147,7 +148,7 @@ export function run(track, policyName, opts = {}) {
     while (dh < -Math.PI) dh += Math.PI * 2;
     const steer = Math.max(-1, Math.min(1, dh * 3.2));
 
-    c.step(dt, policy(c, s, path), steer, ground);
+    c.step(dt, policy(c, s, path), steer, ground, false, false);
     t += dt;
   }
 

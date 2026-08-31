@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { buildSky } from '../lights.js';
 import { Post } from '../post.js';
 import { Ground } from '../walk.js';
-import { buildTrack, sectionAt, safeSpot, lifeSpots } from './track.js';
+import { buildTrack, sectionAt, safeSpot, lifeSpots, ROAD_HALF } from './track.js';
 import { buildCar } from './car.js';
 import { buildLife, buildTraffic } from './life.js';
 import { compare, run } from './sim.js';
@@ -174,6 +174,7 @@ const hud = {
   best: document.getElementById('best'),
   lap: document.getElementById('lap'),
   drift: document.getElementById('drift'),
+  gear: document.getElementById('gear'),
 };
 
 const LAPS = 3;
@@ -243,6 +244,9 @@ function tick() {
   }
   prevS = loc.s;
   s = loc.s;
+  // Only the track knows where the tarmac ends, so it is the track that tells
+  // the car. |u| is exact and free — we already have it from locate().
+  car.state.offRoad = Math.abs(loc.u) > ROAD_HALF - 4;
 
   // Somebody else's car. Solid, heavy, and the hardest thing on the circuit to
   // hit -- but still a slowdown you drive out of, not a spin.
@@ -311,7 +315,8 @@ function tick() {
   fill.target.position.set(car.state.x, car.state.yView, car.state.z);
   fill.position.set(car.state.x + 340, car.state.yView + 110, car.state.z + 260);
 
-  hud.speed.textContent = `${Math.round(car.state.speed * 0.08 * 3.6)}`;
+  hud.speed.textContent = `${Math.round(Math.abs(car.state.speed) * 0.08 * 3.6)}`;
+  hud.gear.textContent = car.state.speed < -1 ? 'R' : '';
   hud.drift.classList.toggle('on', Math.abs(car.state.slip) > 0.12);
   hud.time.textContent = lapTime.toFixed(2);
   hud.best.textContent = best ? `best ${best.toFixed(2)}s` : '';

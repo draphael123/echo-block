@@ -38,6 +38,9 @@
   #msg .pb { color: #ffb45c; }
   #msg .dim { color: #5b657a; }
 
+  #gear {
+    color: #ffd9a0; letter-spacing: .3em; font-size: 15px; min-height: 18px;
+  }
   #drift {
     color: #ff8a4c; letter-spacing: .34em; font-size: 11px; margin-top: 2px;
     opacity: 0; transition: opacity .12s;
@@ -80,7 +83,7 @@
 <div id="ui">
   <div id="sect"></div>
   <a id="back" href="./index.html">&larr; back to the block</a>
-  <div id="dash"><div id="speed">0</div><div id="drift">DRIFT</div></div>
+  <div id="dash"><div id="speed">0</div><div id="gear"></div><div id="drift">DRIFT</div></div>
   <div id="clock"><div id="time">0.00</div><div id="best"></div><div id="lap"></div></div>
   <div id="msg">accelerate to start</div>
   <div id="cam">
@@ -93,7 +96,8 @@
   </div>
   <div id="help">
     <b>w</b> throttle &nbsp; <b>s</b> brake &nbsp; <b>a</b>/<b>d</b> steer<br>
-    <b>space</b> drift &nbsp; <b>q</b>/<b>e</b> look &nbsp; <b>v</b> look back<br>
+    <b>space</b> drift &nbsp; <b>s</b> held at a stop &rarr; reverse<br>
+    <b>q</b>/<b>e</b> look &nbsp; <b>v</b> look back<br>
     <b>scroll</b> zoom &nbsp;
     <b>c</b> repaint &nbsp; <b>r</b> reset &nbsp; <b>h</b> hide<br>
     <span style="opacity:.7">console: <b>DYNAMO.sim()</b></span>

@@ -33,12 +33,12 @@ import * as D from './district.js';
 // changed three times and each change has to stay a one-line change.
 export const ROAD_HALF = 108;
 const KERB = 5;
-// The footway, and it is a real one now: 40 voxels is 3.2 metres, where it used
+// The footway, and it is a real one now: 52 voxels is 4.2 metres, where it used
 // to be 14 (1.1m — barely a kerb edge, and too narrow for two people to pass or
 // for a bench to stand on without blocking it). Everything that lives on the
 // pavement is placed relative to PAVE rather than by a hand-picked offset, so
 // widening it again moves the benches, bins, boxes, hedges and walkers with it.
-export const PAVE = 40;
+export const PAVE = 52;
 const VERGE = 14;
 const APRON = 6;
 
@@ -542,10 +542,12 @@ function parked(w, path) {
     [3480, 1], [3760, -1], [4060, 1], [4380, -1], [4560, 1],
   ];
   for (const [s, side] of spots) {
-    // Half on the kerb. Parked at ROAD_HALF - 13 a 26-wide car spans u 18..44,
-    // which is exactly where a driver dodging a skip goes — the harness found
-    // it as two crashes on clear road with nothing to hit.
-    path.place(s, side * (ROAD_HALF + 8), f);
+    // FULLY off the carriageway. Half on the kerb left the body reaching 5
+    // voxels onto the road, and a driver running wide of a skip clipped it and
+    // wedged — sixteen crashes a lap, all at two spots. There is a 4.2-metre
+    // footway now, so they can sit on it properly, which is what cars do on a
+    // street this size anyway.
+    path.place(s, side * (ROAD_HALF + 20), f);
     const rot = (alongRot(f.tx, f.tz) + (hash3(Math.round(s), 1, 2) > 0.5 ? 180 : 0)) % 360;
     w.merge(proto, { ox: Math.round(f.x), oz: Math.round(f.z), oy: elev(s), rotY: rot });
   }
@@ -728,7 +730,7 @@ export function buildTrack() {
   const probe = frame();
   for (let s = 0; s < path.total; s += 12) {
     const road = elev(s) - 1;
-    for (let u = -(ROAD_HALF - 6); u <= ROAD_HALF - 6; u += 8) {
+    for (let u = -(ROAD_HALF - 10); u <= ROAD_HALF - 10; u += 8) {
       path.place(s, u, probe);
       const fl = ground0.ceilingAt(probe.x, probe.z);
       if (ground0.isBlocked(probe.x, probe.z) || Math.abs(fl - road) > STEP_UP) {

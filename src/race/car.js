@@ -50,6 +50,30 @@ const CAR_PROBE = 2.6;                 // ~18 voxels across, against a 26-wide c
 // the road in the hollow on the long dark. Ask the field directly instead.
 const RIDE = 2;
 
+// OFF THE TARMAC.
+//
+// A wall stopping you is an impact; grass slowing you is a SURFACE, and they
+// are different things. Without this the verge and the footway had exactly the
+// same grip as the road, so the only cost of cutting a corner across somebody's
+// front garden was whatever you happened to hit on the way — which made the
+// wide road decorative. Drag you cannot power out of, and less of the engine.
+// 165 took 240 down to 39 in a second and a half, which is not grass, it is a
+// ploughed field. Grass should cost you the corner, not the lap.
+const OFF_DRAG = 95, OFF_ACCEL = 0.55, OFF_TURN = 0.78;
+
+// REVERSE.
+//
+// There was none, and its absence had been quietly shaping the design: nosing
+// into a skip at walking pace was unrecoverable, so there was a stuck-watchdog
+// that teleported you out, so an ordinary mistake became a respawn. A car that
+// can back up needs none of that.
+//
+// It engages only after you have held the brake at a standstill for a moment,
+// which is both what selecting a gear feels like and what stops the harness --
+// whose braking policy holds throttle at -1 through every corner -- from
+// quietly driving the lap backwards.
+const V_REV = 78, REV_ACCEL = 96, REV_ENGAGE = 0.35;
+
 // Headlights do not care how fast you are going — that was the dynamo, and it
 // went with the bike. What survives is the structural half of that idea: the
 // town's lighting IS the level design, so an unlit stretch is one where the
@@ -152,33 +176,56 @@ export function buildCar(paint = 0) {
     // Ground height under the car, and the smoothed version the body sits at.
     // The car used to be nailed to y = 0, which was invisible while the world
     // was flat and would have left it four metres under the chapel.
-    y: 0, yView: 0, shake: 0, wedged: false,
+    y: 0, yView: 0, shake: 0, wedged: false, offRoad: false, rev: 0,
   };
 
-  function step(dt, throttle, steer, ground, drift = false) {
+  function step(dt, throttle, steer, ground, drift = false, allowReverse = true) {
     // An impact is a moment, not a cutscene. The old version took the controls
     // away for a second and a half and span the car on its axis, which is where
     // the "weird dance" came from -- no racing game does that, and it turned
     // clipping a kerb into a punishment you could only sit through.
     if (state.crash > 0) state.crash = Math.max(0, state.crash - dt);
 
-    if (throttle > 0) state.speed += ACCEL * throttle * dt;
-    else state.speed += (BRAKE * throttle - DRAG) * dt;
-    state.speed = Math.max(0, Math.min(V_MAX, state.speed));
+    const off = state.offRoad;
+    const spd = state.speed;
+    // hold the brake at a standstill and the car selects reverse
+    if (throttle < 0 && spd <= 0.5) state.rev += dt;
+    else if (throttle >= 0) state.rev = 0;
+    // The harness brakes by holding throttle at -1 through every corner, so
+    // without this it selects reverse the moment anything stops it and drives
+    // the rest of the lap backwards. A racing driver does not use reverse.
+    const canRev = allowReverse && state.rev > REV_ENGAGE;
 
-    const f = state.speed / V_MAX;
+    const bleed = (v, amount) => Math.sign(v) * Math.max(0, Math.abs(v) - amount);
+    if (throttle > 0) {
+      if (spd < 0) state.speed = Math.min(0, spd + BRAKE * dt);     // brake out of reverse
+      else state.speed = spd + ACCEL * throttle * dt * (off ? OFF_ACCEL : 1);
+    } else if (throttle < 0) {
+      if (spd > 0.5) state.speed = spd + BRAKE * throttle * dt;
+      else if (canRev) state.speed = Math.max(-V_REV, spd - REV_ACCEL * dt);
+    } else {
+      state.speed = bleed(spd, DRAG * dt);
+    }
+    if (off) state.speed = bleed(state.speed, OFF_DRAG * dt);
+    state.speed = Math.max(canRev ? -V_REV : 0, Math.min(V_MAX, state.speed));
+
+    const f = Math.abs(state.speed) / V_MAX;
+    // Steering is referred to the direction of TRAVEL: turn the wheel one way
+    // going backwards and the car rotates the other, because it is the back of
+    // it that is leading.
+    const way = state.speed < 0 ? -1 : 1;
     // A car cannot pivot on the spot, but it must keep SOME authority at a
     // crawl or a nudge into a kerb is permanent — the bike taught me that.
     const sliding = drift && state.speed > 55;
     state.turnRate = steer * (TURN_SLOW + (TURN_FAST - TURN_SLOW) * f)
-      * (0.22 + 0.78 * Math.min(1, state.speed / 30))
-      * (sliding ? DRIFT_TURN : 1);
+      * (0.22 + 0.78 * Math.min(1, Math.abs(state.speed) / 30)) * way
+      * (sliding ? DRIFT_TURN : 1) * (state.offRoad ? OFF_TURN : 1);
     state.heading += state.turnRate * dt;
 
     // The slip angle: how far the nose leads the direction of travel. It builds
     // while the handbrake is in and washes off when it is not, so letting go is
     // a recovery you can feel rather than a switch.
-    const wantSlip = sliding ? steer * MAX_SLIP * Math.min(1, state.speed / 130) : 0;
+    const wantSlip = sliding ? steer * MAX_SLIP * Math.min(1, Math.abs(state.speed) / 130) : 0;
     state.slip += (wantSlip - state.slip) * Math.min(1, dt * (sliding ? SLIP_ON : SLIP_OFF));
     if (Math.abs(state.slip) > 0.02) {
       state.speed = Math.max(0, state.speed - DRIFT_SCRUB * (Math.abs(state.slip) / MAX_SLIP) * dt);
@@ -212,12 +259,12 @@ export function buildCar(paint = 0) {
     // against a wall. Rather than add a reverse gear for this one case, being
     // stuck IS a crash — the recovery path already knows how to undo one, and
     // a player who beaches the car wants the same answer the harness does.
-    // Wedged: nosed into something at walking pace with the throttle open and
-    // no reverse gear. That is the one case that needs a reset, and a reset is
-    // what every racing game gives you -- not a pirouette.
-    if (throttle > 0 && state.speed < 8) {
+    // The last-resort reset, and it is now genuinely last-resort: you can back
+    // out of anything, so this only fires if you have held the throttle into
+    // something for four seconds without ever trying reverse.
+    if (throttle > 0 && Math.abs(state.speed) < 8) {
       state.stuck += dt;
-      if (state.stuck > 1.3) { state.stuck = 0; state.wedged = true; }
+      if (state.stuck > 4) { state.stuck = 0; state.wedged = true; }
     } else state.stuck = 0;
     return state;
   }
@@ -239,7 +286,7 @@ export function buildCar(paint = 0) {
     state.x = x; state.z = z; state.heading = heading;
     if (y !== undefined) { state.y = y; state.yView = y; }
     state.speed = 0; state.turnRate = 0; state.roll = 0; state.stuck = 0; state.slip = 0;
-    state.crash = 0; state.wedged = false;
+    state.crash = 0; state.wedged = false; state.rev = 0; state.offRoad = false;
     root.rotation.z = 0; chassis.rotation.z = 0;
   }
 
