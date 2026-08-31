@@ -1,62 +1,96 @@
-// The block itself. One street, two houses, a driveway between them.
+// The block. A street running along X with houses down both sides.
 //
-// Coordinates: 1 unit = 1 voxel ~= 8cm. +Z is toward the camera (the road),
-// -Z is back into the lots. Road surface sits at y=0; kerbs, walks and lawns
-// are raised to y=2.
+// Coordinates: 1 unit = 1 voxel ~= 8cm. Road surface sits at y=0; kerbs,
+// walks and lawns are raised to GROUND=2.
+//
+//   z <  -30   far row of houses, fronts facing +Z (toward the road)
+//   z  -30..42 far lawns, then the pavement, then the kerb
+//   z   46..118 the road
+//   z  118..140 near kerb and pavement
+//   z  140..206 near lawns
+//   z >  206   near row of houses, fronts facing -Z
+//
+// The ground plate is ONE voxel thick. Its underside is never visible from any
+// camera above it, so the mesher drops those faces (`noFloorBelow`) rather
+// than the plate being four courses deep — at this street's size that is the
+// difference between a one-million-voxel scene and a three-million one.
 import * as THREE from 'three';
 import { VoxWorld, meshWorld, hash3 } from './voxel.js';
 import { PALETTE, tint } from './palette.js';
 import * as P from './props.js';
 
-export const GROUND = 2;          // top of the raised ground (lawn / walk)
-export const BOUNDS = { x0: -224, x1: 172, z0: -112, z1: 132 };
+export const GROUND = 2;
+export const ROAD = { z0: 46, z1: 118 };
+export const BOUNDS = { x0: -400, x1: 300, z0: -122, z1: 268 };
 
 const rnd = (x, z, s = 0) => hash3(x, s, z);
+const shingleFn = (px, py, pz) => (rnd(px, pz, py) > 0.8 ? 'shingleDark' : 'shingle');
+const brickFn = (px, py, pz) => (rnd(px, pz, py) > 0.85 ? 'brickDark' : 'brick');
 
 // --------------------------------------------------------------- ground
+// Driveways are declared up front so the ground can pave them.
+const DRIVES = [
+  { x0: -12, x1: 26, z0: -30, z1: 46 },      // between the hero and house B
+  { x0: -206, x1: -172, z0: -30, z1: 46 },
+  { x0: 276, x1: 310, z0: -30, z1: 46 },
+  { x0: -160, x1: -126, z0: 118, z1: 206 },  // near side
+  { x0: 8, x1: 42, z0: 118, z1: 206 },
+];
+const WALKS = [
+  { x0: -76, x1: -62, z0: -30, z1: 42 },     // the hero's front walk
+  { x0: -224, x1: -212, z0: -30, z1: 42 },
+  { x0: 218, x1: 230, z0: -30, z1: 42 },
+  { x0: -60, x1: -48, z0: 122, z1: 206 },
+  { x0: 96, x1: 108, z0: 122, z1: 206 },
+];
+const inAny = (list, x, z) => list.some(d => x >= d.x0 && x < d.x1 && z >= d.z0 && z < d.z1);
+
 function ground(w) {
   const { x0, x1, z0, z1 } = BOUNDS;
+  const paved = (x, z, r) => {
+    const joint = (x + 900) % 17 === 0 || (z + 900) % 21 === 0;
+    return joint ? 'concreteOld' : (r > 0.9 ? 'concreteOld' : 'concrete');
+  };
   for (let x = x0; x < x1; x++) for (let z = z0; z < z1; z++) {
     const r = rnd(x, z);
-    if (z >= 46) {                                   // the road
+    const edge = x < x0 + 2 || x >= x1 - 2 || z < z0 + 2 || z >= z1 - 2;
+
+    if (z >= ROAD.z0 && z < ROAD.z1) {                       // the road
       let c = r > 0.86 ? 'asphaltWorn' : (r < 0.10 ? 'asphaltPatch' : 'asphalt');
-      // gutter line and a long tar seam down the middle of the lane
-      if (z === 46 || z === 47) c = 'asphaltPatch';
-      if (z === 68 && (x + 200) % 26 < 14) c = 'roadLine';
+      if (z < ROAD.z0 + 2 || z >= ROAD.z1 - 2) c = 'asphaltPatch';   // gutters
+      const mid = (ROAD.z0 + ROAD.z1) >> 1;
+      if (z >= mid && z < mid + 2 && (x + 900) % 26 < 14) c = 'roadLine';
       w.set(x, -1, z, c);
-    } else if (z >= 42) {                            // kerb
-      for (let y = -1; y <= GROUND; y++) w.set(x, y, z, y === GROUND ? 'curb' : 'concreteOld');
-    } else {                                         // everything behind it
-      const walk = z >= 26 && z < 42;
-      const drive = x >= -12 && x < 26 && z < 26;
-      let c;
-      if (walk || drive) {
-        // slabs, with a crack every few joints
-        const joint = walk ? ((x + 300) % 17 === 0) : ((z + 300) % 21 === 0);
-        c = joint ? 'concreteOld' : (r > 0.9 ? 'concreteOld' : 'concrete');
-      } else if (z >= 26) {
-        c = r > 0.84 ? 'grassDry' : 'grass';
-      } else {
-        c = r > 0.86 ? 'grassDry' : (r < 0.03 ? 'dirt' : 'grass');
-      }
-      // the y=-1 course is never seen; it exists so the plate's underside is
-      // culled by solidBelow instead of emitting a face per ground voxel
-      for (let y = -1; y <= GROUND; y++) w.set(x, y, z, y === GROUND ? c : 'dirt');
+      // a driveway apron cuts the kerb down to the road
+      if (inAny(DRIVES, x, z)) w.set(x, -1, z, 'concreteOld');
+    } else if ((z >= ROAD.z0 - 4 && z < ROAD.z0) || (z >= ROAD.z1 && z < ROAD.z1 + 4)) {
+      const drive = inAny(DRIVES, x, z);
+      for (let y = -1; y <= GROUND; y++)
+        w.set(x, y, z, y === GROUND ? (drive ? 'concreteOld' : 'curb') : 'concreteOld');
+      if (drive) w.set(x, GROUND, z, 'concreteOld');
+    } else {
+      const walk = (z >= ROAD.z0 - 22 && z < ROAD.z0 - 4) || (z >= ROAD.z1 + 4 && z < ROAD.z1 + 22);
+      const hard = walk || inAny(DRIVES, x, z) || inAny(WALKS, x, z);
+      const c = hard ? paved(x, z, r)
+        : (r > 0.85 ? 'grassDry' : (r < 0.03 ? 'dirt' : 'grass'));
+      w.set(x, GROUND, z, c);
+      // a skirt at the plate's outer boundary so it is not a floating sheet
+      if (edge) for (let y = -1; y < GROUND; y++) w.set(x, y, z, 'dirt');
     }
   }
-  // the front walk, from house A's steps out to the pavement
-  for (let x = -76; x < -62; x++) for (let z = -12; z < 30; z++)
-    w.set(x, GROUND, z, (z + 300) % 19 === 0 ? 'concreteOld' : 'concrete');
 }
 
-// --------------------------------------------------------------- houses
+// --------------------------------------------------------------- windows
 // A window that is actually recessed: cut through the wall, set the glass on
-// the inner face, and frame it. Flat windows painted on a wall look like
+// the outer face, and frame it. Flat windows painted on a wall look like
 // stickers, and at this voxel size the 2-voxel reveal is very visible.
 // Mullions matter more than they sound like they should: a lit rectangle with
-// nothing crossing it reads as a sticker on the wall no matter how good the
-// colour is. The cross sits one voxel PROUD of the glass so it casts into the
-// reveal, and the curtain band keeps the pane from being one flat value.
+// nothing crossing it reads as a sticker no matter how good the colour is.
+// The cross sits one voxel PROUD of the glass, and the curtain band keeps the
+// pane from being one flat value.
+//
+// `dir` is +1 when the wall's outward direction is +Z, -1 when it is -Z, so
+// one routine serves both rows of houses.
 function pane(w, x, y, z, ww, hh, glass, curtain) {
   if (!glass) return;
   w.box(x, y, z, ww, hh, 1, glass);
@@ -67,20 +101,21 @@ function pane(w, x, y, z, ww, hh, glass, curtain) {
   w.box(x + 4, y, z, ww - 8, 2, 1, tint(glass, 0.30));       // something on the sill
 }
 
-function windowZ(w, x, y, z, ww, hh, glass, trim, opts) {
-  const { curtain = false, mullions = true } = opts || {};
-  w.cut(x, y, z, ww, hh, 2);
-  pane(w, x, y, z + 2, ww, hh, glass, curtain);
+function windowZ(w, x, y, fz, ww, hh, glass, trim, opts) {
+  const { curtain = false, mullions = true, dir = 1 } = opts || {};
+  w.cut(x, y, dir > 0 ? fz : fz - 1, ww, hh, 2);
+  pane(w, x, y, fz + 2 * dir, ww, hh, glass, curtain);
   if (mullions) {
-    w.box(x + (ww >> 1), y, z + 1, 1, hh, 1, trim);
-    w.box(x, y + (hh >> 1), z + 1, ww, 1, 1, trim);
+    w.box(x + (ww >> 1), y, fz + dir, 1, hh, 1, trim);
+    w.box(x, y + (hh >> 1), fz + dir, ww, 1, 1, trim);
   }
-  w.box(x - 1, y - 1, z, ww + 2, 1, 1, trim);
-  w.box(x - 1, y + hh, z, ww + 2, 1, 1, trim);
-  w.box(x - 1, y, z, 1, hh, 1, trim);
-  w.box(x + ww, y, z, 1, hh, 1, trim);
-  w.box(x - 2, y - 2, z, ww + 4, 1, 1, trim);       // sill
+  w.box(x - 1, y - 1, fz, ww + 2, 1, 1, trim);
+  w.box(x - 1, y + hh, fz, ww + 2, 1, 1, trim);
+  w.box(x - 1, y, fz, 1, hh, 1, trim);
+  w.box(x + ww, y, fz, 1, hh, 1, trim);
+  w.box(x - 2, y - 2, fz, ww + 4, 1, 1, trim);       // sill
 }
+
 function windowX(w, x, y, z, dd, hh, glass, trim, opts) {
   const { curtain = false } = opts || {};
   w.cut(x, y, z, 2, hh, dd);
@@ -100,53 +135,63 @@ function windowX(w, x, y, z, dd, hh, glass, trim, opts) {
   w.box(x + 1, y, z + dd, 1, hh, 1, trim);
 }
 
+function doorZ(w, x, y, fz, ww, hh, colour, trim, dir) {
+  w.cut(x, y, dir > 0 ? fz : fz - 1, ww, hh, 2);
+  w.box(x, y, fz + dir, ww, hh, 1, colour);
+  w.box(x + (ww >> 1) - 2, y + hh - 10, fz + dir, 4, 6, 1, 'winWarmDim');
+  w.set(x + ww - 3, y + hh - 12, fz + dir, 'chrome');
+  w.box(x - 2, y - 1, fz, ww + 4, 1, 3, trim);
+}
+
 // Fill the triangular gable ends left open by a ridge-along-X roof.
 function gableEnds(w, x, y, z, wid, dep, c) {
   const half = Math.ceil(dep / 2);
   for (let k = 0; k < dep; k++) {
     const rise = Math.min(half, Math.min(k, dep - 1 - k));
-    for (let j = 0; j < rise; j++) {
-      for (let t = 0; t < 2; t++) {
-        w.set(x + t, y + j, z + k, c);
-        w.set(x + wid - 1 - t, y + j, z + k, c);
-      }
+    for (let j = 0; j < rise; j++) for (let t = 0; t < 2; t++) {
+      w.set(x + t, y + j, z + k, c);
+      w.set(x + wid - 1 - t, y + j, z + k, c);
     }
   }
 }
 
-function houseA(w, anchors) {
-  const x = -122, z = -86, wid = 104, dep = 56, wallTop = 46;
+// A porch light, and the anchor the rig hangs a bulb on.
+function porchLamp(w, anchors, x, y, fz, dir, on = true) {
+  w.box(x, y + 1, fz, 2, 2, 1, 'metalDark');
+  if (on) {
+    w.box(x, y, fz + dir, 2, 1, 1, 'porchBulb');
+    anchors.porches.push({ pos: [x + 1, y + 1, fz + 2 * dir], power: 4200, dist: 95 });
+  }
+}
+
+// --------------------------------------------------------------- houses
+// The hero. Kept as a bespoke recipe rather than folded into the generic
+// builder — its porch, its television and its window rhythm are the framing
+// that the whole look was tuned against, and they are worth not regressing.
+function heroHouse(w, anchors) {
+  const x = -122, z = -88, wid = 104, dep = 58, wallTop = 46;
   const siding = (px, py) => (py % 4 === 0 ? 'sidingAdark' : 'sidingA');
-  w.box(x, GROUND + 1, z, wid, 6, dep, (px, py, pz) =>
-    (rnd(px, pz, py) > 0.85 ? 'brickDark' : 'brick'));
+  w.box(x, GROUND + 1, z, wid, 6, dep, brickFn);
   w.shell(x, GROUND + 7, z, wid, wallTop, dep, 2, siding, { top: false, bottom: false });
   gableEnds(w, x, GROUND + 7 + wallTop, z, wid, dep, siding);
-  w.gable(x, GROUND + 7 + wallTop, z, wid, dep, (px, py, pz) =>
-    (rnd(px, pz, py) > 0.8 ? 'shingleDark' : 'shingle'), { eave: 3, thick: 3 });
+  w.gable(x, GROUND + 7 + wallTop, z, wid, dep, shingleFn, { eave: 3, thick: 3 });
 
-  const fz = z + dep - 2;                            // front face
-  const y0 = GROUND + 7;
+  const fz = z + dep - 2, y0 = GROUND + 7;
 
-  // door, under the porch roof
-  w.cut(x + 40, y0, fz, 12, 22, 2);
-  w.box(x + 40, y0, fz + 1, 12, 22, 1, 'doorRed');
-  w.box(x + 44, y0 + 12, fz, 4, 6, 1, 'winWarmDim');   // the glass in the door
-  w.set(x + 49, y0 + 10, fz, 'chrome');
-  w.box(x + 38, y0 - 1, fz - 1, 16, 1, 3, 'trimA');
-
-  // front windows: one warm behind a curtain, one dark, one is the television
+  doorZ(w, x + 40, y0, fz, 12, 22, 'doorRed', 'trimA', 1);
   windowZ(w, x + 14, y0 + 12, fz, 18, 20, 'winWarm', 'trimA', { curtain: true });
   windowZ(w, x + 66, y0 + 12, fz, 18, 20, null, 'trimA');
   windowZ(w, x + 88, y0 + 14, fz, 12, 14, 'winWarmDim', 'trimA', { curtain: true });
-  // upstairs, in the gable end on the right
   windowX(w, x + wid - 2, y0 + wallTop + 4, z + 24, 10, 12, 'glassDark', 'trimA');
-  // side windows so the flank is not a blank wall
   windowX(w, x, y0 + 16, z + 16, 12, 16, 'winWarmDim', 'trimA', { curtain: true });
   windowX(w, x, y0 + 16, z + 36, 12, 16, 'glassDark', 'trimA');
 
-  // the television window — cut here, filled by an animated mesh in main.js
-  const tv = { x: x + 66, y: y0 + 12, z: fz + 2.5, w: 18, h: 20 };
-  anchors.tv = tv;
+  anchors.tv = { x: x + 66, y: y0 + 12, z: fz + 2.5, w: 18, h: 20 };
+  anchors.spills.push(
+    { pos: [x + 23, y0 + 22, fz + 8], power: 7000, dist: 110 },
+    { pos: [x + 94, y0 + 21, fz + 8], power: 3000, dist: 80 },
+    { pos: [x - 8, y0 + 24, z + 22], power: 3400, dist: 75 },
+  );
 
   // ---- porch
   const px0 = x + 24, px1 = x + 74, pz0 = fz + 2, pz1 = fz + 20;
@@ -156,141 +201,234 @@ function houseA(w, anchors) {
     w.box(cx, y0 + 1, pz1 - 5, 4, 30, 4, 'trimA');
     w.box(cx - 1, y0 + 30, pz1 - 6, 6, 2, 6, 'trimA');
   }
-  w.box(px0 - 2, y0 + 32, pz0 - 2, px1 - px0 + 4, 3, pz1 - pz0 + 4, (pxx, pyy, pzz) =>
-    (rnd(pxx, pzz, pyy) > 0.8 ? 'shingleDark' : 'shingle'));
-  // steps down to the walk
+  w.box(px0 - 2, y0 + 32, pz0 - 2, px1 - px0 + 4, 3, pz1 - pz0 + 4, shingleFn);
   for (let s = 0; s < 3; s++)
     w.box(x + 40, GROUND + 1 + s * 2, pz1 + s * 3, 14, 2, 3, 'concreteOld');
-  // railing
   for (const rz of [pz1 - 1]) {
     for (let i = px0; i < x + 40; i += 3) w.box(i, y0 + 1, rz, 1, 10, 1, 'trimA');
     for (let i = x + 54; i < px1; i += 3) w.box(i, y0 + 1, rz, 1, 10, 1, 'trimA');
     w.box(px0, y0 + 11, rz, x + 40 - px0, 1, 2, 'trimA');
     w.box(x + 54, y0 + 11, rz, px1 - (x + 54), 1, 2, 'trimA');
   }
-  // porch bulb beside the door
-  w.box(x + 56, y0 + 20, fz, 2, 3, 1, 'metalDark');
-  w.box(x + 56, y0 + 19, fz + 1, 2, 1, 1, 'porchBulb');
-  anchors.porchA = [x + 57, y0 + 20, fz + 2];
+  porchLamp(w, anchors, x + 56, y0 + 19, fz, 1);
 
-  // chimney
-  w.box(x + 16, GROUND + 7, z + 20, 12, wallTop + 34, 10, (pxx, pyy, pzz) =>
-    (rnd(pxx, pzz, pyy) > 0.82 ? 'brickDark' : 'brick'));
+  w.box(x + 16, GROUND + 7, z + 20, 12, wallTop + 34, 10, brickFn);
   w.box(x + 14, GROUND + 7 + wallTop + 34, z + 18, 16, 2, 14, 'brickDark');
-
-  // gutter along the eave, with a downpipe
   w.box(x - 3, GROUND + 7 + wallTop - 1, fz + 3, wid + 6, 2, 2, 'trimA');
   w.box(x + wid - 4, y0, fz + 3, 2, wallTop, 2, 'trimA');
-  return { x, z, wid, dep, front: fz };
+  return { x, z, wid, dep, fz };
 }
 
-function houseB(w, anchors) {
+// The one with the garage. Its front used to be a dead wall; it now carries a
+// lit room, a lit hall behind the door and a porch bulb, because it holds the
+// right-hand third of most framings and a black rectangle there kills them.
+function garageHouse(w, anchors) {
   const x = 34, z = -88, wid = 108, dep = 58, wallTop = 40;
   const siding = (px, py) => (py % 5 === 0 ? 'sidingBdark' : 'sidingB');
   w.box(x, GROUND + 1, z, wid, 5, dep, 'brickDark');
   w.shell(x, GROUND + 6, z, wid, wallTop, dep, 2, siding, { top: false, bottom: false });
   gableEnds(w, x, GROUND + 6 + wallTop, z, wid, dep, siding);
-  w.gable(x, GROUND + 6 + wallTop, z, wid, dep, (px, py, pz) =>
-    (rnd(px, pz, py) > 0.8 ? 'shingleDark' : 'shingle'), { eave: 3, thick: 3 });
+  w.gable(x, GROUND + 6 + wallTop, z, wid, dep, shingleFn, { eave: 3, thick: 3 });
 
   const fz = z + dep - 2, y0 = GROUND + 6;
-  // the garage door faces the driveway, on the -X flank
   w.cut(x, y0, z + 26, 2, 26, 28);
   w.box(x + 1, y0, z + 26, 1, 26, 28, (px, py) => (py % 3 === 0 ? 'metalDark' : 'metal'));
   w.box(x - 1, y0 + 26, z + 24, 3, 2, 32, 'trimB');
-  windowZ(w, x + 20, y0 + 12, fz, 16, 16, 'glassDark', 'trimB');
+
+  windowZ(w, x + 20, y0 + 12, fz, 16, 16, 'winWarm', 'trimB', { curtain: true });
   windowZ(w, x + 56, y0 + 12, fz, 16, 16, 'winWarmDim', 'trimB', { curtain: true });
-  windowX(w, x + wid - 2, y0 + 14, z + 20, 10, 14, 'glassDark', 'trimB');
-  // one lit room upstairs in the gable
+  windowX(w, x + wid - 2, y0 + 14, z + 20, 10, 14, 'winWarmDim', 'trimB', { curtain: true });
   windowZ(w, x + 46, y0 + wallTop + 6, fz, 12, 12, 'winWarm', 'trimB', { curtain: true });
 
-  w.cut(x + 84, y0, fz, 10, 20, 2);
-  w.box(x + 84, y0, fz + 1, 10, 20, 1, 'doorBlue');
-  w.box(x + 80, y0 + 22, fz, 2, 2, 1, 'metalDark');
-  w.box(x + 80, y0 + 21, fz + 1, 2, 1, 1, 'porchBulb');
-  anchors.porchB = [x + 81, y0 + 22, fz + 2];
-  return { x, z, wid, dep, front: fz };
+  doorZ(w, x + 84, y0, fz, 10, 20, 'doorBlue', 'trimB', 1);
+  // a stoop, so the door is not a hole in a wall
+  for (let s = 0; s < 2; s++) w.box(x + 82, GROUND + 1 + s * 2, fz + 2 + s * 3, 14, 2, 3, 'concreteOld');
+  w.box(x + 78, y0 + 24, fz + 1, 22, 2, 6, 'trimB');              // door hood
+  w.box(x + 78, y0 + 22, fz + 6, 1, 2, 1, 'trimB');
+  w.box(x + 99, y0 + 22, fz + 6, 1, 2, 1, 'trimB');
+  porchLamp(w, anchors, x + 80, y0 + 21, fz, 1);
+
+  anchors.spills.push(
+    { pos: [x + 28, y0 + 20, fz + 9], power: 6200, dist: 105 },
+    { pos: [x + 64, y0 + 20, fz + 9], power: 3200, dist: 85 },
+    { pos: [x + 52, y0 + wallTop + 12, fz + 9], power: 5000, dist: 100 },
+    { pos: [x + wid + 8, y0 + 21, z + 26], power: 2600, dist: 70 },
+  );
+  return { x, z, wid, dep, fz };
 }
 
-// A silhouette of the rest of the street, so the block does not end in fog.
-function farBlock(w) {
-  let x = -150;
-  while (x < 150) {
-    const wid = 40 + Math.round(rnd(x, 7) * 40);
-    const h = 40 + Math.round(rnd(x, 11) * 26);
-    const z = -178 - Math.round(rnd(x, 3) * 26);
-    w.box(x, GROUND, z, wid, h, 40, 'hillFar');
-    w.gable(x, GROUND + h, z, wid, 40, 'hillFar', { eave: 2, thick: 3 });
-    if (rnd(x, 5) > 0.45) {                       // a lit window or two
-      const wy = GROUND + 12 + Math.round(rnd(x, 9) * (h - 24));
-      w.box(x + 8 + Math.round(rnd(x, 13) * (wid - 20)), wy, z + 39, 6, 7, 1,
-        rnd(x, 17) > 0.6 ? 'winWarmDim' : 'winWarm');
-    }
-    x += wid + 12 + Math.round(rnd(x, 19) * 20);
+// Everything else on the street. One recipe, seeded: the point of the row is
+// rhythm and variation, not seven bespoke houses.
+function house(w, anchors, s) {
+  const { x, z, wid, dep, wallTop, dir, siding, sidingDark, trim, door, seed } = s;
+  const y0 = GROUND + 6;
+  const sidingFn = (px, py) => (py % (s.band || 4) === 0 ? sidingDark : siding);
+  const fz = dir > 0 ? z + dep - 2 : z + 1;
+  const R = (k) => rnd(seed * 7, k * 13, 3);
+
+  w.box(x, GROUND + 1, z, wid, 5, dep, s.base === 'brick' ? brickFn : 'brickDark');
+  w.shell(x, y0, z, wid, wallTop, dep, 2, sidingFn, { top: false, bottom: false });
+  gableEnds(w, x, y0 + wallTop, z, wid, dep, sidingFn);
+  w.gable(x, y0 + wallTop, z, wid, dep, shingleFn, { eave: 3, thick: 3 });
+
+  // Which rooms are awake. Every house gets at least one, or the row reads as
+  // abandoned rather than asleep.
+  const glass = (k) => (R(k) > 0.62 ? 'winWarm' : R(k) > 0.34 ? 'winWarmDim' : 'glassDark');
+  const g1 = glass(1), g2 = R(2) > 0.5 ? glass(2) : 'glassDark';
+  const gUp = R(3) > 0.55 ? 'winWarm' : 'glassDark';
+  const anyLit = [g1, g2, gUp].some(g => g !== 'glassDark');
+  const gFix = anyLit ? g1 : 'winWarmDim';
+
+  const doorX = x + Math.round(wid * 0.5) - 6;
+  doorZ(w, doorX, y0, fz, 12, 22, door, trim, dir);
+  for (let st = 0; st < 2; st++)
+    w.box(doorX - 2, GROUND + 1 + st * 2, fz + (2 + st * 3) * dir - (dir < 0 ? 2 : 0), 16, 2, 3, 'concreteOld');
+  w.box(doorX - 5, y0 + 24, fz + dir, 22, 2, 6 * (dir > 0 ? 1 : -1) + (dir < 0 ? -1 : 0), trim);
+  porchLamp(w, anchors, doorX - 6, y0 + 21, fz, dir, R(4) > 0.25);
+
+  windowZ(w, x + 12, y0 + 12, fz, 18, 18, gFix, trim, { curtain: true, dir });
+  windowZ(w, x + wid - 30, y0 + 12, fz, 18, 18, g2, trim, { curtain: g2 !== 'glassDark', dir });
+  windowZ(w, x + (wid >> 1) - 6, y0 + wallTop + 6, fz, 12, 12, gUp, trim, { curtain: gUp !== 'glassDark', dir });
+  // flanks
+  windowX(w, x, y0 + 16, z + 16, 12, 14, R(5) > 0.6 ? 'winWarmDim' : 'glassDark', trim, { curtain: true });
+  windowX(w, x + wid - 2, y0 + 16, z + dep - 30, 12, 14, R(6) > 0.6 ? 'winWarmDim' : 'glassDark', trim, { curtain: true });
+
+  if (R(7) > 0.45) {                                    // a chimney
+    const cx = x + 10 + Math.round(R(8) * (wid - 30));
+    w.box(cx, y0, z + 20, 11, wallTop + 30, 9, brickFn);
+    w.box(cx - 2, y0 + wallTop + 30, z + 18, 15, 2, 13, 'brickDark');
   }
-  // treeline behind them
+  // gutter along the street-facing eave
+  w.box(x - 3, y0 + wallTop - 1, fz + 3 * dir, wid + 6, 2, 2, trim);
+
+  const spillZ = fz + 9 * dir;
+  if (g1 !== 'glassDark') anchors.spills.push({ pos: [x + 21, y0 + 20, spillZ], power: 5200, dist: 100 });
+  if (g2 !== 'glassDark') anchors.spills.push({ pos: [x + wid - 21, y0 + 20, spillZ], power: 4200, dist: 92 });
+  if (gUp !== 'glassDark') anchors.spills.push({ pos: [x + (wid >> 1), y0 + wallTop + 12, spillZ], power: 4200, dist: 92 });
+  return { x, z, wid, dep, fz };
+}
+
+const FAR_Z = -88, NEAR_Z = 206, HOUSE_DEP = 58;
+const ROSTER = [
+  { x: -266, wid: 96, wallTop: 40, dir: 1, seed: 3, band: 5,
+    siding: 'sidingB', sidingDark: 'sidingBdark', trim: 'trimB', door: 'doorBlue', base: 'brick' },
+  { x: -410, wid: 92, wallTop: 44, dir: 1, seed: 11, band: 4,
+    siding: 'sidingA', sidingDark: 'sidingAdark', trim: 'trimA', door: 'doorRed' },
+  { x: 190, wid: 100, wallTop: 42, dir: 1, seed: 19, band: 4,
+    siding: 'sidingB', sidingDark: 'sidingBdark', trim: 'trimA', door: 'doorRed', base: 'brick' },
+  // near side, fronts facing -Z
+  { x: -262, wid: 100, wallTop: 42, dir: -1, seed: 5, band: 4, near: true,
+    siding: 'sidingA', sidingDark: 'sidingAdark', trim: 'trimA', door: 'doorBlue' },
+  { x: -116, wid: 96, wallTop: 46, dir: -1, seed: 23, band: 5, near: true,
+    siding: 'sidingB', sidingDark: 'sidingBdark', trim: 'trimB', door: 'doorRed', base: 'brick' },
+  { x: 54, wid: 104, wallTop: 40, dir: -1, seed: 31, band: 4, near: true,
+    siding: 'sidingA', sidingDark: 'sidingAdark', trim: 'trimB', door: 'doorRed' },
+];
+
+// A silhouette of the rest of the town behind each row.
+function backdrop(w) {
+  for (const [zBase, side] of [[-186, 1], [336, -1]]) {
+    let x = -430;
+    while (x < 330) {
+      const wid = 46 + Math.round(rnd(x, 7 * side) * 44);
+      const h = 40 + Math.round(rnd(x, 11 * side) * 28);
+      const z = zBase - side * Math.round(rnd(x, 3) * 30);
+      w.box(x, GROUND, z, wid, h, 10, 'hillFar');
+      w.gable(x, GROUND + h, z, wid, 10, 'hillFar', { eave: 2, thick: 3 });
+      if (rnd(x, 5 * side) > 0.45) {
+        const wy = GROUND + 12 + Math.round(rnd(x, 9) * (h - 24));
+        w.box(x + 8 + Math.round(rnd(x, 13) * (wid - 20)), wy, side > 0 ? z + 39 : z, 6, 7, 1,
+          rnd(x, 17) > 0.6 ? 'winWarmDim' : 'winWarm');
+      }
+      x += wid + 14 + Math.round(rnd(x, 19) * 22);
+    }
+  }
   for (let i = 0; i < 26; i++) {
-    const tx = -160 + i * 12 + Math.round(rnd(i, 23) * 8);
-    P.ball(w, tx, GROUND + 30 + Math.round(rnd(i, 29) * 20), -230, 14 + Math.round(rnd(i, 31) * 8),
-      'hillFar', 0.35);
+    const tx = -410 + i * 27 + Math.round(rnd(i, 23) * 12);
+    const r = 13 + Math.round(rnd(i, 31) * 6);
+    P.ball(w, tx, GROUND + Math.round(r * 0.75) + Math.round(rnd(i, 29) * 8), -236, r, 'hillFar', 0.35);
   }
 }
 
 // --------------------------------------------------------------- clutter
-function dressing(w, anchors) {
-  // street furniture on the verge
-  anchors.lamp = P.streetLamp(w, -66, GROUND, 18, 54, 16);
-  anchors.pole = P.utilityPole(w, 86, GROUND, 18, 80);
-  P.utilityPole(w, -178, GROUND, 18, 80);
-  P.hydrant(w, 40, GROUND, 32);
-
-  // overhead wires. A sagging parabola between the two poles; these cross the
-  // frame and do more for "1986 suburb" than any single prop.
-  const wire = (x0, y0, x1, y1, z, sag) => {
-    for (let x = x0; x <= x1; x++) {
-      const t = (x - x0) / (x1 - x0);
-      const y = y0 + (y1 - y0) * t - Math.sin(Math.PI * t) * sag;
-      w.set(x, Math.round(y), z, 'metalDark');
-    }
-  };
-  for (const [dz, sag] of [[-4, 9], [0, 10], [4, 11]]) {
-    wire(-178, GROUND + 76, 86, GROUND + 76, 18 + dz, sag);
-    wire(86, GROUND + 76, 250, GROUND + 70, 18 + dz, sag);
+function wire(w, x0, y0, x1, y1, z, sag) {
+  for (let x = x0; x <= x1; x++) {
+    const t = (x - x0) / (x1 - x0);
+    const y = y0 + (y1 - y0) * t - Math.sin(Math.PI * t) * sag;
+    w.set(x, Math.round(y), z, 'metalDark');
   }
-  // a service drop from the pole to house B's eave
-  wire(60, GROUND + 66, 86, GROUND + 74, 20, 4);
+}
 
-  // house A's lot
+function dressing(w, anchors) {
+  // Streetlights alternate sides down the road. Their pools are the rhythm of
+  // the whole street shot, so they are evenly spaced rather than scattered.
+  for (const [lx, lz, arm] of [[-66, 18, 16], [-330, 18, 16], [180, 18, 16],
+                               [-190, 146, -16], [30, 146, -16]]) {
+    anchors.lamps.push(P.streetLamp(w, lx, GROUND, lz, 54, arm));
+  }
+  for (const px of [-390, 86, 260]) anchors.poles.push(P.utilityPole(w, px, GROUND, 18, 80));
+  P.hydrant(w, 40, GROUND, 32);
+  P.hydrant(w, -240, GROUND, 132);
+
+  for (const [dz, sag] of [[-4, 9], [0, 10], [4, 11]]) {
+    wire(w, -390, GROUND + 76, 86, GROUND + 76, 18 + dz, sag);
+    wire(w, 86, GROUND + 76, 260, GROUND + 74, 18 + dz, sag);
+    wire(w, 260, GROUND + 74, 420, GROUND + 70, 18 + dz, sag);
+    wire(w, -420, GROUND + 74, -390, GROUND + 76, 18 + dz, 2);
+  }
+  wire(w, 60, GROUND + 66, 86, GROUND + 74, 20, 4);
+
+  // ---- the hero's lot
   P.tree(w, -132, GROUND, -6, 46, 22);
   P.hedge(w, -122, GROUND, -26, 104, 8, 12, 'x');
   P.picketFence(w, 28, GROUND, -30, 56, 'z');
-  P.mailbox && w.stamp(P.MAILBOX, -74, GROUND, 22);
+  w.stamp(P.MAILBOX, -74, GROUND, 22);
   w.stamp(P.GNOME, -96, GROUND, -18);
   w.stamp(P.NEWSPAPER, -70, GROUND, 6);
   P.bikeDown(w, -104, GROUND, 4);
   P.hose(w, -110, GROUND, -14);
   P.leafPile(w, -50, GROUND, -4, 9);
   P.leafPile(w, -30, GROUND, 12, 6);
-  P.lawnChair(w, -60, GROUND + 4, -22);
+  P.lawnChair(w, -76, GROUND + 4, -26);
   P.trashBin(w, -30, GROUND, 30);
   P.trashBin(w, -18, GROUND, 30, { lidOff: true });
   P.ball(w, -44, GROUND + 3, 8, 3, 'plasticRed');
 
-  // the driveway
   P.wagon(w, -8, GROUND, -18);
   P.basketballHoop(w, 30, GROUND, -6);
   P.trashBin(w, 30, GROUND, 34);
   w.stamp(P.MAILBOX, 62, GROUND, 22);
-
-  // house B's lot
   P.hedge(w, 34, GROUND, -28, 108, 7, 10, 'x');
-  P.tree(w, 120, GROUND, -14, 38, 17);
+  P.tree(w, 150, GROUND, -14, 38, 17);
   P.leafPile(w, 74, GROUND, -12, 7);
 
-  // scattered leaf litter in the gutter, where the wind puts it
-  for (let i = 0; i < 340; i++) {
-    const x = -140 + Math.round(rnd(i, 41) * 280);
-    const z = 46 + Math.round(rnd(i, 43) * 3);
+  // ---- the rest of the row, dressed off a seed so no two lots match
+  for (const h of ROSTER) {
+    const front = h.dir > 0 ? FAR_Z + HOUSE_DEP : NEAR_Z;
+    const out = h.dir;                                   // toward the road
+    const R = (k) => rnd(h.seed * 5, k * 17, 7);
+    const lawnZ = front + out * 22;
+    P.hedge(w, h.x, GROUND, front + out * 6, h.wid, 7, 8 + Math.round(R(1) * 5), 'x');
+    if (R(2) > 0.3) P.tree(w, h.x + Math.round(R(3) * h.wid), GROUND, lawnZ + out * 10,
+      34 + Math.round(R(4) * 16), 15 + Math.round(R(5) * 7));
+    w.stamp(P.MAILBOX, h.x + Math.round(h.wid * 0.5), GROUND, front + out * 62, { rot: out > 0 ? 0 : 180 });
+    if (R(6) > 0.4) P.trashBin(w, h.x + 14, GROUND, front + out * 66);
+    if (R(6) > 0.7) P.trashBin(w, h.x + 26, GROUND, front + out * 66, { lidOff: true });
+    if (R(7) > 0.5) P.leafPile(w, h.x + Math.round(R(8) * h.wid), GROUND, lawnZ, 6 + Math.round(R(9) * 4));
+    if (R(9) > 0.6) P.lawnChair(w, h.x + 20, GROUND + 4, lawnZ - out * 6);
+    if (R(3) > 0.55) w.stamp(P.GNOME, h.x + 8, GROUND, lawnZ);
+  }
+
+  // two cars parked at the kerb, one each side, laid along the street
+  P.wagon(P.transposeXZ(w), ROAD.z0 + 5, GROUND - 2, -300);
+  P.wagon(P.transposeXZ(w), ROAD.z1 - 27, GROUND - 2, 120);
+  P.wagon(w, -142, GROUND, 150);                          // in a near-side drive
+
+  // leaf litter in both gutters, where the wind puts it
+  for (let i = 0; i < 900; i++) {
+    const x = -420 + Math.round(rnd(i, 41) * 730);
+    const near = rnd(i, 53) > 0.5;
+    const z = (near ? ROAD.z1 - 4 : ROAD.z0) + Math.round(rnd(i, 43) * 3);
     w.set(x, 0, z, rnd(i, 47) > 0.5 ? 'leafLitter' : 'leafLitter2');
   }
 }
@@ -298,16 +436,18 @@ function dressing(w, anchors) {
 // --------------------------------------------------------------- assemble
 export function buildBlock() {
   const w = new VoxWorld();
-  const anchors = {};
+  const anchors = { porches: [], spills: [], lamps: [], poles: [] };
   ground(w);
-  farBlock(w);
-  houseA(w, anchors);
-  houseB(w, anchors);
+  backdrop(w);
+  heroHouse(w, anchors);
+  garageHouse(w, anchors);
+  for (const h of ROSTER)
+    house(w, anchors, { ...h, z: h.dir > 0 ? FAR_Z : NEAR_Z, dep: HOUSE_DEP });
   dressing(w, anchors);
 
   const group = new THREE.Group();
   group.name = 'block';
-  group.add(meshWorld(w, PALETTE, { name: 'block', solidBelow: 0 }));
+  group.add(meshWorld(w, PALETTE, { name: 'block', solidBelow: 0, noFloorBelow: GROUND - 1 }));
 
   // The television. Its own mesh because emissive is a per-material uniform:
   // to flicker it, it has to be a material of its own.

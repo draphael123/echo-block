@@ -42,8 +42,10 @@ export function createUI(ctx) {
       ['hemi', 'ambient', 0, 3, 0.02, () => rig.hemi.intensity, v => rig.hemi.intensity = v],
       ['fill', 'camera fill', 0, 2, 0.02, () => rig.fill.intensity, v => rig.fill.intensity = v],
       ['lamp', 'streetlight', 0, 600, 5, () => ctx.lampGain() / 1000, v => ctx.lampGain(v * 1000)],
-      ['porch', 'porch bulbs', 0, 30, 0.2, () => rig.porchA.intensity / 1000,
-        v => { rig.porchA.intensity = v * 1000; rig.porchB.intensity = v * 620; }],
+      ['porch', 'porch bulbs', 0, 30, 0.2, () => (rig.porches[0]?.intensity ?? 0) / 1000,
+        v => rig.porches.forEach(l => l.intensity = v * 1000)],
+      ['spill', 'window spill', 0, 3, 0.02, () => ctx.spillGain(),
+        v => ctx.spillGain(v)],
       ['shaft', 'light shaft', 0, 0.5, 0.005, () => rig.cones[0]?.material.uniforms.uStrength.value ?? 0,
         v => rig.cones.forEach(c => c.material.uniforms.uStrength.value = v)],
     ]],
@@ -57,6 +59,7 @@ export function createUI(ctx) {
     }],
     ['moths', 'moths', () => rig.moths ? rig.moths.points.visible : false,
       v => { if (rig.moths) rig.moths.points.visible = v; }],
+    ['people', 'people', () => ctx.people(), v => ctx.people(v)],
     ['parallax', 'camera drift', () => ctx.parallax(), v => ctx.parallax(v)],
   ];
 
@@ -201,4 +204,52 @@ export function createIntro(onStart) {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
   });
   return { dismiss: go, isUp: () => !done };
+}
+
+// --------------------------------------------------------------- dialogue
+// Nobody moves and nothing branches yet — this is only enough to prove the
+// street is inhabited rather than dressed. Click a person, read what they have
+// to say, click on to the next line.
+export function createDialogue() {
+  const box = el('div', 'talk');
+  const who = el('div', 'talk-who');
+  const line = el('div', 'talk-line');
+  const more = el('div', 'talk-more', 'click to continue');
+  box.append(who, line, more);
+  document.body.append(box);
+
+  const chip = el('div', 'chip');
+  document.body.append(chip);
+
+  let lines = [], i = 0, open = false;
+
+  function render() {
+    line.textContent = lines[i] || '';
+    more.textContent = i < lines.length - 1 ? 'click to continue' : 'click to close';
+  }
+  return {
+    isOpen: () => open,
+    show(person) {
+      lines = person.lines || ['…'];
+      i = 0; open = true;
+      who.textContent = person.role ? `${person.name} — ${person.role}` : person.name;
+      render();
+      box.classList.add('on');
+    },
+    // Returns true when it consumed the click (i.e. it advanced or closed).
+    advance() {
+      if (!open) return false;
+      i++;
+      if (i >= lines.length) { this.hide(); return true; }
+      render();
+      return true;
+    },
+    hide() { open = false; box.classList.remove('on'); },
+    hover(name, x, y) {
+      if (!name) { chip.classList.remove('on'); return; }
+      chip.textContent = name;
+      chip.style.transform = `translate(${x + 14}px, ${y - 10}px)`;
+      chip.classList.add('on');
+    },
+  };
 }

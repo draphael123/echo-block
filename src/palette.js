@@ -69,6 +69,29 @@ const RAW = {
   carGlass:     ['#1e262f', 0.10],
   carTrim:      ['#8a8d92', 0.10],
 
+  // --- people ------------------------------------------------------------
+  // Skin reads very dark at night, so these are pitched lighter than they
+  // would be in daylight; the lamp does the rest.
+  skinLight:    ['#8a6046', 0.08],
+  skinMid:      ['#70472f', 0.08],
+  skinDeep:     ['#4e2f20', 0.08],
+  hairDark:     ['#2a2119', 0.10],
+  hairBrown:    ['#4a3423', 0.10],
+  hairGrey:     ['#767370', 0.10],
+  hairGinger:   ['#7a4326', 0.10],
+  shirtRed:     ['#79352d', 0.09],
+  shirtBlue:    ['#32475f', 0.09],
+  shirtGreen:   ['#37513e', 0.09],
+  shirtCream:   ['#6b6455', 0.09],
+  shirtPlaid:   ['#6d4a3c', 0.14],
+  jeans:        ['#3b4a63', 0.10],
+  trouserTan:   ['#6a5c46', 0.10],
+  trouserGrey:  ['#4a4a50', 0.10],
+  shoe:         ['#2c2724', 0.10],
+  dogFur:       ['#5b4630', 0.16],
+  dogFurDark:   ['#3a2c1f', 0.16],
+  torchBody:    ['#5c4f3a', 0.10],
+
   // --- night sky / far --------------------------------------------------
   hillFar:      ['#2b3448', 0.10],
 };
@@ -85,6 +108,9 @@ const RAW_EMIT = {
   tailLight:    ['#ff4030', 2.2],
   bugZapper:    ['#8affd0', 2.4],
   moonGlass:    ['#9fd0ff', 1.2],
+  torchLens:    ['#fff0c4', 2.6],
+  radioDial:    ['#ff9a5c', 1.8],
+  cigarette:    ['#ff6a3c', 2.0],
 };
 
 function toLinear(hex) {

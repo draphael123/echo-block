@@ -9,6 +9,17 @@ import { hash3 } from './voxel.js';
 import { tint } from './palette.js';
 
 // ---------------------------------------------------------------- helpers
+// A stand-in world that swaps X and Z on the way through, so a prop authored
+// along one axis can be placed along the other without a second copy of it.
+export function transposeXZ(w) {
+  return {
+    set: (x, y, z, c) => w.set(z, y, x, c),
+    box: (x, y, z, wd, h, d, c) => w.box(z, y, x, d, h, wd,
+      typeof c === 'function' ? (px, py, pz) => c(pz, py, px) : c),
+    cut: (x, y, z, wd, h, d) => w.cut(z, y, x, d, h, wd),
+  };
+}
+
 export function cyl(w, x, y, z, r, h, c, hollow = false) {
   const r2 = r * r, inner = (r - 1) * (r - 1);
   for (let i = -r; i <= r; i++) for (let k = -r; k <= r; k++) {
@@ -18,11 +29,14 @@ export function cyl(w, x, y, z, r, h, c, hollow = false) {
     for (let j = 0; j < h; j++) w.set(x + i, y + j, z + k, typeof c === 'function' ? c(x + i, y + j, z + k) : c);
   }
 }
-export function ball(w, x, y, z, r, c, ragged = 0) {
-  const r2 = r * r;
+// `hollow` keeps only a shell. Nothing ever sees the inside of a tree canopy
+// or a backdrop hill, and a solid r=22 sphere is 44,000 voxels — leaving them
+// filled is most of what a big scene's build time goes on.
+export function ball(w, x, y, z, r, c, ragged = 0, hollow = false) {
+  const r2 = r * r, inner = hollow ? (r - 2.2) * (r - 2.2) : -1;
   for (let i = -r; i <= r; i++) for (let j = -r; j <= r; j++) for (let k = -r; k <= r; k++) {
     const d = i * i + j * j + k * k;
-    if (d > r2) continue;
+    if (d > r2 || d < inner) continue;
     if (ragged && d > r2 * 0.55 && hash3(x + i, y + j, z + k) < ragged) continue;
     w.set(x + i, y + j, z + k, typeof c === 'function' ? c(x + i, y + j, z + k) : c);
   }
@@ -142,7 +156,7 @@ export function tree(w, x, y, z, h, r) {
                  [-r * 0.2, r * 0.35, -r * 0.7, r * 0.6]];
   for (const [bx, by, bz, br] of blobs)
     ball(w, Math.round(x + bx), Math.round(top + by), Math.round(z + bz), Math.round(br),
-      (px, py, pz) => (hash3(px, py, pz) > 0.55 ? 'leafMid' : 'leafDark'), 0.45);
+      (px, py, pz) => (hash3(px, py, pz) > 0.55 ? 'leafMid' : 'leafDark'), 0.45, true);
   // branches poking out of the canopy so it is not a lollipop
   for (let a = 0; a < 4; a++) {
     const th = a * 1.7 + 0.4;
@@ -164,16 +178,17 @@ export function picketFence(w, x, y, z, len, dir = 'x') {
 }
 
 // Returns the world position of the bulb so main.js can hang a light there.
+// armLen may be negative to hang the arm out over the other side of the road.
 export function streetLamp(w, x, y, z, h = 62, armLen = 14) {
+  const sgn = armLen < 0 ? -1 : 1, L = Math.abs(armLen);
   cyl(w, x, y, z, 2, 4, 'concreteOld');
-  for (let j = 4; j < h; j++) cyl(w, x, y + j, z, j > h - 12 ? 1 : 1, 1, 'metalDark');
   cyl(w, x, y, z, 1, h, 'metalDark');
-  for (let i = 1; i <= armLen; i++) {
+  for (let i = 1; i <= L; i++) {
     const j = h + Math.round(Math.sqrt(i) * 1.4);
-    w.set(x, y + j, z + i, 'metalDark');
-    if (i > armLen - 3) w.set(x, y + j - 1, z + i, 'metalDark');
+    w.set(x, y + j, z + i * sgn, 'metalDark');
+    if (i > L - 3) w.set(x, y + j - 1, z + i * sgn, 'metalDark');
   }
-  const hy = y + h + Math.round(Math.sqrt(armLen) * 1.4) - 2, hz = z + armLen;
+  const hy = y + h + Math.round(Math.sqrt(L) * 1.4) - 2, hz = z + L * sgn;
   w.box(x - 2, hy - 1, hz - 3, 5, 2, 6, 'metal');
   w.box(x - 1, hy - 2, hz - 2, 3, 1, 4, 'sodium');
   return [x, hy - 2, hz];

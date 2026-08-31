@@ -116,11 +116,15 @@ export class VoxWorld {
   // the scene) and a glow geometry (unlit, feeds the bloom pass).
   // They must be separate: three's emissive is a per-MATERIAL uniform, so one
   // mesh cannot have some voxels emit and others not.
-  // solidBelow: treat everything under this height as filled. Kills the
-  // downward faces of the ground slab (half the ground's triangles) and gives
-  // props correct contact AO where they meet it.
+  // solidBelow  — treat everything under this height as filled. Gives props
+  //               correct contact AO where they meet the ground slab.
+  // noFloorBelow — drop every downward-facing quad at or below this height.
+  //               The underside of the ground plate is never visible from any
+  //               camera above it, and at street scale it is HALF the ground's
+  //               triangles; this lets the plate be one voxel thick instead of
+  //               four, which is the difference between 3M voxels and 1M.
   build(palette, opts) {
-    const { solidBelow = -Infinity } = opts || {};
+    const { solidBelow = -Infinity, noFloorBelow = -Infinity } = opts || {};
     const out = {
       matte: { pos: [], nrm: [], col: [], ind: [] },
       glow:  { pos: [], nrm: [], col: [], ind: [] },
@@ -140,6 +144,7 @@ export class VoxWorld {
       for (const f of FACES) {
         const nx = x + f.d[0], ny = y + f.d[1], nz = z + f.d[2];
         if (solid(nx, ny, nz)) continue;
+        if (f.d[1] === -1 && y <= noFloorBelow) continue;
 
         const ao = [3, 3, 3, 3];
         if (!emissive) {
@@ -191,8 +196,8 @@ export class VoxWorld {
 // entirely by vertex colour; glow is unlit and deliberately allowed past 1.0
 // so the bloom pass has something to catch.
 export function meshWorld(world, palette, opts) {
-  const { shadows = true, name = 'vox', solidBelow } = opts || {};
-  const { matte, glow } = world.build(palette, { solidBelow });
+  const { shadows = true, name = 'vox', solidBelow, noFloorBelow } = opts || {};
+  const { matte, glow } = world.build(palette, { solidBelow, noFloorBelow });
   const group = new THREE.Group();
   group.name = name;
   if (matte) {

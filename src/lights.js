@@ -108,13 +108,15 @@ export function buildLights(scene, anchors) {
   // The moon. Low and behind-left, so roofs catch a rim and the street does
   // not. Shadows are fitted tightly to the block or they turn to mush.
   const moon = new THREE.DirectionalLight(0xbdd2f2, 2.1);
-  moon.position.set(-230, 420, -150);
-  moon.target.position.set(-30, 20, 0);
+  moon.position.set(-230, 460, -150);
+  moon.target.position.set(-60, 20, 60);
   moon.castShadow = true;
   moon.shadow.mapSize.set(2048, 2048);
   const s = moon.shadow.camera;
-  s.left = -260; s.right = 260; s.top = 260; s.bottom = -260;
-  s.near = 60; s.far = 900;
+  // widened for the full street; 2048 over +/-380 is still ~0.37 units per
+  // texel, which is a third of a voxel
+  s.left = -380; s.right = 380; s.top = 380; s.bottom = -380;
+  s.near = 60; s.far = 1200;
   moon.shadow.bias = -0.0006;
   moon.shadow.normalBias = 0.9;      // chunky cubes acne badly without this
   scene.add(moon, moon.target);
@@ -128,26 +130,34 @@ export function buildLights(scene, anchors) {
   scene.add(fill);
   rig.fill = fill;
 
-  // The streetlight. The one shadow-casting local light — it is the strongest
-  // source in frame and its pool is the composition's anchor.
-  if (anchors.lamp) {
-    const [lx, ly, lz] = anchors.lamp;
-    const lamp = new THREE.SpotLight(0xffa23c, 260000, 260, 0.85, 0.75, 2);
+  // The streetlights. Only the one over the hero house casts shadows: each
+  // shadow-casting light is another full pass over 1M+ triangles, and at night
+  // the second and third pole's shadows are not visible enough to buy one.
+  rig.lamps = [];
+  (anchors.lamps || []).forEach(([lx, ly, lz], i) => {
+    const hero = i === 0;
+    const lamp = new THREE.SpotLight(0xffa23c, hero ? 165000 : 125000, 260, 0.85, 0.75, 2);
     lamp.position.set(lx, ly, lz);
-    lamp.target.position.set(lx, GROUND, lz + 8);
-    lamp.castShadow = true;
-    lamp.shadow.mapSize.set(1024, 1024);
-    lamp.shadow.camera.near = 8; lamp.shadow.camera.far = 260;
-    lamp.shadow.bias = -0.0012;
-    lamp.shadow.normalBias = 0.8;
+    lamp.target.position.set(lx, GROUND, lz + (lz > 80 ? -8 : 8));
+    if (hero) {
+      lamp.castShadow = true;
+      lamp.shadow.mapSize.set(1024, 1024);
+      lamp.shadow.camera.near = 8; lamp.shadow.camera.far = 260;
+      lamp.shadow.bias = -0.0012;
+      lamp.shadow.normalBias = 0.8;
+    }
     scene.add(lamp, lamp.target);
-    rig.lamp = lamp;
+    rig.lamps.push(lamp);
+    if (hero) rig.lamp = lamp;
 
     const cone = lightCone(lx, ly - 2, lz, 46, ly - GROUND, 0xffa23c, 0.13);
     scene.add(cone);
     rig.cones.push(cone);
+  });
 
-    // moths, because an empty cone of light is a diagram
+  // moths, because an empty cone of light is a diagram
+  if (anchors.lamps && anchors.lamps.length) {
+    const [lx, ly, lz] = anchors.lamps[0];
     rig.moths = mothSwarm(lx, ly - 8, lz, 14);
     scene.add(rig.moths.points);
   }
@@ -159,19 +169,24 @@ export function buildLights(scene, anchors) {
     return l;
   };
 
-  if (anchors.porchA) rig.porchA = bulb(anchors.porchA, 0xffc98a, 7000, 110);
-  if (anchors.porchB) rig.porchB = bulb(anchors.porchB, 0xffc98a, 2600, 80);
+  rig.porches = (anchors.porches || []).map(p => bulb(p.pos, 0xffc98a, p.power, p.dist));
+  rig.porchA = rig.porches[0];
+  rig.porchB = rig.porches[1] || rig.porches[0];
 
   // Spill out of the lit windows. Without these the emissive glass reads as a
   // sticker: a lit window has to put light ON something.
-  const spill = [
-    [[-104, 33, -33], 0xffb45c, 7000, 110],    // house A front room
-    [[-24, 35, -33], 0xffb45c, 3000, 80],      // house A small window
-    [[-124, 27, -66], 0xffb45c, 3400, 75],     // house A flank
-    [[96, 30, -34], 0xffb45c, 3400, 85],       // house B front
-    [[86, 56, -34], 0xffb45c, 5000, 100],      // house B upstairs
-  ];
-  for (const [p, c, i, d] of spill) bulb(p, c, i, d);
+  //
+  // Capped on purpose. three's forward renderer loops every light in the
+  // fragment shader for every pixel, so an unbounded row of houses each
+  // contributing three point lights is a frame-rate cliff — the far ends of
+  // the street are small in frame and lose nothing by going emissive-only.
+  const SPILL_CAP = 12;
+  const spills = (anchors.spills || [])
+    .slice()
+    .sort((a, b) => (Math.abs(a.pos[0]) - Math.abs(b.pos[0])))
+    .slice(0, SPILL_CAP);
+  rig.spills = spills.map(s => bulb(s.pos, 0xffb45c, s.power, s.dist));
+  rig.spillDropped = (anchors.spills || []).length - spills.length;
 
   // The television. Flickers on its own clock, drives both the point light and
   // the emissive plane in block.js.
