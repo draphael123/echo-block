@@ -26,6 +26,12 @@
     background: rgba(8,11,18,.55); border-radius: 2px; white-space: nowrap;
   }
   #prompt:empty { display: none; }
+  #quest {
+    top: 46px; left: 20px; color: #9fb0c8; font-size: 11px;
+    letter-spacing: .16em; opacity: .9;
+  }
+  #quest:empty { display: none; }
+  #quest b { color: #ffd9a0; font-weight: 600; }
   #help.hidden { display: none; }
   #help b { color: #ffd9a0; font-weight: 600; }
   #boot {
@@ -165,6 +171,7 @@
   <div id="shot"></div>
   <div id="stats"></div>
   <div id="prompt"></div>
+  <div id="quest"></div>
   <div id="help">
     <b>wasd</b> walk &nbsp; <b>shift</b> run &nbsp; <b>e</b> talk &nbsp; <b>c</b> camera<br>
     <b>tab</b> settings &nbsp; <b>p</b> post on/off &nbsp; <b>h</b> hide

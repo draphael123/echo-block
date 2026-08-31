@@ -125,7 +125,7 @@ function makeArm(s, side) {
     w.box(-1, -h, -1, 2, 2, 2, s.skin);                 // the hand, narrower
     if (s.torch && side > 0) {
       w.box(-1, -h - 4, 0, 2, 4, 2, 'torchBody');
-      w.box(-1, -h - 5, 0, 2, 1, 2, 'torchLens');
+      w.set(0, -h - 5, 1, 'torchLens');
     }
     if (s.smoke && side < 0) w.set(0, -h - 1, 2, 'cigarette');
   });
@@ -399,7 +399,7 @@ export const CAST = [
     role: 'papers, tomorrow’s round',
     kid: true, skin: 'skinMid', hair: 'hairDark', cap: 'shirtBlue',
     shirt: 'shirtCream', trouser: 'jeans', bag: 'shirtGreen',
-    pos: [62, 2, 26], face: 2.9,
+    pos: [88, 2, 30], face: 2.6,
     lines: [
       'Folding for the morning round. Ninety-one houses, and eleven of them tip.',
       'You want the late edition? It’s the same as the early one with a different front.',

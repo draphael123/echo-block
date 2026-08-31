@@ -2,13 +2,15 @@
 // down it. The look came first and still runs the place: everything that
 // decides it is a knob in the settings drawer.
 import * as THREE from 'three';
-import { buildBlock, BOUNDS } from './block.js';
+import { buildBlock, BOUNDS, ROAD } from './block.js';
 import { buildSky, buildLights, tvFlicker } from './lights.js';
 import { buildPerson, buildDog, CAST } from './people.js';
 import { buildTraffic } from './traffic.js';
 import { Ground } from './walk.js';
 import { Post } from './post.js';
 import { createUI, createIntro, createDialogue } from './ui.js';
+import { buildLeaves, buildSmoke, buildCat, neonFlicker } from './fx.js';
+import { createRound } from './round.js';
 
 const canvas = document.getElementById('view');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
@@ -37,6 +39,16 @@ const rig = buildLights(scene, block.anchors);
 const ground = new Ground(block.field);
 const traffic = buildTraffic(scene);
 
+// ------------------------------------------------------------------ fx
+const weather = new THREE.Group();
+weather.name = 'weather';
+scene.add(weather);
+const leaves = buildLeaves(150, { x0: -400, x1: 380, z0: -120, z1: 266 });
+const smoke = buildSmoke(block.anchors.chimneys.slice(0, 2));
+const cat = buildCat([28, -28], [28, 20], 2);
+weather.add(leaves.points, smoke.points, cat.root);
+const round = createRound(block.anchors, scene);
+
 // ---------------------------------------------------------------- people
 const peopleGroup = new THREE.Group();
 peopleGroup.name = 'people';
@@ -49,6 +61,21 @@ const biscuit = buildDog({ pos: [58, 2, 40], path: [[58, 40], [-172, 40]], speed
 for (const p of folk) peopleGroup.add(p.root);
 peopleGroup.add(biscuit.root);
 const pickables = folk.map(p => p.pick);
+
+// A ring on the ground under the player, drawn with depth testing OFF.
+// On a fixed 3/4 camera you WILL end up behind a tree or a parked car, and
+// without this the honest answer to 'where am I' is 'somewhere behind that
+// canopy'. It also does the job the reference's shadows do — it tells you
+// which bit of ground you are actually standing on.
+const markMat = new THREE.MeshBasicMaterial({
+  color: 0xffc98a, transparent: true, opacity: 0.30, depthTest: false,
+  depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
+});
+const mark = new THREE.Mesh(new THREE.RingGeometry(5.4, 7.4, 28), markMat);
+mark.rotation.x = -Math.PI / 2;
+mark.renderOrder = 900;
+mark.frustumCulled = false;
+scene.add(mark);
 const buildMs = Math.round(performance.now() - t0);
 
 // Drop everyone onto the collision field rather than trusting the y in their
@@ -65,20 +92,33 @@ for (const p of folk)
 const camera = new THREE.PerspectiveCamera(22, innerWidth / innerHeight, 20, 1600);
 const post = new Post(renderer, innerWidth, innerHeight);
 
-const FOLLOW = { offset: new THREE.Vector3(96, 148, 196), fov: 23, range: 120, blur: 11 };
+const FOLLOW = { offset: new THREE.Vector3(88, 172, 168), fov: 23, range: 120, blur: 11 };
 
 // Interiors get their own fixed camera, which is how the reference does rooms
 // and also the only thing that works: a trailing camera outside the building
 // is looking at the back of a brick wall the moment you step through the door.
 // Inside, the camera stops following and the player moves within the frame.
 const INSIDE = {
-  box: { x0: 176, x1: 250, z0: -92, z1: -29 },
+  box: { x0: 176, x1: 298, z0: -92, z1: -29 },
   offset: new THREE.Vector3(46, 104, 122),
   fov: 26, range: 70, blur: 9,
 };
 const inInterior = (p) =>
   p.x > INSIDE.box.x0 && p.x < INSIDE.box.x1 && p.z > INSIDE.box.z0 && p.z < INSIDE.box.z1;
 let indoors = false;
+
+// With houses down BOTH sides, a camera at a fixed +Z offset ends up behind
+// the near row the moment the player crosses the road. So the camera always
+// stands in the road and looks at whichever side the player is on — it flips
+// as a CUT, with a dead band across the carriageway so it cannot chatter
+// while you are standing on the centre line.
+const ROAD_MID = (ROAD.z0 + ROAD.z1) / 2;
+let camSide = 1;
+function sideFor(z) {
+  if (z > ROAD_MID + 26) return -1;
+  if (z < ROAD_MID - 26) return 1;
+  return camSide;
+}
 
 // The look-dev framings, still here and still cut between. Every one sits on
 // the road or the near verge: with two rows of houses that is the only band a
@@ -219,6 +259,20 @@ function nearestNpc() {
   return best;
 }
 
+// One key does both jobs. A person in front of you wins over a mailbox,
+// because otherwise standing near Sam and his own postbox is ambiguous.
+let nearBox = null;
+function interact() {
+  if (talk.isOpen()) { talk.advance(); return; }
+  if (nearby) {
+    const custom = round.linesFor(nearby.data.name);
+    const startsRound = custom && round.state === 'idle';
+    talk.show(nearby.data, custom, startsRound ? () => round.start() : null);
+    return;
+  }
+  if (nearBox) round.deliver(nearBox);
+}
+
 addEventListener('pointermove', (e) => {
   if (parallaxOn) {
     const s = mode === 'follow' ? 0.4 : 1;
@@ -234,7 +288,7 @@ addEventListener('pointermove', (e) => {
 canvas.addEventListener('pointerdown', (e) => {
   if (intro.isUp()) return;
   if (talk.advance()) return;            // a click while talking advances it
-  if (mode === 'follow') { if (nearby) talk.show(nearby.data); return; }
+  if (mode === 'follow') { interact(); return; }
   const who = pickPerson(e);
   if (who) { talk.show(who); talk.hover(null); canvas.style.cursor = ''; }
 });
@@ -245,8 +299,33 @@ const hud = {
   stats: document.getElementById('stats'),
   help: document.getElementById('help'),
   prompt: document.getElementById('prompt'),
+  quest: document.getElementById('quest'),
 };
 hud.stats.textContent = `${block.voxels.toLocaleString()} voxels · ${buildMs}ms`;
+
+// Dusk to late, on one slider. 1.0 is the look everything was tuned at, so
+// the shipped frame is unchanged and this only ever adds somewhere to go.
+const SKY_U = sky.material.uniforms;
+const DUSK = {
+  hemi: 1.55, moon: 3.1, fog: 0.00072,
+  top: [0.10, 0.13, 0.24], horizon: [0.30, 0.21, 0.24], haze: [0.36, 0.20, 0.11],
+};
+const LATE = {
+  hemi: 0.80, moon: 2.1, fog: 0.00105,
+  top: [SKY_U.uTop.value.x, SKY_U.uTop.value.y, SKY_U.uTop.value.z],
+  horizon: [SKY_U.uHorizon.value.x, SKY_U.uHorizon.value.y, SKY_U.uHorizon.value.z],
+  haze: [SKY_U.uHaze.value.x, SKY_U.uHaze.value.y, SKY_U.uHaze.value.z],
+};
+let nightAmount = 1;
+function setNightfall(v) {
+  nightAmount = v;
+  const mix = (a, b) => a + (b - a) * v;
+  rig.hemi.intensity = mix(DUSK.hemi, LATE.hemi);
+  rig.moon.intensity = mix(DUSK.moon, LATE.moon);
+  scene.fog.density = mix(DUSK.fog, LATE.fog);
+  for (const [k, u] of [['top', SKY_U.uTop], ['horizon', SKY_U.uHorizon], ['haze', SKY_U.uHaze]])
+    u.value.set(mix(DUSK[k][0], LATE[k][0]), mix(DUSK[k][1], LATE[k][1]), mix(DUSK[k][2], LATE[k][2]));
+}
 
 let lampBase = 165000;
 let toneAmount = 1, spillGain = 1, walkGain = 1;
@@ -264,6 +343,8 @@ const ui = createUI({
     return spillGain;
   },
   walkSpeed: (v) => { if (v != null) walkGain = v; return walkGain; },
+  nightfall: (v) => { if (v != null) setNightfall(v); return nightAmount; },
+  weather: (v) => { if (v != null) weather.visible = v; return weather.visible; },
   people: (v) => { if (v != null) peopleGroup.visible = v; return peopleGroup.visible; },
   traffic: (v) => { if (v != null) traffic.group.visible = v; return traffic.group.visible; },
   torch: (v) => {
@@ -287,11 +368,7 @@ addEventListener('keydown', (e) => {
   if (intro.isUp()) return;
   if (e.key === 'Escape') { talk.hide(); return; }
   const k = e.key.toLowerCase();
-  if (k === 'e' && mode === 'follow') {
-    if (talk.isOpen()) talk.advance();
-    else if (nearby) talk.show(nearby.data);
-    return;
-  }
+  if (k === 'e' && mode === 'follow') { interact(); return; }
   if (k === 'c') { mode === 'follow' ? applyShot(shot) : followMode(); return; }
   if (mode === 'follow') {
     if (k === ' ') e.preventDefault();
@@ -351,13 +428,14 @@ function frame() {
     if (nowIn !== indoors) {                 // a CUT, not a move
       indoors = nowIn;
       if (indoors) {
+        camSide = 1;
         CAM_OFFSET.copy(INSIDE.offset);
         camera.fov = INSIDE.fov;
         post.params.range = INSIDE.range;
         post.params.maxBlur = INSIDE.blur;
         FOCUS_TARGET.set(p.x, p.y + 12, p.z);
       } else {
-        CAM_OFFSET.copy(FOLLOW.offset);
+        CAM_OFFSET.copy(FOLLOW.offset).setZ(FOLLOW.offset.z * camSide);
         camera.fov = FOLLOW.fov;
         post.params.range = FOLLOW.range;
         post.params.maxBlur = FOLLOW.blur;
@@ -371,13 +449,31 @@ function frame() {
       if (block.shopLid) block.shopLid.visible = !indoors;
       hud.shot.textContent = indoors ? 'marlows' : 'walking';
     }
+    if (!indoors) {
+      const want = sideFor(p.z);
+      if (want !== camSide) {
+        camSide = want;
+        CAM_OFFSET.copy(FOLLOW.offset).setZ(FOLLOW.offset.z * camSide);
+      }
+    }
     AIM.set(p.x, p.y + (indoors ? 12 : 14), p.z);
     FOCUS_TARGET.lerp(AIM, Math.min(1, dt * (indoors ? 5 : 3.6)));
-    if (!talk.isOpen()) nearby = nearestNpc();
-    hud.prompt.textContent = nearby && !talk.isOpen() ? `E — talk to ${nearby.data.name}` : '';
+    if (!talk.isOpen()) {
+      // Whichever is CLOSER wins. Person-always-wins meant a neighbour
+      // standing beside a postbox made that postbox unreachable.
+      const n = nearestNpc(), b = round.nearest(p);
+      const dn = n ? Math.hypot(n.root.position.x - p.x, n.root.position.z - p.z) : Infinity;
+      const db = b ? Math.hypot(b.pos[0] - p.x, b.pos[2] - p.z) : Infinity;
+      nearby = db < dn ? null : n;
+      nearBox = db < dn ? b : null;
+    }
+    hud.prompt.textContent = talk.isOpen() ? ''
+      : nearby ? `E — talk to ${nearby.data.name}`
+      : nearBox ? 'E — put a paper in the box' : '';
+    hud.quest.textContent = round.hud();
   } else {
     player.setMotion(0);
-    nearby = null;
+    nearby = nearBox = null;
     hud.prompt.textContent = '';
   }
 
@@ -404,10 +500,21 @@ function frame() {
   if (rig.moths && rig.moths.points.visible) rig.moths.update(time);
 
   traffic.update(dt);
+  if (weather.visible) { leaves.update(time, dt); smoke.update(time, dt); cat.update(time, dt); }
+  if (block.neonMaterial) {
+    const n = neonFlicker(time);
+    block.neonMaterial.color.setRGB(1.0 * n, 0.42 * n, 0.54 * n);
+    if (rig.signs[0]) rig.signs[0].intensity = 5000 * n;
+  }
   if (peopleGroup.visible) {
     for (const p of folk) p.update(time, dt);
     biscuit.update(time, dt);
   }
+
+  const pp = player.root.position;
+  mark.position.set(pp.x, pp.y + 0.6, pp.z);
+  mark.visible = mode === 'follow' && peopleGroup.visible;
+  markMat.opacity = 0.22 + Math.sin(time * 2.2) * 0.05;
 
   post.render(scene, camera, time);
   requestAnimationFrame(frame);
@@ -423,12 +530,14 @@ setInterval(() => {
 
 window.ECHO = {
   scene, camera, renderer, post, rig, block, ui, talk, folk, player, npcs,
-  traffic, ground, pickables,
+  traffic, ground, pickables, round, leaves, smoke, cat, mark,
+  nightfall: (v) => { if (v != null) setNightfall(v); return nightAmount; },
   shot: (i) => applyShot(i),
   shots: SHOTS.map(s => s.name),
   SHOTS,
   follow: () => followMode(),
   getMode: () => mode,
+  camSide: () => camSide,
   indoors: () => indoors,
   INSIDE,
   // Places the camera without waiting on a frame — the RAF loop is what

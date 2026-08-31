@@ -218,6 +218,7 @@ function heroHouse(w, anchors) {
 
   w.box(x + 16, GROUND + 7, z + 20, 12, wallTop + 34, 10, brickFn);
   w.box(x + 14, GROUND + 7 + wallTop + 34, z + 18, 16, 2, 14, 'brickDark');
+  anchors.chimneys.push([x + 22, GROUND + 9 + wallTop + 34, z + 25]);
   w.box(x - 3, GROUND + 7 + wallTop - 1, fz + 3, wid + 6, 2, 2, 'trimA');
   w.box(x + wid - 4, y0, fz + 3, 2, wallTop, 2, 'trimA');
   return { x, z, wid, dep, fz };
@@ -301,6 +302,7 @@ function house(w, anchors, s) {
     const cx = x + 10 + Math.round(R(8) * (wid - 30));
     w.box(cx, y0, z + 20, 11, wallTop + 30, 9, brickFn);
     w.box(cx - 2, y0 + wallTop + 30, z + 18, 15, 2, 13, 'brickDark');
+    anchors.chimneys.push([cx + 5, y0 + wallTop + 33, z + 24]);
   }
   // gutter along the street-facing eave
   w.box(x - 3, y0 + wallTop - 1, fz + 3 * dir, wid + 6, 2, 2, trim);
@@ -315,16 +317,16 @@ function house(w, anchors, s) {
 const FAR_Z = -88, NEAR_Z = 206, HOUSE_DEP = 58;
 const ROSTER = [
   { x: -266, wid: 96, wallTop: 40, dir: 1, seed: 3, band: 5,
-    siding: 'sidingB', sidingDark: 'sidingBdark', trim: 'trimB', door: 'doorBlue', base: 'brick' },
+    siding: 'sidingC', sidingDark: 'sidingCdark', trim: 'trimC', door: 'doorBlue', base: 'brick' },
   { x: -410, wid: 92, wallTop: 44, dir: 1, seed: 11, band: 4,
-    siding: 'sidingA', sidingDark: 'sidingAdark', trim: 'trimA', door: 'doorRed' },
+    siding: 'sidingE', sidingDark: 'sidingEdark', trim: 'trimE', door: 'doorGreen' },
   // near side, fronts facing -Z
   { x: -262, wid: 100, wallTop: 42, dir: -1, seed: 5, band: 4, near: true,
-    siding: 'sidingA', sidingDark: 'sidingAdark', trim: 'trimA', door: 'doorBlue' },
+    siding: 'sidingC', sidingDark: 'sidingCdark', trim: 'trimC', door: 'doorYellow' },
   { x: -116, wid: 96, wallTop: 46, dir: -1, seed: 23, band: 5, near: true,
-    siding: 'sidingB', sidingDark: 'sidingBdark', trim: 'trimB', door: 'doorRed', base: 'brick' },
+    siding: 'sidingD', sidingDark: 'sidingDdark', trim: 'trimD', door: 'doorRed', base: 'brick' },
   { x: 54, wid: 104, wallTop: 40, dir: -1, seed: 31, band: 4, near: true,
-    siding: 'sidingA', sidingDark: 'sidingAdark', trim: 'trimB', door: 'doorRed' },
+    siding: 'sidingF', sidingDark: 'sidingFdark', trim: 'trimF', door: 'doorBlue' },
 ];
 
 // A silhouette of the rest of the town behind each row.
@@ -384,7 +386,11 @@ function dressing(w, anchors) {
   P.tree(w, -132, GROUND, -6, 46, 22);
   P.hedge(w, -122, GROUND, -26, 104, 8, 12, 'x');
   P.picketFence(w, 28, GROUND, -30, 56, 'z');
-  w.stamp(P.MAILBOX, -74, GROUND, 22);
+  const post = (px, pz, rot) => {
+    w.stamp(P.MAILBOX, px, GROUND, pz, { rot });
+    anchors.mailboxes.push([px + 1, GROUND + 12, pz + 2]);
+  };
+  post(-74, 22, 0);
   w.stamp(P.GNOME, -96, GROUND, -18);
   w.stamp(P.NEWSPAPER, -70, GROUND, 6);
   P.bikeDown(w, -104, GROUND, 4);
@@ -399,7 +405,7 @@ function dressing(w, anchors) {
   P.wagon(w, -8, GROUND, -18);
   P.basketballHoop(w, 30, GROUND, -6);
   P.trashBin(w, 30, GROUND, 34);
-  w.stamp(P.MAILBOX, 62, GROUND, 22);
+  post(62, 22, 0);
   P.hedge(w, 34, GROUND, -28, 108, 7, 10, 'x');
   P.tree(w, 152, GROUND, -14, 38, 17);
   P.leafPile(w, 74, GROUND, -12, 7);
@@ -413,7 +419,7 @@ function dressing(w, anchors) {
     P.hedge(w, h.x, GROUND, front + out * 6, h.wid, 7, 8 + Math.round(R(1) * 5), 'x');
     if (R(2) > 0.3) P.tree(w, h.x + Math.round(R(3) * h.wid), GROUND, lawnZ + out * 10,
       34 + Math.round(R(4) * 16), 15 + Math.round(R(5) * 7));
-    w.stamp(P.MAILBOX, h.x + Math.round(h.wid * 0.5), GROUND, front + out * 62, { rot: out > 0 ? 0 : 180 });
+    post(h.x + Math.round(h.wid * 0.5), front + out * 62, out > 0 ? 0 : 180);
     if (R(6) > 0.4) P.trashBin(w, h.x + 14, GROUND, front + out * 66);
     if (R(6) > 0.7) P.trashBin(w, h.x + 26, GROUND, front + out * 66, { lidOff: true });
     if (R(7) > 0.5) P.leafPile(w, h.x + Math.round(R(8) * h.wid), GROUND, lawnZ, 6 + Math.round(R(9) * 4));
@@ -431,7 +437,7 @@ function dressing(w, anchors) {
   S.bench(w, 250, GROUND, -14, 1);
   P.trashBin(w, 242, GROUND, -12);
   P.trashBin(w, 250, GROUND, -12, { lidOff: true });
-  S.milkCrates(w, 288, GROUND, -18, 3);
+  S.milkCrates(w, 312, GROUND, -18, 3);   // clear of the laundromat door
   S.signPost(w, 300, GROUND, 30, 'stop');
   S.signPost(w, -352, GROUND, 30, 'street');
   S.signPost(w, 4, GROUND, 130, 'street');
@@ -456,10 +462,10 @@ function dressing(w, anchors) {
   S.flowerBed(w, -60, GROUND, -22, 26, 8);
   S.flowerBed(w, 74, GROUND, 148, 30, 9);
   S.flowerBed(w, -286, GROUND, -20, 22, 8);
-  P.tree(w, -196, GROUND, 8, 42, 19);
+  P.tree(w, -196, GROUND, -12, 42, 19);
   P.tree(w, 316, GROUND, 6, 36, 16);
-  P.tree(w, -78, GROUND, 138, 40, 18);
-  P.tree(w, 178, GROUND, 140, 34, 15);
+  P.tree(w, -78, GROUND, 176, 40, 18);
+  P.tree(w, 178, GROUND, 178, 34, 15);
   P.hedge(w, -320, GROUND, 130, 60, 7, 10, 'x');
   P.picketFence(w, -66, GROUND, 138, 54, 'z');
 
@@ -480,7 +486,7 @@ function dressing(w, anchors) {
 // --------------------------------------------------------------- assemble
 export function buildBlock() {
   const w = new VoxWorld();
-  const anchors = { porches: [], spills: [], lamps: [], poles: [] };
+  const anchors = { porches: [], spills: [], lamps: [], poles: [], mailboxes: [], chimneys: [] };
   ground(w);
   backdrop(w);
   heroHouse(w, anchors);
@@ -490,18 +496,21 @@ export function buildBlock() {
   // from the follow camera: a doorway you enter by walking toward the lens is
   // a doorway the camera cannot follow you through.
   const SHOP_X = 172, SHOP_Z = -30;
-  const parade = new VoxWorld(), paradeLid = new VoxWorld();
+  const parade = new VoxWorld(), paradeLid = new VoxWorld(), paradeNeon = new VoxWorld();
   const local = { porches: [], spills: [] };
-  anchors.shop = shopParade(parade, paradeLid, local, 0, 0);
+  anchors.shop = shopParade(parade, paradeLid, paradeNeon, local, 0, 0);
   w.merge(parade, { ox: SHOP_X, oz: SHOP_Z, mirrorZ: true });
   // The lid is meshed on its own so it can be taken away when the player is
   // inside. All of it sits above the walk field's headroom band, so leaving it
   // out of the collision world changes nothing.
   const lidWorld = new VoxWorld().merge(paradeLid, { ox: SHOP_X, oz: SHOP_Z, mirrorZ: true });
+  const neonWorld = new VoxWorld().merge(paradeNeon, { ox: SHOP_X, oz: SHOP_Z, mirrorZ: true });
   const flip = (p) => [p[0] + SHOP_X, p[1], SHOP_Z - p[2]];
   anchors.shopLights = (local.shopLights || []).map(flip);
   anchors.signLights = (local.signLights || []).map(flip);
   anchors.shopDoor = flip(local.door);
+  anchors.laundryDoor = flip(local.laundryDoor);
+  anchors.laundryLight = flip(local.laundryLight);
   for (const h of ROSTER)
     house(w, anchors, { ...h, z: h.dir > 0 ? FAR_Z : NEAR_Z, dep: HOUSE_DEP });
   dressing(w, anchors);
@@ -511,6 +520,12 @@ export function buildBlock() {
   group.add(meshWorld(w, PALETTE, { name: 'block', solidBelow: 0, noFloorBelow: GROUND - 1 }));
   const shopLid = meshWorld(lidWorld, PALETTE, { name: 'shopLid' });
   group.add(shopLid);
+  // The neon is its own mesh with its own material so main.js can make it
+  // stutter. Emissive baked into the shared geometry can never change.
+  const neonMat = new THREE.MeshBasicMaterial({ color: 0xff6a8a, toneMapped: false });
+  const neonGeo = neonWorld.build(PALETTE, {}).glow;
+  const neonMesh = neonGeo ? new THREE.Mesh(neonGeo, neonMat) : null;
+  if (neonMesh) { neonMesh.name = 'neon'; shopLid.add(neonMesh); }
 
   // The television. Its own mesh because emissive is a per-material uniform:
   // to flicker it, it has to be a material of its own.
@@ -527,5 +542,8 @@ export function buildBlock() {
   // things you walk UNDER.
   const field = w.walkField(BOUNDS.x0, BOUNDS.x1, BOUNDS.z0, BOUNDS.z1, FLOOR_MAX, HEAD);
 
-  return { group, anchors, tvMaterial: tvMat, voxels: w.size + lidWorld.size, field, shopLid };
+  return {
+    group, anchors, tvMaterial: tvMat, field, shopLid, neonMaterial: neonMesh ? neonMat : null,
+    voxels: w.size + lidWorld.size + neonWorld.size,
+  };
 }

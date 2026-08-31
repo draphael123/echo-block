@@ -4,9 +4,10 @@ A look-development diorama: one suburban block, at night, in voxels — built to
 answer a single question, *can a browser get to the look and feel of* Echo
 Generation *(Cococucumber, 2021)?*
 
-Houses down both sides of one street, a parade of shops you can walk into,
-traffic, four neighbours who each have a small mundane reason to still be
-outside, and a dog. You are Row; you are not going home yet.
+Houses down both sides of one street, two shops you can walk into, traffic,
+four neighbours who each have a small mundane reason to still be outside, a
+dog, and a cat that does not care that you are there. You are Row, you have
+somebody else's paper round, and you are not going home yet.
 Live: **[echo-block.vercel.app](https://echo-block.vercel.app)**
 
 **WASD** walk · **shift** run · **E** talk · **C** camera mode · **tab** settings
@@ -51,6 +52,8 @@ Ranked, because the ordering is the finding:
 | `src/shops.js` | the parade, and the one building with an interior |
 | `src/traffic.js` | two cars on a loop, with the only moving light in the scene |
 | `src/walk.js` | collision: floor + headroom, derived from the voxels themselves |
+| `src/fx.js` | leaves, chimney smoke, the cat, the bad neon tube |
+| `src/round.js` | the paper round — the reason to walk anywhere |
 | `src/lights.js` | rig, sky shader, fake volumetric shaft, TV flicker |
 | `src/post.js` | hand-rolled bloom + DOF + ACES + grade chain |
 | `src/ui.js` | title card and settings drawer |
@@ -93,6 +96,22 @@ collision world changes nothing.
 
 The door also has to face AWAY from the follow camera, which is why the parade
 is authored front-forward and blitted in mirrored.
+
+## The round
+
+The street had nowhere to go. Sam hands you tomorrow's papers and every mailbox
+on the block becomes somewhere to be — it uses props that already existed, it
+takes you the length of the street in both directions, it teaches the controls
+without a tutorial, and it ends. It is deliberately not a quest system: one
+flag, a count and a list of positions. Anything more would be building a game
+on top of a look study before anyone has decided that is what this is.
+
+Two things it immediately exposed. A neighbour standing beside a postbox made
+that postbox unreachable, because "person beats mailbox" is the wrong rule —
+whichever is *closer* wins. And with houses down both sides, a camera at a
+fixed +Z offset ends up behind the near row the moment you cross the road, so
+the camera now always stands in the carriageway and cuts to whichever side you
+are on, with a dead band so it cannot chatter on the centre line.
 
 ## The street
 
@@ -138,6 +157,14 @@ cheaper. A kid is 20 voxels tall, an adult 23, heads deliberately oversized.
 - **A walk cycle has to be driven by distance, not by the clock.** Drive it off
   time and the legs keep scissoring while the player stands still, which is the
   most obvious tell that a character is a puppet with a timer attached.
+- **Physical light falloff will clip anything that walks near it.** A lamp
+  tuned so the pavement looks right sends a face — twice the albedo — to flat
+  white. The composite now applies a highlight rolloff *before* the tone curve,
+  which pulls the far end of the range back in without touching the midtones.
+  That is the difference between a bright face and a hole in the frame.
+- **On a fixed 3/4 camera you will end up behind a tree.** There is a ring on
+  the ground under the player drawn with depth testing off, because the honest
+  answer to "where am I" should never be "somewhere behind that canopy".
 
 ## Credits
 

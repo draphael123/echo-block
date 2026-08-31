@@ -54,7 +54,7 @@ varying vec2 vUv;
 uniform sampler2D tScene, tDepth, tBloomA, tBloomB;
 uniform vec2 uTexel;
 uniform float uNear, uFar, uFocus, uRange, uMaxBlur;
-uniform float uBloom, uTime, uGrain, uVignette, uAberration, uExposure;
+uniform float uBloom, uTime, uGrain, uVignette, uAberration, uExposure, uRolloff;
 uniform vec3 uShadowTint, uHighTint;
 
 // 16-tap poisson disk. Enough for a soft, non-bokeh defocus; the shapes in
@@ -103,6 +103,14 @@ void main() {
   col.b = texture2D(tScene, vUv - r * ab).b * 0.5 + col.b * 0.5;
 
   col += (texture2D(tBloomA, vUv).rgb * 0.6 + texture2D(tBloomB, vUv).rgb) * uBloom;
+
+  // Highlight rolloff BEFORE the tone curve. A point light with physical
+  // falloff puts an enormous linear value on anything close to it, and skin
+  // has twice the albedo of tarmac — so a lamp tuned to make the pavement
+  // look right sends anyone standing under it to flat white. This pulls the
+  // far end of the range back into the curve without touching the midtones,
+  // which is the difference between a bright face and a hole in the frame.
+  col = col / (1.0 + col / max(uRolloff, 0.2));
 
   col = aces(col * uExposure);
 
@@ -161,7 +169,7 @@ export class Post {
     this.params = {
       focus: 260, range: 130, maxBlur: 11,
       bloom: 0.85, threshold: 0.72, knee: 0.35,
-      exposure: 1.28, grain: 0.030, vignette: 0.85, aberration: 0.9,
+      exposure: 1.42, rolloff: 3.4, grain: 0.030, vignette: 0.85, aberration: 0.9,
       shadowTint: new THREE.Color(0.80, 0.93, 1.10),
       highTint:   new THREE.Color(1.10, 1.00, 0.88),
       enabled: true,
@@ -184,7 +192,8 @@ export class Post {
         uNear: { value: 1 }, uFar: { value: 1000 },
         uFocus: { value: 260 }, uRange: { value: 130 }, uMaxBlur: { value: 11 },
         uBloom: { value: 0.85 }, uTime: { value: 0 }, uGrain: { value: 0.03 },
-        uVignette: { value: 0.85 }, uAberration: { value: 0.9 }, uExposure: { value: 1.28 },
+        uVignette: { value: 0.85 }, uAberration: { value: 0.9 }, uExposure: { value: 1.42 },
+        uRolloff: { value: 3.4 },
         uShadowTint: { value: new THREE.Vector3() }, uHighTint: { value: new THREE.Vector3() },
       },
     }));
@@ -246,6 +255,7 @@ export class Post {
     u.uVignette.value = p.enabled ? p.vignette : 0;
     u.uAberration.value = p.enabled ? p.aberration * 0.01 : 0;
     u.uExposure.value = p.exposure;
+    u.uRolloff.value = p.enabled ? p.rolloff : 1e6;
     u.uTime.value = time;
     u.uShadowTint.value.set(p.shadowTint.r, p.shadowTint.g, p.shadowTint.b);
     u.uHighTint.value.set(p.highTint.r, p.highTint.g, p.highTint.b);

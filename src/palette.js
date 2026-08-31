@@ -31,6 +31,21 @@ const RAW = {
   sidingB:      ['#7a705d', 0.10],
   sidingBdark:  ['#655c4c', 0.10],
   trimB:        ['#9c9384', 0.08],
+  // --- and four more, so seven houses are not two houses ------------------
+  sidingC:      ['#6a5148', 0.10],   // faded barn red
+  sidingCdark:  ['#57423b', 0.10],
+  trimC:        ['#a89f8c', 0.08],
+  sidingD:      ['#4c5a6b', 0.10],   // dusty blue
+  sidingDdark:  ['#3f4b59', 0.10],
+  trimD:        ['#b3ab98', 0.08],
+  sidingE:      ['#7c7458', 0.10],   // ochre
+  sidingEdark:  ['#66604a', 0.10],
+  trimE:        ['#9a9182', 0.08],
+  sidingF:      ['#5e6156', 0.10],   // sage grey
+  sidingFdark:  ['#4e514a', 0.10],
+  trimF:        ['#ada492', 0.08],
+  doorGreen:    ['#3c5240', 0.10],
+  doorYellow:   ['#7d6a35', 0.10],
 
   brick:        ['#6b4038', 0.18],
   brickDark:    ['#57332d', 0.18],
@@ -91,6 +106,7 @@ const RAW = {
   dogFur:       ['#5b4630', 0.16],
   dogFurDark:   ['#3a2c1f', 0.16],
   torchBody:    ['#5c4f3a', 0.10],
+  catFur:       ['#2f2a26', 0.14],
 
   // --- street furniture ---------------------------------------------------
   signRed:      ['#7c2f28', 0.10],

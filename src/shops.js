@@ -68,7 +68,7 @@ function shelfRun(w, x, y, z, len, dir) {
 // away to see inside — roof, parapet, fascia, awning and the glazed front.
 // None of it is ever within the walk field's headroom band, so pulling it into
 // a second mesh costs nothing in collision terms and buys a clean cutaway.
-export function shopParade(w, lid, anchors, x, z) {
+export function shopParade(w, lid, neon, anchors, x, z) {
   const W = 126, D = 64, WALL = 34, LIFT = 3;
   const y = 2;                                  // GROUND — the pavement level
   const fz = z;                                 // front face, looking -Z
@@ -104,7 +104,7 @@ export function shopParade(w, lid, anchors, x, z) {
   };
   glaze(x + 4, 40);
   glaze(x + 64, 10);
-  glaze(x + STORE_W + 6, 38);
+  glaze(x + STORE_W + 6, 20);
 
   // ---- the door: a HOLE, not a slab. Cut through the stall riser as well or
   // the walk field finds a 3-voxel step in the threshold and refuses it.
@@ -120,13 +120,16 @@ export function shopParade(w, lid, anchors, x, z) {
 
   // ---- fascia and sign
   lid.box(x - 1, y + 28, fz - 1, W + 2, 9, 2, 'doorBlue');
-  const nameW = sign(lid, 'MARLOWS', x + 8, y + 30, fz - 2, 'neonSign');
+  // the sign goes in its own world so its material can flicker; a voxel
+  // baked into the shared mesh can never change colour on its own
+  const nameW = sign(neon, 'MARLOWS', x + 8, y + 30, fz - 2, 'neonSign');
   sign(lid, 'LAUNDRY', x + STORE_W + 4, y + 30, fz - 2, 'shelterTube');
   // awning over the pavement, striped
   for (let i = 0; i < W; i++)
     lid.box(x + i, y + 27, fz - 8, 1, 1, 8, ((i / 7) | 0) % 2 ? 'phoneRed' : 'paper');
   lid.box(x, y + 27, fz - 9, W, 3, 1, 'metalDark');
-  for (const px of [x + 2, x + STORE_W - 4, x + W - 4])
+  // NOT x + W - 4: that lands the post inside the laundromat doorway
+  for (const px of [x + 2, x + STORE_W - 4, x + STORE_W + 26])
     w.box(px, y + 1, fz - 9, 2, 26, 2, 'metalDark');
 
   // ---- inside the store
@@ -159,16 +162,32 @@ export function shopParade(w, lid, anchors, x, z) {
     [x + STORE_W + 22, y + 32, fz - 6],
   ];
 
-  // ---- the laundromat: lit, glazed, closed. Machines in a row.
+  // ---- the laundromat gets a door of its own
+  const LX = x + STORE_W + 30, LW = 15;
+  w.cut(LX, y + 1, fz, LW, DH, 2);
+  lid.box(LX - 2, y + DH + 1, fz, LW + 4, 2, 2, 'metalDark');
+  w.box(LX - 1, y + 1, fz, 1, DH, 2, 'metalDark');
+  w.box(LX + LW, y + 1, fz, 1, DH, 2, 'metalDark');
+  w.box(LX, y, fz - 1, LW, 1, 3, 'concreteOld');
+  w.box(LX + LW - 2, y + 2, fz + 3, 1, DH - 3, 11, 'doorBlue');
+
+  // ---- the laundromat: lit, glazed, and now open. Machines in a row.
   const lx = x + STORE_W + 4;
   for (let i = lx; i < x + W - 3; i++) for (let k = fz + 3; k < z + D - 3; k++)
     w.set(i, y, k, 'concreteOld');
   for (let i = 0; i < 4; i++) {
-    w.box(lx + 2 + i * 10, y + 1, fz + 22, 9, 16, 9, 'paper');
-    w.box(lx + 4 + i * 10, y + 7, fz + 21, 5, 5, 1, 'glassDark');
+    w.box(lx + 2 + i * 10, y + 1, fz + 26, 9, 16, 9, 'paper');
+    w.box(lx + 4 + i * 10, y + 7, fz + 25, 5, 5, 1, 'glassDark');
+    if (i === 1) w.box(lx + 4 + i * 10, y + 7, fz + 25, 5, 5, 1, 'chillGlow');
   }
-  w.box(lx, y + 1, fz + 8, 34, 8, 5, 'slatWood');                 // the bench
-  w.box(lx + 20, y + 34, fz + 6, 4, 1, 40, 'stripLight');
+  for (let i = 0; i < 3; i++)                                     // dryers opposite
+    w.box(lx + 4 + i * 11, y + 1, fz + D - 22, 10, 17, 9, 'metal');
+  w.box(lx, y + 1, fz + 10, 16, 8, 5, 'slatWood');                // the bench
+  w.box(lx, y + 9, fz + 10, 16, 8, 1, 'slatWood');
+  w.box(lx + 2, y + 1, fz + 40, 7, 12, 7, 'plasticBlue');         // a basket
+  w.box(lx + 20, y + 34, fz + 6, 4, 1, 44, 'stripLight');
+  anchors.laundryLight = [lx + 20, y + 26, fz + 26];
+  anchors.laundryDoor = [LX + LW / 2, y, fz - 6];
 
   return { x, z, W, D, front: fz };
 }

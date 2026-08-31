@@ -35,6 +35,7 @@ export function createUI(ctx) {
       ['grain', 'grain', 0, 0.12, 0.002, () => P.grain, v => P.grain = v],
       ['vignette', 'vignette', 0, 1, 0.01, () => P.vignette, v => P.vignette = v],
       ['aberration', 'aberration', 0, 3, 0.05, () => P.aberration, v => P.aberration = v],
+      ['rolloff', 'highlight rolloff', 0.6, 12, 0.1, () => P.rolloff, v => P.rolloff = v],
       ['tone', 'split tone', 0, 2, 0.02, () => ctx.tone(), v => ctx.tone(v)],
     ]],
     ['Light', [
@@ -48,6 +49,9 @@ export function createUI(ctx) {
         v => ctx.spillGain(v)],
       ['shaft', 'light shaft', 0, 0.5, 0.005, () => rig.cones[0]?.material.uniforms.uStrength.value ?? 0,
         v => rig.cones.forEach(c => c.material.uniforms.uStrength.value = v)],
+    ]],
+    ['Night', [
+      ['nightfall', 'hour (dusk to late)', 0, 1, 0.01, () => ctx.nightfall(), v => ctx.nightfall(v)],
     ]],
     ['Walking', [
       ['walkSpeed', 'move speed', 0.3, 2.5, 0.05, () => ctx.walkSpeed(), v => ctx.walkSpeed(v)],
@@ -64,6 +68,7 @@ export function createUI(ctx) {
       v => { if (rig.moths) rig.moths.points.visible = v; }],
     ['people', 'people', () => ctx.people(), v => ctx.people(v)],
     ['traffic', 'traffic', () => ctx.traffic(), v => ctx.traffic(v)],
+    ['weather', 'leaves and smoke', () => ctx.weather(), v => ctx.weather(v)],
     ['torch', 'flashlight', () => ctx.torch(), v => ctx.torch(v)],
     ['follow', 'follow the player', () => ctx.follow(), v => ctx.follow(v)],
     ['parallax', 'camera drift', () => ctx.parallax(), v => ctx.parallax(v)],
@@ -237,7 +242,7 @@ export function createDialogue() {
   const chip = el('div', 'chip');
   document.body.append(chip);
 
-  let lines = [], i = 0, open = false;
+  let lines = [], i = 0, open = false, done = null;
 
   function render() {
     line.textContent = lines[i] || '';
@@ -245,8 +250,9 @@ export function createDialogue() {
   }
   return {
     isOpen: () => open,
-    show(person) {
-      lines = person.lines || ['…'];
+    show(person, override, onDone) {
+      lines = override || person.lines || ['…'];
+      done = onDone || null;
       i = 0; open = true;
       who.textContent = person.role ? `${person.name} — ${person.role}` : person.name;
       render();
@@ -260,7 +266,13 @@ export function createDialogue() {
       render();
       return true;
     },
-    hide() { open = false; box.classList.remove('on'); },
+    hide() {
+      if (!open) return;
+      open = false;
+      box.classList.remove('on');
+      const cb = done; done = null;
+      if (cb) cb();
+    },
     hover(name, x, y) {
       if (!name) { chip.classList.remove('on'); return; }
       chip.textContent = name;

@@ -136,7 +136,7 @@ export function buildLights(scene, anchors) {
   rig.lamps = [];
   (anchors.lamps || []).forEach(([lx, ly, lz], i) => {
     const hero = i === 0;
-    const lamp = new THREE.SpotLight(0xffa23c, hero ? 165000 : 125000, 260, 0.85, 0.75, 2);
+    const lamp = new THREE.SpotLight(0xffa23c, hero ? 150000 : 115000, 260, 0.85, 0.75, 2);
     lamp.position.set(lx, ly, lz);
     lamp.target.position.set(lx, GROUND, lz + (lz > 80 ? -8 : 8));
     if (hero) {
@@ -202,6 +202,7 @@ export function buildLights(scene, anchors) {
   // The shelter's strip light and the phone box glow: both are places a
   // player will stand, and both are the wrong colour temperature for the
   // street, which is the point.
+  if (anchors.laundryLight) rig.laundry = bulb(anchors.laundryLight, 0xd8ecff, 5200, 95);
   if (anchors.shelter) rig.shelter = bulb(anchors.shelter, 0xcfe4ff, 7000, 90);
   if (anchors.phone) rig.phone = bulb(anchors.phone, 0xffe0a8, 4200, 70);
 
