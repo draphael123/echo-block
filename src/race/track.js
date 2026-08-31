@@ -381,12 +381,16 @@ function sideStreet(c, s, side) {
 // crashes in a lap, all at one gantry.
 // HIGH ENOUGH TO LOOK UNDER.
 //
-// The beam sat 62 voxels up and the chase camera sits at 83, so on every
-// approach a gantry crossed the frame as a solid black bar at eye level -- a
-// letterbox with the road above and below it. Nothing was wrong with the
-// geometry; it was simply built for a driver who does not exist. At 84 the
-// camera is under it, which is where you sit in a car.
-const GANTRY_H = 84;
+// The beam sat 62 voxels up and a gantry crossed every approach as a solid
+// black bar at eye level -- a letterbox with the road above it and below it.
+// Nothing was wrong with the geometry; it was built for a driver who does not
+// exist. The first fix put it at 84, which is EXACTLY the chase camera height
+// (CAM.up) and therefore still dead level with the eye. What matters is not
+// clearance, it is which SIDE of the beam the camera is on: above it and you
+// look down at its top for ever, below it and it passes overhead the way a
+// sign gantry is supposed to. 112 is the same clearance the market hall uses,
+// so the whole town has one overhead height.
+const GANTRY_H = 112;
 
 function gantryOver(c, s, half, lift, signal) {
   for (const side of [-1, 1])
@@ -709,7 +713,11 @@ const DISTRICT = {
     // thing you have to be straight for is a 216-voxel hole in a wall.
     const BORE = ROAD_HALF + KERB;                 // the gap you go through
     const WALL = BORE + 90;                        // how far out the stone runs
-    const THICK = 120, RISE = 118;
+    // RISE has to clear the arch crown by real mass. The crown of a semicircle
+    // this wide lands at 96, so at 118 there were twenty-two voxels of stone
+    // above it and the portcullis was silhouetted against the SKY rather than
+    // against a wall -- a gate with nothing on top of it.
+    const THICK = 120, RISE = 152;
 
     // the wall itself, marched in (s, u) because it SPANS the road
     for (let s = mid - THICK / 2; s <= mid + THICK / 2; s += 0.8) {
@@ -723,15 +731,15 @@ const DISTRICT = {
           const from = a <= BORE ? Math.round(arch) : 0;
           for (let k = from; k < RISE; k++) {
             const face = a > BORE - 2 || d > 0.86;
-            const m = k > RISE - 8 ? 'stoneLight'
-              : (hash3(x, k, z) > 0.90 ? 'stoneDark' : (face && (k % 9) === 0 ? 'stoneDark' : 'stone'));
+            const m = k > RISE - 8 ? 'concrete'
+              : (hash3(x, k, z) > 0.90 ? 'brickDark' : (face && (k % 9) === 0 ? 'brickDark' : 'concreteOld'));
             c.w.set(x, gy + k, z, m);
           }
           // the wall walk, with crenellations at the outer face
           if (a > BORE) {
-            c.w.set(x, gy + RISE, z, 'stoneLight');
+            c.w.set(x, gy + RISE, z, 'concrete');
             if (d > 0.80 && (Math.round(a) % 12) < 6)
-              for (let k = 1; k < 9; k++) c.w.set(x, gy + RISE + k, z, 'stoneLight');
+              for (let k = 1; k < 9; k++) c.w.set(x, gy + RISE + k, z, 'concrete');
           }
         });
       }
@@ -749,14 +757,14 @@ const DISTRICT = {
             const top = RISE + 44;
             if (shell) {
               for (let k = 0; k < top; k++)
-                c.w.set(x, gy + k, z, hash3(x, k, z) > 0.91 ? 'stoneDark' : 'stone');
+                c.w.set(x, gy + k, z, hash3(x, k, z) > 0.91 ? 'brickDark' : 'concreteOld');
               if ((Math.round(r * 6 + ds) % 11) < 5)
-                for (let k = 0; k < 9; k++) c.w.set(x, gy + top + k, z, 'stoneLight');
+                for (let k = 0; k < 9; k++) c.w.set(x, gy + top + k, z, 'concrete');
               // arrow loops, the only light in all that stone
               if (Math.abs(du) < 2 && (Math.round(ds) % 17) === 0)
                 for (let k = 40; k < 52; k += 4) c.w.set(x, gy + k, z, 'winWarmDim');
             } else {
-              c.w.set(x, gy + top, z, 'stoneLight');
+              c.w.set(x, gy + top, z, 'concrete');
             }
           });
         }
@@ -776,7 +784,7 @@ const DISTRICT = {
       for (const ds of [-THICK / 2 - 12, THICK / 2 + 12])
         c.put(mid + ds, side * (BORE - 8), (x, z, ff, gy) => {
           c.w.box(x - 1, gy + 40, z - 1, 3, 3, 3, 'metalDark');
-          c.w.set(x, gy + 39, z, 'lampWarm');
+          c.w.set(x, gy + 39, z, 'porchBulb');
           c.anchors.lamps.push([x, gy + 39, z]);
         });
 
@@ -824,7 +832,7 @@ const DISTRICT = {
             if (Math.abs(ds) + Math.abs(du) > 10) continue;
             c.put(s + ds, side * PIER + du, (x, z, ff, gy) => {
               for (let k = 0; k < DECK; k++)
-                c.w.set(x, gy + k, z, k < 4 ? 'stoneDark' : (hash3(x, k, z) > 0.9 ? 'stoneLight' : 'stone'));
+                c.w.set(x, gy + k, z, k < 4 ? 'brickDark' : (hash3(x, k, z) > 0.9 ? 'concrete' : 'concreteOld'));
             });
           }
 
@@ -838,14 +846,14 @@ const DISTRICT = {
         c.put(s, u, (x, z, ff, gy) => {
           // joists, boards, and a lit panel between every pair of joists
           const bay = Math.round(s) % 34;
-          c.w.set(x, gy + DECK, z, bay < 6 ? 'beam' : (a < PIER - 30 && bay > 12 && bay < 28 ? 'winWarmDim' : 'plank'));
-          for (let k = 1; k < 5; k++) c.w.set(x, gy + DECK + k, z, k < 2 ? 'beam' : 'plank');
+          c.w.set(x, gy + DECK, z, bay < 6 ? 'wood' : (a < PIER - 30 && bay > 12 && bay < 28 ? 'winWarmDim' : 'woodPale'));
+          for (let k = 1; k < 5; k++) c.w.set(x, gy + DECK + k, z, k < 2 ? 'wood' : 'woodPale');
           if (a > PIER + 2) {
             for (let k = 5; k < 40; k++) {
               const win = k > 12 && k < 28 && (Math.round(s) % 26) < 14;
               c.w.set(x, gy + DECK + k, z,
                 win ? (hash3(x, 0, z) > 0.45 ? 'winWarm' : 'winWarmDim')
-                  : (Math.round(s) % 26 < 3 || k > 36 ? 'beam' : 'plaster'));
+                  : (Math.round(s) % 26 < 3 || k > 36 ? 'wood' : 'concrete'));
             }
           }
         });
@@ -853,8 +861,8 @@ const DISTRICT = {
       for (let u = -PIER - 12; u <= PIER + 12; u += 0.8) {
         const pitch = Math.round((1 - Math.abs(u) / (PIER + 12)) * 34);
         c.put(s, u, (x, z, ff, gy) => {
-          c.w.set(x, gy + DECK + 40 + pitch, z, 'slate');
-          c.w.set(x, gy + DECK + 39 + pitch, z, 'slateDark');
+          c.w.set(x, gy + DECK + 40 + pitch, z, 'shingle');
+          c.w.set(x, gy + DECK + 39 + pitch, z, 'shingleDark');
         });
       }
     }
@@ -863,7 +871,7 @@ const DISTRICT = {
     for (let s = from + 29; s < to; s += step * 2)
       for (const side of [-1, 1])
         c.put(s, side * (PIER - 6), (x, z, ff, gy) => {
-          c.w.set(x, gy + DECK - 9, z, 'lampWarm');
+          c.w.set(x, gy + DECK - 9, z, 'porchBulb');
           c.anchors.lamps.push([x, gy + DECK - 9, z]);
         });
   },
@@ -887,14 +895,14 @@ const DISTRICT = {
         const a = Math.abs(u);
         c.put(s, u, (x, z, ff, gy) => {
           const road = gy - 3;
-          c.w.set(x, road - 1, z, 'stone');
-          c.w.set(x, road - 2, z, a > DECK - 6 ? 'stoneLight' : 'stoneDark');
+          c.w.set(x, road - 1, z, 'concreteOld');
+          c.w.set(x, road - 2, z, a > DECK - 6 ? 'concrete' : 'brickDark');
           if (a > DECK - 3) {
-            for (let k = 0; k < 3; k++) c.w.set(x, road - 3 - k, z, 'stoneLight');
+            for (let k = 0; k < 3; k++) c.w.set(x, road - 3 - k, z, 'concrete');
             // The parapet. Low enough to see the drop over -- a wall you
             // cannot see over is just a corridor again -- and solid, so you
             // cannot drive off it.
-            for (let k = 0; k < 15; k++) c.w.set(x, road + k, z, k > 12 ? 'stoneLight' : 'stone');
+            for (let k = 0; k < 15; k++) c.w.set(x, road + k, z, k > 12 ? 'concrete' : 'concreteOld');
           }
         });
       }
@@ -919,7 +927,7 @@ const DISTRICT = {
             const road = gy - 3;
             for (let k = 6; k < DROP; k++) {
               if (Math.abs(ds) > 24 - k / DROP * 7) continue;
-              c.w.set(x, road - k, z, hash3(x, k >> 2, z) > 0.90 ? 'stoneDark' : 'stone');
+              c.w.set(x, road - k, z, hash3(x, k >> 2, z) > 0.90 ? 'brickDark' : 'concreteOld');
             }
           });
         }
@@ -929,7 +937,7 @@ const DISTRICT = {
         for (let u = -DECK + 10; u <= DECK - 10; u += 0.9) {
           if (Math.abs(u) < DECK - 26) continue;
           c.put(s + ds, u, (x, z, ff, gy) => {
-            for (let k = 6; k < 20; k++) c.w.set(x, gy - 3 - k - sag, z, 'stone');
+            for (let k = 6; k < 20; k++) c.w.set(x, gy - 3 - k - sag, z, 'concreteOld');
           });
         }
       }
@@ -952,11 +960,11 @@ const DISTRICT = {
             // the entire cross-section undrivable. Under the carriageway the
             // deck is five voxels thick; the depth is all in the flanks, which
             // are the only part you can see anyway.
-            for (let k = 1; k < 6; k++) c.w.set(x, road - k, z, 'stone');
+            for (let k = 1; k < 6; k++) c.w.set(x, road - k, z, 'concreteOld');
             if (Math.abs(u) > DECK - 12)
-              for (let k = 6; k < deep; k++) c.w.set(x, road - k, z, 'stone');
+              for (let k = 6; k < deep; k++) c.w.set(x, road - k, z, 'concreteOld');
             if (Math.abs(u) > DECK - 3)
-              for (let k = 0; k < 15; k++) c.w.set(x, road + k, z, k > 12 ? 'stoneLight' : 'stone');
+              for (let k = 0; k < 15; k++) c.w.set(x, road + k, z, k > 12 ? 'concrete' : 'concreteOld');
           });
       }
 
@@ -969,7 +977,7 @@ const DISTRICT = {
           for (let k = 8; k < h - 6; k += 11)
             for (let dx = 4; dx < 48; dx += 9)
               c.w.set(x - 26 + dx, gy - DROP + 20 + k, z - 26,
-                hash3(x + dx, k, z) > 0.55 ? 'winWarm' : 'winCold');
+                hash3(x + dx, k, z) > 0.55 ? 'winWarm' : 'winTV');
         });
     // lamps along the parapet, the only thing lighting it
     for (let s = s0; s < s1; s += 150)
@@ -999,7 +1007,7 @@ const DISTRICT = {
             const shell = Math.abs(ds) > 7.5 || Math.abs(u) > ROAD_HALF + 18;
             for (let k = 78; k < 96; k++)
               c.w.set(x, gy + k, z, shell || k > 93 ? 'metal' : 'metalDark');
-            if (Math.abs(ds) < 1 && (Math.round(u) % 24) < 3) c.w.set(x, gy + 77, z, 'lampWarm');
+            if (Math.abs(ds) < 1 && (Math.round(u) % 24) < 3) c.w.set(x, gy + 77, z, 'porchBulb');
           });
     }
 
@@ -1116,11 +1124,11 @@ function dress(w, path, anchors, houses) {
   // the MIDDLE of the road on the Docks, whose start straight runs along X.
   // That was the two-hundred-voxel pink streak through the middle of the frame.
   for (const side of [-1, 1])
-    put(30, side * (ROAD_HALF + 6), (x, z, ff, gy) => w.box(x - 2, gy, z - 2, 5, 88, 5, 'metalDark'));
+    put(30, side * (ROAD_HALF + 6), (x, z, ff, gy) => w.box(x - 2, gy, z - 2, 5, 116, 5, 'metalDark'));
   for (let u = -ROAD_HALF - 6; u <= ROAD_HALF + 6; u += 0.8)
     put(30, u, (x, z, ff, gy) => {
-      w.box(x - 1, gy + 82, z - 1, 3, 6, 3, 'metalDark');
-      if (Math.abs(u) < ROAD_HALF - 6) w.set(x, gy + 85, z, 'neonSign');
+      w.box(x - 1, gy + 110, z - 1, 3, 6, 3, 'metalDark');
+      if (Math.abs(u) < ROAD_HALF - 6) w.set(x, gy + 113, z, 'neonSign');
     });
   for (let u = -ROAD_HALF; u <= ROAD_HALF; u++)
     put(30, u, (x, z, ff, gy) => w.set(x, gy - 3, z, ((u >> 2) % 2) ? 'roadLine' : 'asphaltPatch'));

@@ -47,6 +47,23 @@ const FACES = [
 ];
 const AO_LEVEL = [0.42, 0.64, 0.82, 1.0];
 
+// A MATERIAL THE PALETTE DOES NOT KNOW.
+//
+// set() stores whatever string it is handed and the mesher used to skip an
+// unknown one in silence, which means a typo -- or a name you were sure existed
+// -- produces geometry that COLLIDES AND DOES NOT RENDER. That is the worst
+// possible failure: an invisible wall. Four set pieces shipped that way and it
+// took a raycast down through the middle of a gatehouse to find out.
+//
+// Warned once per name, because it fires per voxel.
+const UNKNOWN = new Set();
+function unknown(name) {
+  if (UNKNOWN.has(name)) return;
+  UNKNOWN.add(name);
+  console.error(`voxel: no palette entry for "${name}" — those voxels will `
+    + 'collide but not render. Check the name against palette.js.');
+}
+
 export class VoxWorld {
   constructor() { this.v = new Map(); }
 
@@ -311,7 +328,7 @@ export class VoxWorld {
       const y = (Math.floor(k / SPAN) % SPAN) - OFF;
       const x = Math.floor(k / (SPAN * SPAN)) - OFF;
       const spec = palette[name];
-      if (!spec) continue;
+      if (!spec) { unknown(name); continue; }
       const emissive = spec.emit > 0;
       const b = emissive ? out.glow : out.matte;
       const jitter = 1 + (hash3(x, y, z) - 0.5) * (emissive ? 0.05 : spec.jitter);

@@ -18,8 +18,19 @@
 //
 // 152 voxels is 12.2 metres: narrower than the Parade's 17 by enough to feel
 // like an old town, wide enough to race two cars down.
-// still the narrowest in the city, but raceable
-const HALF = 108;
+// NARROWED BACK, deliberately, and at the cost of the field.
+//
+// 108 came from one decision -- double every road so six cars fit -- applied to
+// four tracks without asking what each of them was for. On three it was right.
+// Here it took the circuit's only mechanic away: the assay measured 8.4 car
+// widths and called the narrowness set dressing, which is exactly what it said
+// about 60 two revisions ago. A road that fits six abreast with room to fight
+// is not a medieval street, and no amount of stonework makes it one.
+//
+// So the width goes back and the ENTRY LIST shrinks instead. Four cars on a
+// 152-voxel road is close racing; six is a queue. That is the honest trade and
+// it is a per-track one -- see `field` below.
+const HALF = 76;
 const H = (f) => Math.round(HALF * f);
 
 export default {
@@ -132,5 +143,7 @@ export default {
   // The shortest lap in the city, so it gets an extra one. Three laps of 359
   // metres is over in ninety seconds; four makes it a race rather than a lap.
   laps: 4,
+  // Four, not six. The other three circuits take the full grid.
+  field: 4,
   wet: 0,
 };

@@ -13,7 +13,7 @@ import { buildTrack, sectionAt, safeSpot, lifeSpots, ROAD_HALF } from './track.j
 import { TRACKS, pickTrack, chooseTrack } from './tracks/index.js';
 import { buildCar, V_MAX, BODIES } from './car.js';
 import { buildLife, buildTraffic } from './life.js';
-import { buildField, gridSlot, FIELD_SIZE } from './field.js';
+import { buildField, gridSlot, fieldSizeOf } from './field.js';
 import * as GP from './gp.js';
 import { createAudio } from './audio.js';
 import { frame as pathFrame } from './path.js';
@@ -111,7 +111,8 @@ const gridFrame = pathFrame();
 //
 // YOU START AT THE BACK, which is what makes the field worth having: a lap with
 // nothing in front of you is a time trial with scenery.
-const field = buildField(track, ground, buildCar, { playerPaint: savefile.paint });
+const field = buildField(track, ground, buildCar,
+  { count: fieldSizeOf(SPEC), playerPaint: savefile.paint });
 field.addTo(scene);
 const START = gridSlot(0);
 track.path.place(START.s, START.u, gridFrame);

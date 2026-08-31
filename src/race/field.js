@@ -14,9 +14,12 @@
 import { buildRival } from './rival.js';
 import { ROAD_HALF } from './track.js';
 
-// Six is what the road was widened for: three rows of two, and a car is 26
-// voxels wide on a carriageway that is now 216 at its narrowest.
+// Six is what the roads were widened for: three rows of two, and a car is 26
+// voxels wide on a carriageway that is 300 at its narrowest -- EXCEPT on the
+// Old Town, which was narrowed back to keep the one thing it is for. A circuit
+// declares its own entry list; six is only the default.
 export const FIELD_SIZE = 6;
+export const fieldSizeOf = (spec) => Math.max(2, Math.min(RUNNERS.length + 1, spec.field || FIELD_SIZE));
 // A car is 58 voxels long, so 62 was bumper to bumper: the row in front filled
 // the windscreen and your own headlights bloomed off the back of it. 108 is a
 // car length of daylight between rows, which is what a grid looks like.
