@@ -72,7 +72,7 @@ deformation, a limb rotates as a solid block. That is what gives them the
 puppet read, and smooth vertex blending would look wrong here even if it were
 cheaper. A kid is 20 voxels tall, an adult 23, heads deliberately oversized.
 
-## Three things that bite in three.js
+## What bites in three.js
 
 - **Per-voxel emissive.** `emissive` is a per-material uniform and
   `instanceColor` is diffuse-only, so a mesh cannot have some voxels emit and
