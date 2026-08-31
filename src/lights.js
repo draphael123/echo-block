@@ -195,14 +195,14 @@ export function buildLights(scene, anchors) {
   // Inside the store. Fluorescent, i.e. the wrong colour temperature for the
   // whole rest of the street, which is exactly why a lit shopfront reads from
   // the far end of the road.
-  rig.shop = (anchors.shopLights || []).map(p => bulb(p, 0xd8ecff, 6500, 105));
+  rig.shop = (anchors.shopLights || []).map(p => bulb(p, 0xd8ecff, 8200, 130));
   rig.signs = (anchors.signLights || []).map((p, i) =>
     bulb(p, i ? 0xcfe4ff : 0xff8fa8, 5000, 70));
 
   // The shelter's strip light and the phone box glow: both are places a
   // player will stand, and both are the wrong colour temperature for the
   // street, which is the point.
-  if (anchors.laundryLight) rig.laundry = bulb(anchors.laundryLight, 0xd8ecff, 5200, 95);
+  if (anchors.laundryLight) rig.laundry = bulb(anchors.laundryLight, 0xd8ecff, 8000, 140);
   if (anchors.shelter) rig.shelter = bulb(anchors.shelter, 0xcfe4ff, 7000, 90);
   if (anchors.phone) rig.phone = bulb(anchors.phone, 0xffe0a8, 4200, 70);
 

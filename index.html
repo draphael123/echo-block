@@ -48,7 +48,8 @@
   body.intro-up #shot, body.intro-up #help, body.intro-up #stats { opacity: 0; }
   .intro {
     position: fixed; inset: 0; z-index: 20;
-    display: grid; place-content: center; padding: 8vh 6vw;
+    /* the card sits LEFT so the character you are dressing stays visible */
+    display: grid; place-content: center start; padding: 4vh 5vw;
     background:
       radial-gradient(120% 90% at 32% 45%, rgba(5,7,13,.05), rgba(5,7,13,.72) 72%),
       linear-gradient(rgba(5,7,13,.34), rgba(5,7,13,.60));
@@ -57,18 +58,45 @@
     color: #b9c2d4;
   }
   .intro.gone { opacity: 0; pointer-events: none; }
-  .intro-in { max-width: 52ch; }
+  /* two columns so the start button is never below the fold: copy on the
+     left, the character options beside it */
+  .intro-in {
+    max-height: 94vh; overflow-y: auto; padding-right: 6px;
+    display: grid; grid-template-columns: minmax(0, 46ch) auto; column-gap: 28px;
+    align-items: start;
+  }
+  .intro-in > h1, .intro-in > .sub, .intro-in > .blurb,
+  .intro-in > .start, .intro-in > .ctrl { grid-column: 1; }
+  .intro-in > .cust { grid-column: 2; grid-row: 1 / span 6; align-self: center; margin: 0; }
+  @media (max-width: 860px) {
+    .intro-in { grid-template-columns: minmax(0, 1fr); }
+    .intro-in > .cust { grid-column: 1; grid-row: auto; margin: 1.2em 0 .4em; }
+  }
   .intro h1 {
-    margin: 0 0 .35em; font-size: clamp(30px, 6vw, 62px); letter-spacing: .18em;
+    margin: 0 0 .3em; font-size: clamp(26px, 4.4vw, 46px); letter-spacing: .16em;
     font-weight: 600; color: #f3e6cf;
     text-shadow: 0 0 34px rgba(255,169,71,.32), 0 3px 0 rgba(0,0,0,.6);
   }
   .intro .sub {
-    margin: 0 0 1.6em; color: #ffb45c; letter-spacing: .13em;
+    margin: 0 0 1.1em; color: #ffb45c; letter-spacing: .13em;
     text-transform: uppercase; font-size: 12px;
   }
-  .intro .blurb { margin: 0 0 2em; color: #8894ab; }
-  .ctrl { margin: 1.8em 0 0; display: grid; gap: 6px; }
+  .intro .blurb { margin: 0 0 1.2em; color: #8894ab; font-size: 12px; }
+  .cust { margin: 1.6em 0 .4em; display: grid; gap: 8px; }
+  .cust h5 {
+    margin: 0 0 2px; font-size: 10px; font-weight: 600; letter-spacing: .2em;
+    text-transform: uppercase; color: #6a7488;
+  }
+  .cust-row { display: grid; grid-template-columns: 78px 1fr; gap: 10px; align-items: center; }
+  .cust-lbl { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: #7d8799; }
+  .sw { display: flex; gap: 6px; flex-wrap: wrap; }
+  .swatch {
+    width: 24px; height: 24px; padding: 0; cursor: pointer; border-radius: 2px;
+    border: 1px solid rgba(255,255,255,.16); transition: transform .12s ease, box-shadow .12s ease;
+  }
+  .swatch:hover { transform: translateY(-2px); }
+  .swatch.on { box-shadow: 0 0 0 2px #ffb45c; border-color: #ffb45c; }
+  .ctrl { margin: 1.4em 0 0; display: grid; gap: 6px; }
   .ctrl-row { display: grid; grid-template-columns: 92px 1fr; gap: 12px; align-items: center; color: #6d7789; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
   .ctrl kbd {
     font: inherit; text-align: center; padding: 3px 0; border-radius: 2px;
@@ -173,7 +201,7 @@
   <div id="prompt"></div>
   <div id="quest"></div>
   <div id="help">
-    <b>wasd</b> walk &nbsp; <b>shift</b> run &nbsp; <b>e</b> talk &nbsp; <b>c</b> camera<br>
+    <b>wasd</b> walk &nbsp; <b>shift</b> run &nbsp; <b>e</b> talk &nbsp; <b>scroll</b> zoom &nbsp; <b>c</b> camera<br>
     <b>tab</b> settings &nbsp; <b>p</b> post on/off &nbsp; <b>h</b> hide
   </div>
 </div>

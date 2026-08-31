@@ -138,6 +138,15 @@ export function buildPerson(spec) {
     trouser: 'jeans', pose: 'idle', ...spec,
   };
   const legH = s.kid ? 6 : 8, torsoH = s.kid ? 7 : 9;
+  // ---- ragdoll
+  // Not a solver. The body is already a hierarchy of rigid chunks, so being
+  // hit by a car is: throw the root on a ballistic arc, spin every joint,
+  // damp it, bounce once, then stand back up. A real articulated ragdoll
+  // would look WORSE here — the reference's characters are puppets, and a
+  // puppet knocked over tumbles as a unit.
+  const rag = { on: false, v: new THREE.Vector3(), spin: new THREE.Vector3(), rest: 0, up: 0 };
+  const limbs = [];
+  const limbSpin = [];
 
   const root = new THREE.Group();
   root.name = 'person:' + s.name;
@@ -165,6 +174,8 @@ export function buildPerson(spec) {
   armL.position.set(-ax, shoulderY, 0);
   armR.position.set(ax, shoulderY, 0);
   torso.add(armL, armR);
+  limbs.push(legL, legR, armL, armR, torso);
+  for (let i = 0; i < 5; i++) limbSpin.push(new THREE.Vector3());
 
   torso.add(part(w => w.box(-1, torsoH - 1, -1, 3, 2, 3, s.skin)));   // neck
   const head = new THREE.Group();
@@ -208,6 +219,7 @@ export function buildPerson(spec) {
   let travel = seed, dir = 1;
   let motion = 0, phase = seed * 6;          // for externally driven walking
 
+
   // The walk cycle is driven by DISTANCE, not by the clock. Drive it off time
   // and the legs keep scissoring while the player stands still, which is the
   // single most obvious tell that a character is a puppet with a timer.
@@ -222,8 +234,42 @@ export function buildPerson(spec) {
     torso.rotation.x = 0.05 * amount * gait;
   }
 
-  function update(t, dt = 1 / 60) {
+  function update(t, dt = 1 / 60, ground) {
     const k = t + seed * 20;
+
+    if (rag.on) {
+      rag.v.y -= 260 * dt;
+      root.position.addScaledVector(rag.v, dt);
+      const floor = ground ? ground.ceilingAt(root.position.x, root.position.z) : 0;
+      if (root.position.y <= floor) {
+        root.position.y = floor;
+        if (rag.v.y < -30) { rag.v.y *= -0.32; rag.v.multiplyScalar(0.55); }
+        else { rag.v.set(rag.v.x * 0.60, 0, rag.v.z * 0.60); }
+        rag.spin.multiplyScalar(0.86);
+        if (rag.v.lengthSq() < 16) rag.rest += dt; else rag.rest = 0;
+      }
+      body.rotation.x += rag.spin.x * dt;
+      body.rotation.y += rag.spin.y * dt;
+      body.rotation.z += rag.spin.z * dt;
+      for (let i = 0; i < limbs.length; i++) {
+        limbs[i].rotation.x += limbSpin[i].x * dt;
+        limbs[i].rotation.z += limbSpin[i].z * dt;
+        limbSpin[i].multiplyScalar(1 - Math.min(1, dt * 1.6));
+      }
+      body.position.y = 0;
+      if (rag.rest > 0.9) {                       // get up
+        rag.up += dt;
+        const e = Math.min(1, rag.up * 1.6);
+        body.rotation.x += (0 - body.rotation.x) * e * 0.3;
+        body.rotation.z += (0 - body.rotation.z) * e * 0.3;
+        for (const l of limbs) {
+          l.rotation.x += (0 - l.rotation.x) * e * 0.3;
+          l.rotation.z += (0 - l.rotation.z) * e * 0.3;
+        }
+        if (rag.up > 1.5) { rag.on = false; rag.up = 0; body.rotation.set(0, 0, 0); }
+      }
+      return;
+    }
 
     if (s.pose === 'sit') {
       hips.position.y = legH * 0.55;
@@ -280,6 +326,16 @@ export function buildPerson(spec) {
     root, pick, update, lights, data: s, head,
     setMotion: (v) => { motion = v; },
     height: legH + torsoH + (s.kid ? 7 : 6),
+    get downed() { return rag.on; },
+    knock(dx, dz, force) {
+      if (rag.on) return false;
+      rag.on = true; rag.rest = 0; rag.up = 0;
+      rag.v.set(dx * force, force * 0.72, dz * force);
+      rag.spin.set((Math.random() - 0.5) * 9, (Math.random() - 0.5) * 7, (Math.random() - 0.5) * 9);
+      for (const sp of limbSpin)
+        sp.set((Math.random() - 0.5) * 13, 0, (Math.random() - 0.5) * 13);
+      return true;
+    },
   };
 }
 
@@ -340,6 +396,44 @@ export function buildDog(spec) {
 // ------------------------------------------------------------------- cast
 // Written for the world rather than for a plot: it is a quiet street at night
 // and everyone has a small, mundane reason to still be outside.
+// The two who work here. Their positions come from the shop anchors rather
+// than being written down twice, because the shop moved three times.
+export const INDOOR_CAST = [
+  {
+    key: 'keeper', name: 'Marlow', role: 'behind the counter',
+    skin: 'skinMid', hair: 'hairGrey', hairStyle: 'bald', glasses: true,
+    shirt: 'shirtCream', collar: 'fabricPale', trouser: 'trouserGrey',
+    face: 0,
+    lines: [
+      'We shut at eleven. The sign says ten but I never get out before eleven.',
+      'You want the milk, it is at the back. Everything anyone wants is at the back, that is the trick of it.',
+      'Tell Sam he still owes me for a paper he never delivered in June.',
+    ],
+  },
+  {
+    key: 'folder', name: 'Ines', role: 'waiting on a dryer',
+    skin: 'skinDeep', hair: 'hairDark', hairStyle: 'long',
+    shirt: 'shirtGreen', trouser: 'jeans', collar: 'fabricPale',
+    face: 3.14,
+    lines: [
+      'Number four eats your money and gives you back a wet towel. Use six.',
+      'Twenty minutes left. I have read the same page of this four times.',
+      'It is warmer in here than at mine. That is the whole reason, if you want the truth.',
+    ],
+  },
+];
+
+// The look you can change at the start. Kept as flat lists so the intro can
+// render them as swatches without knowing anything about voxels.
+export const LOOKS = {
+  skin: ['skinLight', 'skinMid', 'skinDeep'],
+  hair: ['hairGinger', 'hairBrown', 'hairDark', 'hairGrey'],
+  hairStyle: ['fringe', 'plain', 'long'],
+  shirt: ['shirtRed', 'shirtBlue', 'shirtGreen', 'shirtCream', 'shirtPlaid'],
+  trouser: ['jeans', 'trouserTan', 'trouserGrey'],
+  cap: [null, 'shirtBlue', 'shirtRed'],
+};
+
 export const CAST = [
   {
     name: 'Row',
@@ -348,7 +442,7 @@ export const CAST = [
     kid: true, skin: 'skinLight', hair: 'hairGinger', hairStyle: 'fringe',
     shirt: 'shirtRed', trouser: 'jeans', torch: true, torchAim: [0, 0],
     collar: 'shirtCream', bag: 'trouserTan',
-    pos: [-38, 2, 60], face: Math.PI,
+    pos: [-44, 2, 30], face: 2.6,
     lines: [
       'My bike’s in the yard. I’m not going home yet.',
       'You hear that? Under the streetlight it hums. It gets louder after eleven.',

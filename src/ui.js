@@ -55,6 +55,7 @@ export function createUI(ctx) {
     ]],
     ['Walking', [
       ['walkSpeed', 'move speed', 0.3, 2.5, 0.05, () => ctx.walkSpeed(), v => ctx.walkSpeed(v)],
+      ['zoom', 'camera distance', 0.55, 2.1, 0.01, () => ctx.zoom(), v => ctx.zoom(v)],
     ]],
   ];
 
@@ -186,16 +187,46 @@ export function createUI(ctx) {
 // ------------------------------------------------------------------ intro
 // A held title card, not a splash: the scene is already running behind it on
 // its own slow framing, which is the first thing the reference does too.
-export function createIntro(onStart) {
+export function createIntro(onStart, opts) {
   const wrap = el('div', 'intro');
   const inner = el('div', 'intro-in');
   inner.append(el('h1', null, 'ECHO BLOCK'));
   inner.append(el('p', 'sub', 'one street, 1986, after everyone has gone in'));
   inner.append(el('p', 'blurb',
-    'You are Row, and you are not going home yet. Walk the street, talk to the ' +
-    'neighbours, stay out of the road. Every prop here is built from the same size ' +
-    'cube as the houses, lit almost entirely by five sodium streetlights, a handful ' +
-    'of porch bulbs and somebody’s television.'));
+    'You are not going home yet. Walk the street, talk to the neighbours, run ' +
+    'somebody else’s paper round, and stay out of the road.'));
+  // ---- who you are
+  // A start screen with three swatch rows is not a character creator, and it
+  // is not trying to be. It is the smallest thing that makes the kid on the
+  // screen YOURS before you have walked a single step, which is the whole
+  // job of it in a game where you will be looking at the back of that head
+  // for the rest of the session.
+  if (opts && opts.looks) {
+    const cz = el('div', 'cust');
+    cz.append(el('h5', null, 'who are you'));
+    for (const [key, label, values] of opts.rows) {
+      const row = el('div', 'cust-row');
+      row.append(el('span', 'cust-lbl', label));
+      const wrap = el('div', 'sw');
+      values.forEach((v, i) => {
+        const b = el('button', 'swatch');
+        b.style.background = opts.colourOf(key, v);
+        b.title = String(v == null ? 'none' : v);
+        b.dataset.key = key; b.dataset.i = i;
+        b.onclick = () => {
+          opts.onPick(key, v);
+          wrap.querySelectorAll('.swatch').forEach(o => o.classList.remove('on'));
+          b.classList.add('on');
+        };
+        if (opts.current(key) === v) b.classList.add('on');
+        wrap.append(b);
+      });
+      row.append(wrap);
+      cz.append(row);
+    }
+    inner.append(cz);
+  }
+
   const btn = el('button', 'start', 'walk the block');
   inner.append(btn);
   const rows = el('div', 'ctrl');

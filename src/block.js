@@ -24,7 +24,7 @@ import { shopParade } from './shops.js';
 
 export const GROUND = 2;
 export const ROAD = { z0: 46, z1: 118 };
-export const BOUNDS = { x0: -400, x1: 380, z0: -122, z1: 268 };
+export const BOUNDS = { x0: -400, x1: 470, z0: -152, z1: 268 };
 
 const rnd = (x, z, s = 0) => hash3(x, s, z);
 const shingleFn = (px, py, pz) => (rnd(px, pz, py) > 0.8 ? 'shingleDark' : 'shingle');
@@ -45,7 +45,7 @@ const WALKS = [
   { x0: 218, x1: 230, z0: -30, z1: 42 },
   { x0: -60, x1: -48, z0: 122, z1: 206 },
   { x0: 96, x1: 108, z0: 122, z1: 206 },
-  { x0: 164, x1: 296, z0: -32, z1: 30 },      // the shop forecourt
+  { x0: 168, x1: 434, z0: -32, z1: 32 },      // the shop forecourt
 ];
 const inAny = (list, x, z) => list.some(d => x >= d.x0 && x < d.x1 && z >= d.z0 && z < d.z1);
 
@@ -331,9 +331,9 @@ const ROSTER = [
 
 // A silhouette of the rest of the town behind each row.
 function backdrop(w) {
-  for (const [zBase, side] of [[-186, 1], [336, -1]]) {
+  for (const [zBase, side] of [[-216, 1], [336, -1]]) {
     let x = -430;
-    while (x < 330) {
+    while (x < 500) {
       const wid = 46 + Math.round(rnd(x, 7 * side) * 44);
       const h = 40 + Math.round(rnd(x, 11 * side) * 28);
       const z = zBase - side * Math.round(rnd(x, 3) * 30);
@@ -350,7 +350,7 @@ function backdrop(w) {
   for (let i = 0; i < 26; i++) {
     const tx = -410 + i * 27 + Math.round(rnd(i, 23) * 12);
     const r = 13 + Math.round(rnd(i, 31) * 6);
-    P.ball(w, tx, GROUND + Math.round(r * 0.75) + Math.round(rnd(i, 29) * 8), -236, r, 'hillFar', 0.35);
+    P.ball(w, tx, GROUND + Math.round(r * 0.75) + Math.round(rnd(i, 29) * 8), -266, r, 'hillFar', 0.35);
   }
 }
 
@@ -366,18 +366,18 @@ function wire(w, x0, y0, x1, y1, z, sag) {
 function dressing(w, anchors) {
   // Streetlights alternate sides down the road. Their pools are the rhythm of
   // the whole street shot, so they are evenly spaced rather than scattered.
-  for (const [lx, lz, arm] of [[-66, 18, 16], [-330, 18, 16], [180, 18, 16],
-                               [-190, 146, -16], [30, 146, -16]]) {
+  for (const [lx, lz, arm] of [[-66, 18, 16], [-330, 18, 16], [186, 18, 16],
+                               [396, 18, 16], [-190, 146, -16], [30, 146, -16]]) {
     anchors.lamps.push(P.streetLamp(w, lx, GROUND, lz, 54, arm));
   }
-  for (const px of [-390, 86, 260]) anchors.poles.push(P.utilityPole(w, px, GROUND, 18, 80));
+  for (const px of [-390, 86, 300]) anchors.poles.push(P.utilityPole(w, px, GROUND, 18, 80));
   P.hydrant(w, 40, GROUND, 32);
   P.hydrant(w, -240, GROUND, 132);
 
   for (const [dz, sag] of [[-4, 9], [0, 10], [4, 11]]) {
     wire(w, -390, GROUND + 76, 86, GROUND + 76, 18 + dz, sag);
-    wire(w, 86, GROUND + 76, 260, GROUND + 74, 18 + dz, sag);
-    wire(w, 260, GROUND + 74, 420, GROUND + 70, 18 + dz, sag);
+    wire(w, 86, GROUND + 76, 300, GROUND + 74, 18 + dz, sag);
+    wire(w, 300, GROUND + 74, 500, GROUND + 70, 18 + dz, sag);
     wire(w, -420, GROUND + 74, -390, GROUND + 76, 18 + dz, 2);
   }
   wire(w, 60, GROUND + 66, 86, GROUND + 74, 20, 4);
@@ -433,19 +433,22 @@ function dressing(w, anchors) {
   anchors.phone = S.phoneBox(w, 108, GROUND, 26);
   S.bench(w, -244, GROUND, 26, 1);
   // clear of the shop door (x 218-233) — a bench across a doorway is a wall
-  S.bench(w, 176, GROUND, -14, 1);
-  S.bench(w, 250, GROUND, -14, 1);
-  P.trashBin(w, 242, GROUND, -12);
-  P.trashBin(w, 250, GROUND, -12, { lidOff: true });
-  S.milkCrates(w, 312, GROUND, -18, 3);   // clear of the laundromat door
-  S.signPost(w, 300, GROUND, 30, 'stop');
+  S.bench(w, 182, GROUND, -18, 1);
+  S.bench(w, 296, GROUND, -18, 1);
+  S.bench(w, 396, GROUND, -18, 1);
+  // clear of the store doors (x 242-268)
+  P.trashBin(w, 300, GROUND, -16);
+  P.trashBin(w, 310, GROUND, -16, { lidOff: true });
+  S.milkCrates(w, 444, GROUND, -18, 3);   // clear of the laundromat door
+  P.hydrant(w, 340, GROUND, -14);
+  S.signPost(w, 452, GROUND, 30, 'stop');
   S.signPost(w, -352, GROUND, 30, 'street');
   S.signPost(w, 4, GROUND, 130, 'street');
   for (const dx of [-300, -120, 60, 220]) S.drain(w, dx, 0, ROAD.z0 + 1);
   for (const dx of [-250, -40, 170]) S.drain(w, dx, 0, ROAD.z1 - 6);
   // a bit of roadworks: something for the cars to swerve round
-  S.barrier(w, 316, GROUND, ROAD.z0 + 8, 30);
-  for (const cx of [308, 348, 328]) S.roadCone(w, cx, 0, ROAD.z0 + 4);
+  S.barrier(w, 356, GROUND, ROAD.z0 + 8, 30);
+  for (const cx of [348, 388, 368]) S.roadCone(w, cx, 0, ROAD.z0 + 4);
   S.skip(w, -238, GROUND, -22);
 
   // ---- back-of-lot life
@@ -463,7 +466,8 @@ function dressing(w, anchors) {
   S.flowerBed(w, 74, GROUND, 148, 30, 9);
   S.flowerBed(w, -286, GROUND, -20, 22, 8);
   P.tree(w, -196, GROUND, -12, 42, 19);
-  P.tree(w, 316, GROUND, 6, 36, 16);
+  P.tree(w, 156, GROUND, 6, 36, 16);
+  P.tree(w, 448, GROUND, 8, 34, 15);
   P.tree(w, -78, GROUND, 176, 40, 18);
   P.tree(w, 178, GROUND, 178, 34, 15);
   P.hedge(w, -320, GROUND, 130, 60, 7, 10, 'x');
@@ -495,7 +499,7 @@ export function buildBlock() {
   // in MIRRORED so it fronts the road from the far side. It has to face away
   // from the follow camera: a doorway you enter by walking toward the lens is
   // a doorway the camera cannot follow you through.
-  const SHOP_X = 172, SHOP_Z = -30;
+  const SHOP_X = 176, SHOP_Z = -30;
   const parade = new VoxWorld(), paradeLid = new VoxWorld(), paradeNeon = new VoxWorld();
   const local = { porches: [], spills: [] };
   anchors.shop = shopParade(parade, paradeLid, paradeNeon, local, 0, 0);
@@ -511,6 +515,8 @@ export function buildBlock() {
   anchors.shopDoor = flip(local.door);
   anchors.laundryDoor = flip(local.laundryDoor);
   anchors.laundryLight = flip(local.laundryLight);
+  anchors.keeper = flip(local.keeper);
+  anchors.folder = flip(local.folder);
   for (const h of ROSTER)
     house(w, anchors, { ...h, z: h.dir > 0 ? FAR_Z : NEAR_Z, dep: HOUSE_DEP });
   dressing(w, anchors);

@@ -144,15 +144,16 @@ export function buildTraffic(scene) {
     }
   }
 
-  // Cars are solid to the player. Cheap because there are only ever two, and
-  // it keeps the road from being a place you can stand with impunity.
-  function blocks(x, z) {
+  // Cars are NOT solid to the player any more. Being unable to step in front
+  // of one is the same as never being hit by one, and the road should have a
+  // consequence rather than an invisible wall.
+  function hits(x, z) {
     for (const c of cars) {
       if (!c.root.visible) continue;
       const dx = Math.abs(x - c.root.position.x), dz = Math.abs(z - c.root.position.z);
-      if (dx < c.L / 2 + 3 && dz < c.W / 2 + 3) return true;
+      if (dx < c.L / 2 + 4 && dz < c.W / 2 + 5) return c;
     }
-    return false;
+    return null;
   }
 
   // How close the nearest car is, for the near-miss rumble in main.js.
@@ -165,7 +166,7 @@ export function buildTraffic(scene) {
     return best;
   }
 
-  return { group, cars, update, blocks, nearest, lightCount: cars.length };
+  return { group, cars, update, hits, nearest, lightCount: cars.length };
 }
 
 export const ROAD_MID = (ROAD.z0 + ROAD.z1) / 2;

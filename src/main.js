@@ -4,7 +4,8 @@
 import * as THREE from 'three';
 import { buildBlock, BOUNDS, ROAD } from './block.js';
 import { buildSky, buildLights, tvFlicker } from './lights.js';
-import { buildPerson, buildDog, CAST } from './people.js';
+import { buildPerson, buildDog, CAST, INDOOR_CAST, LOOKS } from './people.js';
+import { PALETTE } from './palette.js';
 import { buildTraffic } from './traffic.js';
 import { Ground } from './walk.js';
 import { Post } from './post.js';
@@ -54,13 +55,18 @@ const peopleGroup = new THREE.Group();
 peopleGroup.name = 'people';
 scene.add(peopleGroup);
 
-const folk = CAST.map(spec => buildPerson(spec));
-const player = folk.find(p => p.data.player);
-const npcs = folk.filter(p => p !== player);
+// Shop staff take their positions from the shop's own anchors rather than
+// being written down a second time — the parade has moved three times now.
+const indoorSpecs = INDOOR_CAST
+  .filter(s => block.anchors[s.key])
+  .map(s => ({ ...s, pos: block.anchors[s.key] }));
+const folk = [...CAST, ...indoorSpecs].map(spec => buildPerson(spec));
+let player = folk.find(p => p.data.player);
+let npcs = folk.filter(p => p !== player);
 const biscuit = buildDog({ pos: [58, 2, 40], path: [[58, 40], [-172, 40]], speed: 1 });
 for (const p of folk) peopleGroup.add(p.root);
 peopleGroup.add(biscuit.root);
-const pickables = folk.map(p => p.pick);
+let pickables = folk.map(p => p.pick);
 
 // A ring on the ground under the player, drawn with depth testing OFF.
 // On a fixed 3/4 camera you WILL end up behind a tree or a parked car, and
@@ -83,6 +89,27 @@ const buildMs = Math.round(performance.now() - t0);
 for (const p of folk)
   p.root.position.y = Math.max(0, ground.ceilingAt(p.root.position.x, p.root.position.z));
 
+// Rebuilding beats mutating: the body is meshed from voxels, so a different
+// hair colour is a different mesh. It is cheap enough (a dozen tiny worlds)
+// to just throw the old one away every time a swatch is clicked.
+const look = { ...player.data };
+function rebuildPlayer(patch) {
+  Object.assign(look, patch);
+  const keep = player.root.position.clone(), face = player.root.rotation.y;
+  peopleGroup.remove(player.root);
+  player.root.traverse(o => {
+    if (o.isMesh) { o.geometry.dispose(); o.material.dispose(); }
+  });
+  const next = buildPerson({ ...look, pos: keep.toArray(), face });
+  peopleGroup.add(next.root);
+  const i = folk.indexOf(player);
+  folk[i] = next;
+  player = next;
+  npcs = folk.filter(p => p !== player);
+  pickables = folk.map(p => p.pick);
+  return next;
+}
+
 // ---------------------------------------------------------------- camera
 // A long lens on a fixed 3/4 is the single biggest lever in the whole look. A
 // normal 55-60 degree follow camera makes the same geometry read as a generic
@@ -93,15 +120,21 @@ const camera = new THREE.PerspectiveCamera(22, innerWidth / innerHeight, 20, 160
 const post = new Post(renderer, innerWidth, innerHeight);
 
 const FOLLOW = { offset: new THREE.Vector3(88, 172, 168), fov: 23, range: 120, blur: 11 };
+// Zoom scales the offset rather than the lens: pulling back on a long lens
+// keeps the compression that makes the street read as a diorama, where
+// widening the FOV would throw it away at exactly the moment you want more
+// of the world in frame.
+let zoom = 1;
+const ZOOM_MIN = 0.55, ZOOM_MAX = 2.1;
 
 // Interiors get their own fixed camera, which is how the reference does rooms
 // and also the only thing that works: a trailing camera outside the building
 // is looking at the back of a brick wall the moment you step through the door.
 // Inside, the camera stops following and the player moves within the frame.
 const INSIDE = {
-  box: { x0: 176, x1: 298, z0: -92, z1: -29 },
-  offset: new THREE.Vector3(46, 104, 122),
-  fov: 26, range: 70, blur: 9,
+  box: { x0: 178, x1: 424, z0: -136, z1: -29 },
+  offset: new THREE.Vector3(58, 132, 152),
+  fov: 25, range: 90, blur: 9,
 };
 const inInterior = (p) =>
   p.x > INSIDE.box.x0 && p.x < INSIDE.box.x1 && p.z > INSIDE.box.z0 && p.z < INSIDE.box.z1;
@@ -131,7 +164,9 @@ const SHOTS = [
   { name: 'across the road', target: [-46, 30, -14], offset: [128, 150, 214], fov: 21, range: 130, blur: 11 },
   { name: 'the far corner', target: [118, 24, 74], offset: [-330, 136, 34], fov: 20, range: 250, blur: 12 },
 ];
-const INTRO_SHOT = { target: [-236, 28, 72], offset: [470, 150, 34], fov: 20, range: 280, blur: 13 };
+// The intro frames the KID, because you are choosing what they look like.
+// It still drifts, so the street goes past behind them.
+const INTRO_SHOT = { target: [-44, 17, 26], offset: [58, 54, 96], fov: 25, range: 62, blur: 10 };
 
 const FOCUS_TARGET = new THREE.Vector3();
 const CAM_OFFSET = new THREE.Vector3();
@@ -154,10 +189,18 @@ function applyShot(i) {
   yaw = pitch = wantYaw = wantPitch = 0;
   if (ui) ui.sync();
 }
+function applyZoom() {
+  if (mode !== 'follow') return;
+  const base = indoors ? INSIDE.offset : FOLLOW.offset;
+  CAM_OFFSET.copy(base).multiplyScalar(zoom);
+  if (!indoors) CAM_OFFSET.setZ(base.z * zoom * camSide);
+  post.params.focus = CAM_OFFSET.length();
+}
+
 function followMode() {
   mode = 'follow';
   indoors = false;
-  CAM_OFFSET.copy(FOLLOW.offset);
+  CAM_OFFSET.copy(FOLLOW.offset).multiplyScalar(zoom);
   camera.fov = FOLLOW.fov;
   camera.updateProjectionMatrix();
   post.params.focus = CAM_OFFSET.length();
@@ -180,7 +223,7 @@ const MOVE_KEYS = {
   a: [-1, 0], arrowleft: [-1, 0], d: [1, 0], arrowright: [1, 0],
 };
 const WALK = 38, RUN = 62;               // voxels/second — about 3 and 5 m/s
-let playerSpeed = 0;
+let playerSpeed = 0, shake = 0;
 
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
@@ -188,6 +231,12 @@ addEventListener('keydown', (e) => {
   keys.add(k);
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+addEventListener('wheel', (e) => {
+  if (ui && ui.isOpen()) return;
+  zoom = THREE.MathUtils.clamp(zoom * (1 + Math.sign(e.deltaY) * 0.09), ZOOM_MIN, ZOOM_MAX);
+  applyZoom();
+  if (ui) ui.sync();
+}, { passive: true });
 addEventListener('blur', () => keys.clear());
 
 const FWD = new THREE.Vector3(), RIGHT = new THREE.Vector3(), DIR = new THREE.Vector3();
@@ -200,7 +249,7 @@ function steerPlayer(dt) {
     if (m) { ix += m[0]; iz += m[1]; }
   }
   const mag = Math.hypot(ix, iz);
-  if (!mag || talk.isOpen()) {
+  if (!mag || talk.isOpen() || player.downed) {
     playerSpeed += (0 - playerSpeed) * Math.min(1, dt * 12);
     player.setMotion(playerSpeed / RUN);
     return;
@@ -218,7 +267,7 @@ function steerPlayer(dt) {
 
   const step = playerSpeed * dt;
   const pos = player.root.position;
-  ground.move(pos, DIR.x * step, DIR.z * step, traffic.blocks);
+  ground.move(pos, DIR.x * step, DIR.z * step);
   pos.x = THREE.MathUtils.clamp(pos.x, BOUNDS.x0 + 8, BOUNDS.x1 - 8);
   pos.z = THREE.MathUtils.clamp(pos.z, BOUNDS.z0 + 8, BOUNDS.z1 - 8);
 
@@ -343,6 +392,7 @@ const ui = createUI({
     return spillGain;
   },
   walkSpeed: (v) => { if (v != null) walkGain = v; return walkGain; },
+  zoom: (v) => { if (v != null) { zoom = v; applyZoom(); } return zoom; },
   nightfall: (v) => { if (v != null) setNightfall(v); return nightAmount; },
   weather: (v) => { if (v != null) weather.visible = v; return weather.visible; },
   people: (v) => { if (v != null) peopleGroup.visible = v; return peopleGroup.visible; },
@@ -406,9 +456,32 @@ mode = 'intro';
 applySpec(INTRO_SHOT);
 hud.shot.textContent = '';
 document.body.classList.add('intro-up');
+const SWATCH = (key, v) => {
+  if (v == null) return 'repeating-linear-gradient(45deg,#2b3242 0 4px,#1b2130 4px 8px)';
+  const c = PALETTE[v];
+  if (!c) return '#333';
+  // the palette is linear; sRGB-encode it so a swatch matches the voxel
+  const to8 = (x) => Math.round(Math.pow(Math.min(1, Math.max(0, x)), 1 / 2.2) * 255);
+  return `rgb(${to8(c.rgb[0])},${to8(c.rgb[1])},${to8(c.rgb[2])})`;
+};
 const intro = createIntro(() => {
   document.body.classList.remove('intro-up');
   followMode();
+}, {
+  looks: true,
+  rows: [
+    ['skin', 'skin', LOOKS.skin],
+    ['hair', 'hair', LOOKS.hair],
+    ['hairStyle', 'cut', LOOKS.hairStyle],
+    ['shirt', 'shirt', LOOKS.shirt],
+    ['trouser', 'trousers', LOOKS.trouser],
+    ['cap', 'cap', LOOKS.cap],
+  ],
+  colourOf: (key, v) => (key === 'hairStyle'
+    ? { fringe: '#5d4636', plain: '#46372a', long: '#2f2620' }[v] || '#333'
+    : SWATCH(key, v)),
+  current: (key) => look[key],
+  onPick: (key, v) => rebuildPlayer({ [key]: v }),
 });
 
 // ---------------------------------------------------------------- loop
@@ -424,18 +497,31 @@ function frame() {
   if (mode === 'follow') {
     steerPlayer(dt * walkGain);
     const p = player.root.position;
+
+    // Hit by a car. The road is the only thing on this street that can hurt
+    // you, which is most of why it is worth crossing.
+    if (!player.downed) {
+      const car = traffic.hits(p.x, p.z);
+      if (car) {
+        const dz = Math.sign(p.z - car.root.position.z) || 1;
+        player.knock(car.lane.dir * 0.85, dz * 0.5, 58);
+        talk.hide();
+        shake = 1;
+        hud.prompt.textContent = '';
+      }
+    }
     const nowIn = inInterior(p);
     if (nowIn !== indoors) {                 // a CUT, not a move
       indoors = nowIn;
       if (indoors) {
         camSide = 1;
-        CAM_OFFSET.copy(INSIDE.offset);
+        CAM_OFFSET.copy(INSIDE.offset).multiplyScalar(zoom);
         camera.fov = INSIDE.fov;
         post.params.range = INSIDE.range;
         post.params.maxBlur = INSIDE.blur;
         FOCUS_TARGET.set(p.x, p.y + 12, p.z);
       } else {
-        CAM_OFFSET.copy(FOLLOW.offset).setZ(FOLLOW.offset.z * camSide);
+        CAM_OFFSET.copy(FOLLOW.offset).multiplyScalar(zoom).setZ(FOLLOW.offset.z * zoom * camSide);
         camera.fov = FOLLOW.fov;
         post.params.range = FOLLOW.range;
         post.params.maxBlur = FOLLOW.blur;
@@ -447,18 +533,18 @@ function frame() {
       // The alternative is a camera INSIDE a 75-voxel room, which means a wide
       // lens, which is the one thing this look cannot afford.
       if (block.shopLid) block.shopLid.visible = !indoors;
-      hud.shot.textContent = indoors ? 'marlows' : 'walking';
+      hud.shot.textContent = indoors ? (p.x < 328 ? 'marlows' : 'the laundromat') : 'walking';
     }
     if (!indoors) {
       const want = sideFor(p.z);
       if (want !== camSide) {
         camSide = want;
-        CAM_OFFSET.copy(FOLLOW.offset).setZ(FOLLOW.offset.z * camSide);
+        applyZoom();
       }
     }
     AIM.set(p.x, p.y + (indoors ? 12 : 14), p.z);
     FOCUS_TARGET.lerp(AIM, Math.min(1, dt * (indoors ? 5 : 3.6)));
-    if (!talk.isOpen()) {
+    if (!talk.isOpen() && !player.downed) {
       // Whichever is CLOSER wins. Person-always-wins meant a neighbour
       // standing beside a postbox made that postbox unreachable.
       const n = nearestNpc(), b = round.nearest(p);
@@ -477,12 +563,19 @@ function frame() {
     hud.prompt.textContent = '';
   }
 
+  shake = Math.max(0, shake - dt * 1.7);
   yaw += (wantYaw - yaw) * Math.min(1, dt * 3);
   pitch += (wantPitch - pitch) * Math.min(1, dt * 3);
   const spin = mode === 'intro' ? Math.sin(time * 0.06) * 0.13 : 0;
   const off = CAM_OFFSET.clone().applyAxisAngle(UP, yaw + spin);
   off.y += pitch * -90;
   camera.position.copy(FOCUS_TARGET).add(off);
+  if (shake > 0) {
+    const s = shake * shake * 7;
+    camera.position.x += (Math.random() - 0.5) * s;
+    camera.position.y += (Math.random() - 0.5) * s;
+    camera.position.z += (Math.random() - 0.5) * s;
+  }
   camera.lookAt(FOCUS_TARGET);
   sky.position.copy(camera.position);
 
@@ -507,7 +600,7 @@ function frame() {
     if (rig.signs[0]) rig.signs[0].intensity = 5000 * n;
   }
   if (peopleGroup.visible) {
-    for (const p of folk) p.update(time, dt);
+    for (const p of folk) p.update(time, dt, ground);
     biscuit.update(time, dt);
   }
 
@@ -531,6 +624,8 @@ setInterval(() => {
 window.ECHO = {
   scene, camera, renderer, post, rig, block, ui, talk, folk, player, npcs,
   traffic, ground, pickables, round, leaves, smoke, cat, mark,
+  zoom: (v) => { if (v != null) { zoom = THREE.MathUtils.clamp(v, ZOOM_MIN, ZOOM_MAX); applyZoom(); } return zoom; },
+  knock: () => player.knock(1, 0.4, 58),
   nightfall: (v) => { if (v != null) setNightfall(v); return nightAmount; },
   shot: (i) => applyShot(i),
   shots: SHOTS.map(s => s.name),
@@ -547,6 +642,8 @@ window.ECHO = {
     camera.lookAt(FOCUS_TARGET);
     camera.updateMatrixWorld(true);
   },
+  look,
+  rebuildPlayer,
   teleport: (x, z) => {
     player.root.position.set(x, Math.max(0, ground.ceilingAt(x, z)), z);
     FOCUS_TARGET.set(x, player.root.position.y + 14, z);
