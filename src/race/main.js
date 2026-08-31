@@ -20,10 +20,16 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.shadowMap.autoUpdate = false;
 renderer.toneMapping = THREE.NoToneMapping;
-renderer.setClearColor(0x070b16, 1);
+renderer.setClearColor(0x141d38, 1);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x141d31, 0.00115);
+// The sky is lifted; the FOG is not, and the two are different jobs. Fog is
+// what makes distant GEOMETRY visible, and matching it to the new horizon lit
+// the unlit legs all the way to the treeline — you could see the road half a
+// kilometre ahead on the one stretch whose entire point is that you cannot. A
+// night sky IS brighter than the ground under it, so: bright backdrop, dark
+// fog, and the dark stays dark.
+scene.fog = new THREE.FogExp2(0x161f33, 0.00135);
 const sky = buildSky();
 scene.add(sky);
 
@@ -238,16 +244,25 @@ function tick() {
   prevS = loc.s;
   s = loc.s;
 
-  // traffic is solid; the voxel world already handles everything else
-  if (!car.state.crash && car.state.speed > 60 && traffic.hits(car.state.x, car.state.z)) car.crash();
+  // Somebody else's car. Solid, heavy, and the hardest thing on the circuit to
+  // hit -- but still a slowdown you drive out of, not a spin.
+  if (!car.state.crash && car.state.speed > 40) {
+    const t = traffic.hits(car.state.x, car.state.z, car.state.heading);
+    if (t) {
+      car.impact(0.82, true);
+      traffic.shove(t);
+      hud.msg.textContent = 'you hit a car';
+      msgUntil = time + 1.6;
+    }
+  }
 
   // A pedestrian is not a wall. You carry them, you lose most of your speed,
   // and the lap is still yours to finish — which is what makes lifting for them
   // a decision instead of a rule.
-  if (!car.state.crash && car.state.speed > 26) {
-    const who = life.hits(car.state.x, car.state.z);
+  if (car.state.speed > 20) {
+    const who = life.hits(car.state.x, car.state.z, car.state.heading);
     if (who && life.strike(who, car.state.x, car.state.z, car.state.speed)) {
-      car.state.speed *= 0.38;
+      car.impact(0.55, false);
       struck++;
       hud.msg.textContent = 'you hit somebody';
       msgUntil = time + 1.8;
@@ -255,11 +270,13 @@ function tick() {
   }
   if (msgUntil && time > msgUntil && !done) { hud.msg.textContent = ''; msgUntil = 0; }
   if (car.state.crash > 0 && !wasDown) { crashes++; downAt = s; }
-  if (wasDown && car.state.crash <= 0) {
-    const spot = safeSpot(track.path, ground, downAt);
+  wasDown = car.state.crash > 0;
+  // Only a car that cannot get itself out gets put back on the road.
+  if (car.state.wedged) {
+    car.state.wedged = false;
+    const spot = safeSpot(track.path, ground, s);
     if (spot) { car.respawn(spot.x, spot.z, spot.heading, track.elev(spot.s) - 1); s = prevS = spot.s; }
   }
-  wasDown = car.state.crash > 0;
 
   car.present(dt);
   traffic.update(dt, track.path.total);

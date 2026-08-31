@@ -132,11 +132,12 @@ export function run(track, policyName, opts = {}) {
         if (!seen.has(near) || t - seen.get(near) < WARNING) blindHits++;
       }
     }
-    if (wasDown && c.state.crash <= 0) {
-      const spot = safeSpot(path, ground, downAt);
+    wasDown = c.state.crash > 0;
+    if (c.state.wedged) {
+      c.state.wedged = false;
+      const spot = safeSpot(path, ground, s);
       if (spot) { c.respawn(spot.x, spot.z, spot.heading, track.elev(spot.s) - 1); s = prevS = spot.s; }
     }
-    wasDown = c.state.crash > 0;
 
     path.at(s, f);
     const want = Math.atan2(f.tx, f.tz);

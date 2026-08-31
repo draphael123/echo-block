@@ -7,10 +7,17 @@
 import * as THREE from 'three';
 import { GROUND } from './block.js';
 
-const SKY_TOP = new THREE.Color('#080d1a');
-const SKY_HORIZON = new THREE.Color('#1d2942');
-const SODIUM_HAZE = new THREE.Color('#33241a');
-const SKY_BELOW = new THREE.Color('#080c15');
+// The backdrop was very nearly black, and because the chase camera looks DOWN
+// it was SKY_BELOW that filled most of the frame — so most of every shot was a
+// void with a thin band of sky above it. These are all lifted, and the sodium
+// haze is now doing real work: a town at night throws an orange glow onto the
+// underside of the cloud, and that warm band against the cool sky is most of
+// the colour contrast this palette has been missing.
+const SKY_TOP = new THREE.Color('#141d38');
+const SKY_HORIZON = new THREE.Color('#33456e');
+const SODIUM_HAZE = new THREE.Color('#7a4a1f');
+const SKY_BELOW = new THREE.Color('#151d2e');
+const RIDGE = new THREE.Color('#0d1322');
 
 export function buildSky() {
   const mat = new THREE.ShaderMaterial({
@@ -20,6 +27,7 @@ export function buildSky() {
       uHorizon: { value: new THREE.Vector3(...SKY_HORIZON.toArray()) },
       uHaze: { value: new THREE.Vector3(...SODIUM_HAZE.toArray()) },
       uBelow: { value: new THREE.Vector3(...SKY_BELOW.toArray()) },
+      uRidge: { value: new THREE.Vector3(...RIDGE.toArray()) },
     },
     vertexShader: `
       varying vec3 vDir;
@@ -29,7 +37,7 @@ export function buildSky() {
       }`,
     fragmentShader: `
       varying vec3 vDir;
-      uniform vec3 uTop, uHorizon, uHaze, uBelow;
+      uniform vec3 uTop, uHorizon, uHaze, uBelow, uRidge;
       float hash(vec2 p){ return fract(sin(dot(p, vec2(41.7, 289.3))) * 43758.5453); }
       void main() {
         float y = vDir.y;
@@ -40,7 +48,16 @@ export function buildSky() {
         // it has to fall away to near-black so far silhouettes can read.
         c = mix(uBelow, c, smoothstep(-0.16, 0.03, y));
         // the town's own light on the haze, a band sitting on the horizon
-        c += uHaze * exp(-max(y, 0.0) * 13.0) * smoothstep(-0.10, 0.06, y);
+        c += uHaze * exp(-max(y, 0.0) * 9.0) * smoothstep(-0.10, 0.06, y);
+        // Distant high ground, as a wavy line rather than as geometry. The
+        // horizon was previously fog meeting fog, which reads as the world
+        // stopping; a ridge gives the far distance a silhouette and costs
+        // nothing — no voxels, no draw call, no build time.
+        float az = atan(vDir.z, vDir.x);
+        float ridge = 0.030
+          + sin(az * 2.0) * 0.016 + sin(az * 4.7 + 1.3) * 0.009
+          + sin(az * 9.1 + 2.4) * 0.005;
+        c = mix(c, uRidge, smoothstep(ridge, ridge - 0.010, y) * 0.92);
         // stars, thinned out toward the horizon where the haze eats them
         vec2 g = floor(vDir.xz / max(abs(vDir.y), 0.15) * 90.0);
         float s = hash(g);

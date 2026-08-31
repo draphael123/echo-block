@@ -43,6 +43,13 @@ const DRIFT_SCRUB = 165;               // speed bled per second at full slip
 const SLIP_ON = 5.0, SLIP_OFF = 3.2;   // how fast the angle builds and recovers
 const CAR_PROBE = 2.6;                 // ~18 voxels across, against a 26-wide car
 
+// The wheels bottom out at local y = -1 and a floor voxel's TOP is one above
+// the value the field reports, so the body rides two above the floor. Without
+// this the car sat a voxel INTO the tarmac on the flat -- and, because move()
+// clamps the ground it reports to a minimum of zero, floated 1.7 metres over
+// the road in the hollow on the long dark. Ask the field directly instead.
+const RIDE = 2;
+
 // Headlights do not care how fast you are going — that was the dynamo, and it
 // went with the bike. What survives is the structural half of that idea: the
 // town's lighting IS the level design, so an unlit stretch is one where the
@@ -145,16 +152,15 @@ export function buildCar(paint = 0) {
     // Ground height under the car, and the smoothed version the body sits at.
     // The car used to be nailed to y = 0, which was invisible while the world
     // was flat and would have left it four metres under the chapel.
-    y: 0, yView: 0,
+    y: 0, yView: 0, shake: 0, wedged: false,
   };
 
   function step(dt, throttle, steer, ground, drift = false) {
-    if (state.crash > 0) {
-      state.crash -= dt;
-      state.spin += dt * 7;
-      state.speed *= Math.max(0, 1 - dt * 3);
-      return state;
-    }
+    // An impact is a moment, not a cutscene. The old version took the controls
+    // away for a second and a half and span the car on its axis, which is where
+    // the "weird dance" came from -- no racing game does that, and it turned
+    // clipping a kerb into a punishment you could only sit through.
+    if (state.crash > 0) state.crash = Math.max(0, state.crash - dt);
 
     if (throttle > 0) state.speed += ACCEL * throttle * dt;
     else state.speed += (BRAKE * throttle - DRAG) * dt;
@@ -186,10 +192,18 @@ export function buildCar(paint = 0) {
       const bx = state.x, bz = state.z;
       const p = { x: state.x, y: 0, z: state.z };
       ground.move(p, dx, dz, null, CAR_PROBE);
-      state.x = p.x; state.z = p.z; state.y = p.y;
+      state.x = p.x; state.z = p.z;
+      const fl = ground.ceilingAt(state.x, state.z, CAR_PROBE);
+      if (fl > -900) state.y = fl + RIDE;
+      // How much of the motion the world refused. A glancing scrape along a
+      // kerb costs you a little; driving square into a wall stops you. Squaring
+      // it makes the difference between those two big, which is what a racing
+      // game's walls feel like.
       const moved = Math.hypot(p.x - bx, p.z - bz), wanted = Math.hypot(dx, dz);
-      if (wanted > 0.01 && moved < wanted * 0.32 && state.speed > 90) crash();
-      else if (wanted > 0.01 && moved < wanted * 0.72) state.speed *= 0.7;
+      if (wanted > 0.01) {
+        const refused = 1 - moved / wanted;
+        if (refused > 0.06) impact(refused * refused, refused > 0.5);
+      }
     } else { state.x += dx; state.z += dz; }
     state.dist += Math.hypot(dx, dz);
 
@@ -198,25 +212,34 @@ export function buildCar(paint = 0) {
     // against a wall. Rather than add a reverse gear for this one case, being
     // stuck IS a crash — the recovery path already knows how to undo one, and
     // a player who beaches the car wants the same answer the harness does.
+    // Wedged: nosed into something at walking pace with the throttle open and
+    // no reverse gear. That is the one case that needs a reset, and a reset is
+    // what every racing game gives you -- not a pirouette.
     if (throttle > 0 && state.speed < 8) {
       state.stuck += dt;
-      if (state.stuck > 1.1) crash();
+      if (state.stuck > 1.3) { state.stuck = 0; state.wedged = true; }
     } else state.stuck = 0;
     return state;
   }
 
-  function crash() {
-    if (state.crash > 0) return false;
-    state.stuck = 0;
-    state.crash = 1.5;
-    state.speed *= 0.15;
-    return true;
+  // Hitting something. `sev` is 0..1: 0 is a brush, 1 is square-on. Speed is
+  // the entire penalty -- the car stays upright, pointing where it was, and
+  // under your control the whole time.
+  function impact(sev, hard) {
+    sev = Math.max(0, Math.min(1, sev));
+    state.speed *= 1 - 0.94 * sev;
+    if (state.crash > 0) return false;         // one count per contact
+    state.shake = sev;
+    state.crash = 0.3;                         // a flag and a jolt, nothing more
+    return hard === undefined ? sev > 0.35 : hard;
   }
+  const crash = () => impact(1, true);
 
   function respawn(x, z, heading, y) {
     state.x = x; state.z = z; state.heading = heading;
     if (y !== undefined) { state.y = y; state.yView = y; }
     state.speed = 0; state.turnRate = 0; state.roll = 0; state.stuck = 0; state.slip = 0;
+    state.crash = 0; state.wedged = false;
     root.rotation.z = 0; chassis.rotation.z = 0;
   }
 
@@ -233,16 +256,17 @@ export function buildCar(paint = 0) {
       -state.turnRate * (state.speed / V_MAX) * 0.5 - state.slip * 0.34, -0.30, 0.30);
     state.roll += (want - state.roll) * Math.min(1, dt * 6);
     chassis.rotation.z = state.roll;
+    // A short jolt through the body, and that is the whole crash animation.
     if (state.crash > 0) {
-      root.rotation.z = Math.sin(state.spin) * 0.35;
-      root.position.y = state.yView + Math.abs(Math.sin(state.spin * 0.7)) * 3;
-    } else {
-      root.rotation.z += (0 - root.rotation.z) * Math.min(1, dt * 6);
-    }
+      const k = state.crash / 0.3;
+      root.position.y = state.yView + Math.sin(state.crash * 90) * state.shake * 2.2 * k;
+      chassis.rotation.x = Math.sin(state.crash * 70) * state.shake * 0.1 * k;
+    } else chassis.rotation.x = 0;
+    root.rotation.z += (0 - root.rotation.z) * Math.min(1, dt * 6);
   }
 
   return {
-    root, state, step, crash, respawn, present, beam, length: L, width: W,
+    root, state, step, crash, impact, respawn, present, beam, length: L, width: W,
     sightRange: () => BEAM_REACH,
   };
 }

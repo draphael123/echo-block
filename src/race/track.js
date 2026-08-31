@@ -31,12 +31,21 @@ import * as D from './district.js';
 // pavements, frontages, lamps, the start gantry, the hazard lanes and the
 // sim's dodge target all move with it. That is deliberate: this number has now
 // changed three times and each change has to stay a one-line change.
-export const ROAD_HALF = 96;
+export const ROAD_HALF = 108;
 const KERB = 5;
-const VERGE = 22;
-// Trimmed with the widening: the districts now fill this band, and the ribbon
-// is the single biggest voxel cost on the circuit.
-const APRON = 8;
+// The footway, and it is a real one now: 40 voxels is 3.2 metres, where it used
+// to be 14 (1.1m — barely a kerb edge, and too narrow for two people to pass or
+// for a bench to stand on without blocking it). Everything that lives on the
+// pavement is placed relative to PAVE rather than by a hand-picked offset, so
+// widening it again moves the benches, bins, boxes, hedges and walkers with it.
+export const PAVE = 40;
+const VERGE = 14;
+const APRON = 6;
+
+// The three lines everything on the footway is placed against.
+export const KERBSIDE = ROAD_HALF + KERB + 8;         // lamps, signs, beacons
+export const PAVE_MID = ROAD_HALF + KERB + PAVE / 2;  // where people walk
+export const PAVE_BACK = ROAD_HALF + KERB + PAVE - 6; // benches, boxes, hedges
 export const GROUND_Y = 2;
 
 // ------------------------------------------------------------------ relief
@@ -168,7 +177,7 @@ const alongRot = (tx, tz) => rotToward(tx, tz);
 // ---------------------------------------------------------------- surface
 function ribbon(w, path) {
   const f = frame();
-  const half = ROAD_HALF, edge = half + KERB + VERGE + APRON;
+  const half = ROAD_HALF, edge = half + KERB + PAVE + VERGE + APRON;
   // Over-cover the ARCS only. On the outside of a corner the ribbon stretches
   // and a one-voxel step leaves pinholes a body's probe ring finds; on a
   // straight it is wasted work, and two thirds of this circuit is straight.
@@ -208,11 +217,11 @@ function ribbon(w, path) {
         const from = (lip ? -1 : GROUND_Y) + (riser !== null ? riser - gy : 0);
         for (let y = from; y <= GROUND_Y; y++)
           w.set(x, y + gy, z, y === GROUND_Y ? 'curb' : 'concreteOld');
-      } else if (a <= half + KERB + 14) {              // pavement
+      } else if (a <= half + KERB + PAVE) {            // pavement
         const c = ((x >> 3) + (z >> 3)) % 2 ? 'concrete' : 'concreteOld';
         w.set(x, GROUND_Y + gy, z, c);
         if (riser !== null) w.set(x, GROUND_Y + riser, z, c);
-      } else if (a <= half + KERB + VERGE) {
+      } else if (a <= half + KERB + PAVE + VERGE) {
         const c = r > 0.84 ? 'grassDry' : 'grass';
         w.set(x, GROUND_Y + gy, z, c);
         if (riser !== null) w.set(x, GROUND_Y + riser, z, c);
@@ -293,7 +302,7 @@ function legAxis(path, sec, f) {
 // building, it is a slightly darker patch of nothing. Widening the road pushed
 // everything out with it and made that worse. Buildings have to crowd the
 // pavement or the district may as well not be there.
-const SET = ROAD_HALF + KERB + 16;
+const SET = ROAD_HALF + KERB + PAVE + 6;
 
 function makeCtx(w, path, anchors, houses) {
   const f = frame();
@@ -380,7 +389,7 @@ const DISTRICT = {
       // scatter plus a canopy radius.
       c.run(sec.from, sec.to, side * (SET + 62), 124, (x, z, ff, gy, s) =>
         D.copse(c.w, x, gy, z, 88, Math.round(s)));
-      c.run(sec.from, sec.to, side * (ROAD_HALF + KERB + 14), 54, (x, z, ff, gy) =>
+      c.run(sec.from, sec.to, side * (PAVE_BACK + 8), 54, (x, z, ff, gy) =>
         P.hedge(c.w, x - (c.along(ff) === 'x' ? 28 : 5), gy,
           z - (c.along(ff) === 'x' ? 5 : 28), 56, 9, 14, c.along(ff)));
     }
@@ -400,13 +409,13 @@ const DISTRICT = {
             ox: Math.round(c.f.x), oz: Math.round(c.f.z), oy: elev(s),
             rotY: facingRot(c.f.nx, c.f.nz, side),
           });
-          c.put(s, side * (ROAD_HALF + KERB + 9), (x, z, ff, gy) =>
+          c.put(s, side * (PAVE_BACK + 6), (x, z, ff, gy) =>
             P.hedge(c.w, x - (c.along(ff) === 'x' ? 26 : 4), gy,
               z - (c.along(ff) === 'x' ? 4 : 26), 52, 8, 9 + Math.round(r * 3), c.along(ff)));
-          if (r > 0.6) c.put(s + 44, side * (ROAD_HALF + KERB + 13),
+          if (r > 0.6) c.put(s + 44, side * PAVE_BACK,
             (x, z, ff, gy) => c.w.stamp(P.MAILBOX, x, gy, z));
         } else {
-          c.put(s, side * (ROAD_HALF + KERB + 22), (x, z, ff, gy) => P.tree(c.w, x, gy, z, 42, 15));
+          c.put(s, side * (PAVE_BACK + 14), (x, z, ff, gy) => P.tree(c.w, x, gy, z, 42, 15));
         }
       }
     }
@@ -433,10 +442,10 @@ const DISTRICT = {
   yard(c, sec) {
     const ax = legAxis(c.path, sec, c.f);
     for (const side of [-1, 1])
-      c.run(sec.from, sec.to, side * (ROAD_HALF + KERB + 12), 40, (x, z, ff, gy) =>
+      c.run(sec.from, sec.to, side * (PAVE_BACK + 8), 40, (x, z, ff, gy) =>
         D.retainingWall(c.w, ax === 'x' ? x - 20 : x, gy, ax === 'x' ? z : z - 20, 42, ax, 38));
-    c.put(sec.from + 250, -(ROAD_HALF + KERB + 20), (x, z, ff, gy) =>
-      D.signalGantry(c.w, x - 2, gy + 38, z - 2, Math.round((ROAD_HALF + KERB + 20) * 2)));
+    c.put(sec.from + 250, -(PAVE_BACK + 8), (x, z, ff, gy) =>
+      D.signalGantry(c.w, x - 2, gy + 38, z - 2, Math.round((PAVE_BACK + 8) * 2)));
     c.put(sec.from + 120, SET + 34, (x, z, ff, gy) => D.pallets(c.w, x, gy, z, 5));
     c.put(sec.from + 410, -(SET + 38), (x, z, ff, gy) => D.oilDrums(c.w, x, gy, z, 9));
     c.put(sec.from + 460, SET + 30, (x, z, ff, gy) => D.silo(c.w, x, gy, z, 12, 54));
@@ -450,7 +459,7 @@ const DISTRICT = {
     c.put(sec.from + 340, SET + 38, (x, z, ff, gy) => D.haybales(c.w, x - 30, gy, z - 20, 6, 3));
     c.put(sec.to - 390, -(SET + 34), (x, z, ff, gy) => D.haybales(c.w, x - 30, gy, z - 20, 5, 8));
     for (const side of [-1, 1])
-      c.run(sec.from, sec.to, side * (ROAD_HALF + KERB + 16), 46, (x, z, ff, gy, s) => {
+      c.run(sec.from, sec.to, side * (PAVE_BACK + 10), 46, (x, z, ff, gy, s) => {
         if (hash3(Math.round(s), side, 2) > 0.86)
           D.fieldGate(c.w, x - (c.along(ff) === 'x' ? 20 : 0), gy,
             z - (c.along(ff) === 'x' ? 0 : 20), c.along(ff));
@@ -472,7 +481,7 @@ function dress(w, path, anchors, houses) {
     if (!sec.lit) continue;
     for (let s = sec.from + 110; s < sec.to - 70; s += 240) {
       const side = ((s / 300) | 0) % 2 ? 1 : -1;
-      put(s, side * (ROAD_HALF + KERB + 10), (x, z, ff, gy) => {
+      put(s, side * KERBSIDE, (x, z, ff, gy) => {
         anchors.lamps.push(P.streetLamp(w, x, gy, z, 54, -side * 16));
       });
     }
@@ -491,17 +500,17 @@ function dress(w, path, anchors, houses) {
     put(30, u, (x, z, ff, gy) => w.set(x, gy - 3, z, ((u >> 2) % 2) ? 'roadLine' : 'asphaltPatch'));
 
   // council property, because a street has some
-  put(430, ROAD_HALF + KERB + 12, (x, z, ff, gy) => S.phoneBox(w, x - 5, gy, z - 5));
-  put(900, -(ROAD_HALF + KERB + 16), (x, z, ff, gy) => S.busShelter(w, x - 17, gy, z - 7, 1));
-  put(4100, ROAD_HALF + KERB + 16, (x, z, ff, gy) => S.busShelter(w, x - 17, gy, z - 7, 1));
+  put(430, PAVE_BACK, (x, z, ff, gy) => S.phoneBox(w, x - 5, gy, z - 5));
+  put(900, -(PAVE_BACK - 2), (x, z, ff, gy) => S.busShelter(w, x - 17, gy, z - 7, 1));
+  put(4100, PAVE_BACK - 2, (x, z, ff, gy) => S.busShelter(w, x - 17, gy, z - 7, 1));
   for (const [s, side] of [[260, 1], [700, -1], [1150, 1], [3600, 1], [4400, -1], [4900, 1]]) {
-    put(s, side * (ROAD_HALF + KERB + 12), (x, z, ff, gy) => S.bench(w, x - 13, gy, z - 4, 1));
-    put(s + 70, side * (ROAD_HALF + KERB + 12), (x, z, ff, gy) => P.trashBin(w, x, gy, z));
+    put(s, side * PAVE_BACK, (x, z, ff, gy) => S.bench(w, x - 13, gy, z - 4, 1));
+    put(s + 70, side * PAVE_BACK, (x, z, ff, gy) => P.trashBin(w, x, gy, z));
   }
   for (const s of [520, 1240, 3500, 4200, 5400])
     put(s, ROAD_HALF - 3, (x, z, ff, gy) => S.drain(w, x - 4, gy - 3, z - 2));
   for (const [s, side, kind] of [[1380, 1, 'stop'], [2480, -1, 'sign'], [5150, 1, 'sign'], [5790, -1, 'stop']])
-    put(s, side * (ROAD_HALF + KERB + 8), (x, z, ff, gy) => S.signPost(w, x, gy, z, kind));
+    put(s, side * KERBSIDE, (x, z, ff, gy) => S.signPost(w, x, gy, z, kind));
 
   // zebra crossings, with a belisha beacon each side
   for (const sc of CROSSINGS) {
@@ -509,7 +518,7 @@ function dress(w, path, anchors, houses) {
       for (let u = -ROAD_HALF + 2; u <= ROAD_HALF - 2; u++)
         if (((u >> 3) % 2 + 2) % 2 === 0) put(sc + ds, u, (x, z, ff, gy) => w.set(x, gy - 3, z, 'roadLine'));
     for (const side of [-1, 1]) {
-      put(sc, side * (ROAD_HALF + KERB + 4), (x, z, ff, gy) => {
+      put(sc, side * (ROAD_HALF + KERB + 3), (x, z, ff, gy) => {
         w.box(x - 1, gy, z - 1, 3, 48, 3, 'paper');
         for (let k = 4; k < 44; k += 8) w.box(x - 2, gy + k, z - 2, 5, 4, 5, 'metalDark');
         P.ball(w, x, gy + 52, z, 5, 'sodium');
@@ -638,7 +647,7 @@ export const CROSSINGS = [480, 1240, 3620, 4260, 5010];
 // `pace` sets how fast they walk (a jogger is not a shopper) and `idle` stands
 // them still facing the road, which is what waiting for a bus looks like.
 export function lifeSpots() {
-  const pave = ROAD_HALF + KERB + 9;
+  const pave = PAVE_MID;
   return [
     { s: 200, u: pave, dir: 1, span: 260 },
     { s: 520, u: -pave, dir: -1, span: 280 },
@@ -691,7 +700,7 @@ export function buildTrack() {
     bx0 = Math.min(bx0, path.points[i]); bx1 = Math.max(bx1, path.points[i]);
     bz0 = Math.min(bz0, path.points[i + 1]); bz1 = Math.max(bz1, path.points[i + 1]);
   }
-  const pad = ROAD_HALF + KERB + VERGE + APRON + 100;
+  const pad = ROAD_HALF + KERB + PAVE + VERGE + APRON + 100;
   const field = w.walkField(
     Math.floor(bx0 - pad), Math.ceil(bx1 + pad),
     // FLOOR_MAX is relative to the ground in each column now, so the profile

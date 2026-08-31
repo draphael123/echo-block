@@ -227,11 +227,19 @@ export function buildLife(path, spots, ground, elev) {
   // pedestrians are decorative bollards you clip for free is worse than one
   // where they are a real reason to lift. So: they go down, and you lose most
   // of your speed carrying them.
-  function hits(x, z) {
+  // The car is 58 long and 26 wide, so a 30-voxel circle round its CENTRE
+  // misses with its own nose and its own back bumper: you could drive straight
+  // through somebody and be told you had not touched them. Test the actual
+  // rectangle, in the car's own frame.
+  const HALF_L = 36, HALF_W = 20;
+  function hits(x, z, heading = 0) {
+    const sh = Math.sin(heading), ch = Math.cos(heading);
     for (const w of folk) {
       if (!w.p.root.visible || w.p.downed) continue;
-      const dx = x - w.p.root.position.x, dz = z - w.p.root.position.z;
-      if (dx * dx + dz * dz < HIT * HIT) return w;
+      const dx = w.p.root.position.x - x, dz = w.p.root.position.z - z;
+      const lz = dx * sh + dz * ch;          // along the car
+      const lx = dx * ch - dz * sh;          // across it
+      if (Math.abs(lx) < HALF_W && Math.abs(lz) < HALF_L) return w;
     }
     return null;
   }
@@ -272,7 +280,8 @@ export function buildTraffic(path, buildCar, lanes, elev) {
   const tmp = frame();
   function update(dt, total) {
     for (const t of cars) {
-      t.s += t.dir * t.speed * dt;
+      if (t.boost) { t.boost = Math.max(0, t.boost - 240 * dt); }
+      t.s += t.dir * (t.speed + (t.boost || 0)) * dt;
       if (t.s > total) t.s -= total;
       if (t.s < 0) t.s += total;
       path.place(t.s, t.u, tmp);
@@ -283,13 +292,22 @@ export function buildTraffic(path, buildCar, lanes, elev) {
 
   // Traffic is solid. Running into the back of somebody's Cortina at 80 should
   // not be free.
-  function hits(x, z) {
+  // Two cars, both 58 long: a centre-to-centre circle either misses a nose-to-
+  // tail shunt or triggers when you are safely alongside. Same oriented box,
+  // grown by the other car's half-extents.
+  function hits(x, z, heading = 0) {
+    const sh = Math.sin(heading), ch = Math.cos(heading);
     for (const t of cars) {
-      const dx = x - t.c.root.position.x, dz = z - t.c.root.position.z;
-      if (dx * dx + dz * dz < 34 * 34) return t;
+      const dx = t.c.root.position.x - x, dz = t.c.root.position.z - z;
+      const lz = dx * sh + dz * ch, lx = dx * ch - dz * sh;
+      if (Math.abs(lx) < 27 && Math.abs(lz) < 54) return t;
     }
     return null;
   }
 
-  return { group, cars, update, hits };
+  // Knocked forward by the hit, then it settles back to its own pace. Cheap,
+  // but without it you bounce off something that never reacted at all.
+  function shove(t) { if (t) t.boost = 150; }
+
+  return { group, cars, update, hits, shove };
 }
