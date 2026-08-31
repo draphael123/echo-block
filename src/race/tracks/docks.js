@@ -8,7 +8,11 @@
 //
 // Big open radii to suit it — you brake in straight lines and carry the corner
 // on faith — and the widest sky in the city, which the wet reflections want.
-const HALF = 96;
+// 116. A dock road is a wide open thing and this was NARROWER than the
+// Parade, which made 'open' a word in the blurb rather than something you
+// could see out of the windscreen.
+// the widest open road in the city, as a dock should be
+const HALF = 164;
 const H = (f) => Math.round(HALF * f);
 
 export default {
@@ -19,7 +23,7 @@ export default {
 
   asks: 'grip',
   lapMetres: 701,
-  road: { half: HALF, kerb: 5, pave: 30, verge: 20, apron: 8 },
+  road: { half: HALF, kerb: 5, pave: 34, verge: 20, apron: 8 },
 
   // Four long sweeps and two kinks: quays are straight and the corners are
   // where the water makes them.
@@ -39,7 +43,7 @@ export default {
     { lit: false, name: 'the reach', district: 'containers' },
     { lit: false, name: 'coal wharf', district: 'containers' },
     { lit: false, name: 'the swing', district: 'quay' },
-    { lit: true, name: 'transit sheds', district: 'sheds' },
+    { lit: true, name: 'the mv arkwright', district: 'ship', deck: -34 },
     { lit: true, name: 'the basin', district: 'quay' },
     { lit: false, name: 'the cut', district: 'yard' },
     { lit: false, name: 'scrubland', district: 'wood' },
@@ -50,7 +54,10 @@ export default {
   // Almost flat. A dock is built on silt, and the one rise is the bridge.
   profile: [
     [0, 0], [1100, -3], [2200, 4], [3100, 1],
-    [4000, 18], [4500, 24], [5000, 8],     // over the swing bridge
+    // Up onto the deck and off again. The climb STARTS on the leg before, so
+    // the ramp is 400 voxels rather than 160 -- at 160 it measured a 35% grade,
+    // which is not a ro-ro ramp, it is a wall with a slope painted on it.
+    [3500, 0], [3960, 34], [4300, 36], [4700, 34], [5150, 0],
     [6000, -4], [7000, 3], [8000, -2], [8500, 1],
   ],
 
@@ -64,30 +71,46 @@ export default {
     { s: 5700, u: H(0.46), r: 30, kind: 'works' },
   ],
 
-  crossings: [1100, 4400],
-  parked: [[800, 1], [2600, -1], [4600, 1], [5900, -1]],
+  crossings: [1100, 3000, 4400, 6200, 7700],
+  parked: [
+    [500, 1], [800, -1], [1400, 1], [2000, -1], [2600, 1], [3200, -1],
+    [3900, 1], [4600, -1], [5300, 1], [5900, -1], [6600, 1], [7400, -1],
+  ],
 
   life: [
+    { s: 400, side: -1, dir: 1, span: 200 },
     { s: 700, side: 1, dir: 1, span: 220 },
     { s: 1150, side: -1, dir: 1, idle: true },
+    { s: 1190, side: -1, dir: 1, idle: true },
+    { s: 1600, side: 1, dir: -1, span: 240 },
+    { s: 2200, side: -1, dir: 1, span: 220 },
     { s: 2800, side: -1, dir: -1, span: 200 },
+    { s: 3400, side: 1, dir: 1, span: 240, pace: 46 },
+    { s: 3900, side: -1, dir: -1, span: 210 },
     { s: 4300, side: 1, dir: 1, span: 240 },
     { s: 4450, side: 1, dir: -1, span: 180 },
+    { s: 5100, side: -1, dir: 1, span: 220 },
     { s: 5800, side: -1, dir: -1, span: 200 },
+    { s: 6400, side: 1, dir: 1, span: 230 },
+    { s: 7100, side: -1, dir: -1, span: 200 },
+    { s: 7900, side: 1, dir: 1, span: 220 },
   ],
 
   traffic: [
-    { s: 900, u: 48, speed: 84, dir: 1 },
-    { s: 2600, u: -48, speed: 72, dir: -1 },
-    { s: 4200, u: 44, speed: 96, dir: 1 },
-    { s: 5600, u: -44, speed: 66, dir: -1 },
+    { s: 900, u: 62, speed: 84, dir: 1 },
+    { s: 2100, u: -62, speed: 72, dir: -1 },
+    { s: 3300, u: 58, speed: 96, dir: 1 },
+    { s: 4600, u: -58, speed: 66, dir: -1 },
+    { s: 5900, u: 64, speed: 88, dir: 1 },
+    { s: 7200, u: -64, speed: 78, dir: -1 },
   ],
 
   furniture: {
-    shelters: [[1200, 1]],
-    benches: [[900, -1], [4500, 1]],
-    drains: [700, 2200, 3800, 5400],
-    signs: [[500, 1, 'sign'], [3000, -1, 'stop'], [5200, 1, 'sign']],
+    phone: [3300], shelters: [[1200, 1], [5600, -1]],
+    benches: [[900, -1], [2400, 1], [4500, 1], [6300, -1], [7600, 1]],
+    drains: [700, 1800, 2200, 3200, 3800, 4900, 5400, 6700, 7800],
+    signs: [[500, 1, 'sign'], [1900, -1, 'sign'], [3000, -1, 'stop'],
+            [4700, 1, 'sign'], [5200, 1, 'sign'], [7000, -1, 'stop']],
   },
 
   landmarks: { gasholder: [-40, 90, 52, 150], pylons: 5 },

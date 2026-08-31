@@ -303,6 +303,7 @@ function makeProtos() {
     // turn swings its corners half its length, and a dock road runs at 135.
     shed: protoOf(D2.shed, 110, 84, true, [110, 84]),
     services: protoOf(D2.services, 240, 74, true),
+    island: protoOf(D2.shipIsland, 46, 40, true),
   };
 }
 
@@ -602,6 +603,83 @@ const DISTRICT = {
     });
   },
 
+  // ------------------------------------------- SET PIECE: the container ship
+  // The road runs up a ro-ro ramp, the length of a moored ship between its own
+  // cargo, and off the far end. The deck is a corridor with a drop either side
+  // and nothing else on the lap looks remotely like it.
+  ship(c, sec) {
+    // EVERY PART OF THIS IS BUILT IN (s, u).
+    //
+    // The first version used the district2 builders, which march along a world
+    // axis chosen by a quarter turn. This leg runs at sixty degrees, so the
+    // hull and the container stacks came out rotated thirty degrees off the
+    // road and swung their corners into the carriageway. Same lesson as the
+    // signal gantry and the tunnel bore: anything that spans the road follows
+    // the ROAD, not the world.
+    //
+    // gy is GROUND level, three above the tarmac, so every height here is
+    // referred to the road or the hull ends up on top of it.
+    const half = ROAD_HALF + 58;          // the ship's side
+    const cargoAt = ROAD_HALF + 26;       // just off the kerb, to make a corridor
+    const RAMP = 130;
+    const from = sec.from + RAMP, to = sec.to - RAMP;
+    const DEPTH = 46;
+
+    for (let s = from; s < to; s += 0.8) {
+      const gunwale = Math.abs(s - from) < 3 || Math.abs(s - to) < 3;
+      for (let u = -half; u <= half; u += 0.8) {
+        const a = Math.abs(u);
+        c.put(s, u, (x, z, ff, gy) => {
+          const road = gy - 3;
+          if (a < half - 4) { c.w.set(x, road - 1, z, 'metalDark'); return; }
+          // the sheer: the side falls away and tucks in toward the waterline
+          for (let k = 0; k < DEPTH; k++)
+            c.w.set(x, road - 1 - k, z, k < 3 ? 'rust' : ((k >> 2) % 2 ? 'skipSteel' : 'skipRust'));
+          c.w.set(x, road + 1, z, 'metalDark');                 // gunwale
+          if (a > half - 1) for (let k = 3; k < 9; k += 2) c.w.set(x, road + k, z, 'metal');
+        });
+      }
+      if (gunwale) continue;
+    }
+
+    // ramps at both ends, with their orange side rails
+    for (const [s0, s1] of [[sec.from + 30, from], [to, sec.to - 30]])
+      for (let s = s0; s < s1; s += 1) {
+        for (const side of [-1, 1])
+          c.put(s, side * (ROAD_HALF + 14), (x, z, ff, gy) => {
+            for (let k = 0; k < 9; k++) c.w.set(x, gy - 3 + k, z, k > 6 ? 'coneOrange' : 'metalDark');
+          });
+        for (let u = -(ROAD_HALF + 14); u <= ROAD_HALF + 14; u += 0.8)
+          c.put(s, u, (x, z, ff, gy) => {
+            for (let k = 1; k <= 7; k++) c.w.set(x, gy - 3 - k, z, 'metalDark');
+          });
+      }
+
+    // cargo down both sides, leaving the lane. Boxes are laid out in (s, u) so
+    // they sit square to the deck however the deck is pointing.
+    for (let s = from + 50; s < to - 60; s += 66) {
+      const high = 1 + Math.floor(hash3(Math.round(s), 3, 7) * 3);
+      for (const side of [-1, 1]) {
+        const col = ['doorRed', 'doorBlue', 'doorGreen', 'rust', 'skipRust', 'doorYellow'][
+          Math.floor(hash3(Math.round(s), side, 11) * 6)];
+        for (let k = 0; k < high; k++)
+          for (let ds = 0; ds < 56; ds += 0.8)
+            for (let u = 0; u <= 28; u += 0.8) {
+              const edge = ds < 1 || ds > 54.5 || u < 1 || u > 27;
+              if (!edge && k < high - 1) continue;
+              c.put(s + ds, side * (cargoAt + u), (x, z, ff, gy) => {
+                const base = gy - 2 + k * 26;
+                if (edge) for (let j = 0; j < 25; j++) c.w.set(x, base + j, z, col);
+                else c.w.set(x, base + 24, z, col);
+              });
+            }
+      }
+    }
+
+    c.blit(to - 130, half + 40, c.pr.island);
+    c.put(sec.from - 80, half + 90, (x, z, ff, gy) => D2.crane(c.w, x, gy, z, 150, 150));
+  },
+
   // ========================================================== THE RING ROAD
   motorway(c, sec) {
     const ax = legAxis(c.path, sec, c.f);
@@ -697,13 +775,18 @@ function dress(w, path, anchors, houses) {
 
   for (const sec of SECTIONS) DISTRICT[sec.district](c, sec);
 
-  // start/finish gantry
+  // Start/finish gantry, built in (s, u) like everything else that spans the
+  // road. Its beam used to be a world-X box: across the carriageway on the
+  // Parade, whose start straight happens to run along Z, and lying flat down
+  // the MIDDLE of the road on the Docks, whose start straight runs along X.
+  // That was the two-hundred-voxel pink streak through the middle of the frame.
   for (const side of [-1, 1])
-    put(30, side * (ROAD_HALF + 4), (x, z, ff, gy) => w.box(x - 2, gy, z - 2, 4, 64, 4, 'metalDark'));
-  put(30, 0, (x, z, ff, gy) => {
-    w.box(x - ROAD_HALF - 4, gy + 60, z - 3, ROAD_HALF * 2 + 8, 6, 5, 'metalDark');
-    w.box(x - ROAD_HALF + 6, gy + 62, z - 4, ROAD_HALF * 2 - 12, 2, 1, 'neonSign');
-  });
+    put(30, side * (ROAD_HALF + 6), (x, z, ff, gy) => w.box(x - 2, gy, z - 2, 5, 66, 5, 'metalDark'));
+  for (let u = -ROAD_HALF - 6; u <= ROAD_HALF + 6; u += 0.8)
+    put(30, u, (x, z, ff, gy) => {
+      w.box(x - 1, gy + 60, z - 1, 3, 6, 3, 'metalDark');
+      if (Math.abs(u) < ROAD_HALF - 6) w.set(x, gy + 63, z, 'neonSign');
+    });
   for (let u = -ROAD_HALF; u <= ROAD_HALF; u++)
     put(30, u, (x, z, ff, gy) => w.set(x, gy - 3, z, ((u >> 2) % 2) ? 'roadLine' : 'asphaltPatch'));
 
@@ -928,7 +1011,11 @@ function surround(path) {
   const inner = [], outer = [], infield = [];
   for (let i = 0; i < steps; i++) {
     const s = (i / steps) * path.total;
-    const gy = GROUND_Y + elev(s) - 1;
+    // A leg the road crosses on a STRUCTURE does not take the ground with it.
+    // Without this the water follows the ship's deck thirty voxels into the air
+    // and the set piece reads as a hill with containers on it.
+    const sec = sectionAt(s);
+    const gy = (sec && sec.deck !== undefined ? GROUND_Y + sec.deck : GROUND_Y + elev(s)) - 1;
     path.place(s, -inSide * edge, f);
     inner.push(push(f.x, gy, f.z));
     path.place(s, -inSide * (edge + OUT_REACH), f);

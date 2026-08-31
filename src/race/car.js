@@ -50,10 +50,17 @@ const CAR_PROBE = 2.6;                 // ~18 voxels across, against a 26-wide c
 // voxel reaching down — which is precisely what "the car floats" looks like.
 const RIDE = 1;
 
-// What the car will climb. A cone is 9 voxels, a kerb is 3, a barrier is 12, a
-// skip is 15 and a parked car is 14 — so at 10 you flatten cones and mount
-// kerbs, and everything you SHOULD be stopped by still stops you.
-const CAR_STEP = 10;
+// What the car will climb, and it is deliberately generous now.
+//
+// At 10 it flattened cones and mounted kerbs, and a barrier (12), a parked car
+// (14) or a skip (15) stopped it dead — which is defensible on paper and is the
+// single thing that has gone wrong most often in play. Being unable to move is
+// never interesting. At 18 everything that lives ON the road is climbable and
+// the cost is SPEED, which is the rule the whole rest of the handling follows;
+// walls, retaining banks and buildings are all far taller and still stop you.
+const CAR_STEP = 18;
+// what mounting something costs, per voxel of the step you just climbed
+const CLIMB_COST = 0.055;
 
 // OFF THE TARMAC.
 //
@@ -85,6 +92,22 @@ const WET_GRIP = 0.80, WET_BRAKE = 0.72, WET_BEAM = 0.82;
 // whose braking policy holds throttle at -1 through every corner -- from
 // quietly driving the lap backwards.
 const V_REV = 78, REV_ACCEL = 96, REV_ENGAGE = 0.35;
+
+// ------------------------------------------------------- DRIFT INTO BOOST
+//
+// The drift was a rescue: three times the yaw for two thirds of your speed, for
+// when you got a corner wrong. Useful, and nobody would ever choose it. Banking
+// a boost turns it into a decision you take on purpose -- you PAY speed through
+// the corner to be given it back on the exit, and holding the slide one tier
+// longer is a bet about whether you can still make the apex.
+//
+// Three tiers, because two is a switch and four is bookkeeping. The charge only
+// builds while the car is genuinely sideways, so you cannot farm it by tapping
+// the button down a straight.
+const TIERS = [0.85, 1.75, 2.7];              // seconds of real slide per tier
+const BOOST_TIME = [0.75, 1.25, 1.9];         // seconds of push it buys
+const BOOST_PUSH = 460;                       // v/s^2 while it lasts
+const BOOST_CAP = [1.10, 1.16, 1.24];         // how far over V_MAX it will pull
 
 // Headlights do not care how fast you are going — that was the dynamo, and it
 // went with the bike. What survives is the structural half of that idea: the
@@ -290,6 +313,19 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
   const brakeMats = [];
   brakeMesh.traverse(o => { if (o.isMesh && o.material) brakeMats.push(o.material); });
 
+  // Sparks off the back wheels, coloured by tier. It is the only way to know
+  // what you have banked without looking at the HUD, and the colour change is
+  // the moment you decide whether to hold the slide.
+  const sparkW = new VoxWorld();
+  for (const sx of [-9, 5]) sparkW.box(sx, 2, -2, 4, 3, 3, 'headLight');
+  const sparkMesh = meshWorld(sparkW, PALETTE, { name: 'spark', solidBelow: -999 });
+  sparkMesh.position.set(0, 0, -L / 2);
+  sparkMesh.visible = false;
+  chassis.add(sparkMesh);
+  const sparkMats = [];
+  sparkMesh.traverse(o => { if (o.isMesh && o.material) sparkMats.push(o.material); });
+  const TIER_COL = [null, [0.35, 0.62, 1.0], [1.0, 0.55, 0.15], [0.85, 0.35, 1.0]];
+
   const rw = new VoxWorld(); reverseLamps(rw);
   const revMesh = meshWorld(rw, PALETTE, { name: 'reverse', solidBelow: -999 });
   revMesh.position.set(0, 0, -L / 2);
@@ -327,6 +363,7 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     // The car used to be nailed to y = 0, which was invisible while the world
     // was flat and would have left it four metres under the chapel.
     y: 0, yView: 0, shake: 0, wedged: false, offRoad: false, rev: 0,
+    charge: 0, tier: 0, boost: 0, boostTier: 0,
     braking: false, lampGlow: 0.34,
   };
 
@@ -339,6 +376,9 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
 
     const off = state.offRoad;
     const spd = state.speed;
+    // Hoisted: the charge below needs to know whether the car is sideways,
+    // and it only depends on the handbrake and the speed we came in with.
+    const sliding = drift && spd > 55;
     state.braking = throttle < 0 && spd > 1;
     // hold the brake at a standstill and the car selects reverse
     if (throttle < 0 && spd <= 0.5) state.rev += dt;
@@ -347,6 +387,19 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     // without this it selects reverse the moment anything stops it and drives
     // the rest of the lap backwards. A racing driver does not use reverse.
     const canRev = allowReverse && state.rev > REV_ENGAGE;
+
+    // charge builds only while actually sideways, and cashes in on release
+    if (sliding && Math.abs(state.slip) > 0.14) {
+      state.charge += dt * (0.55 + 0.45 * Math.abs(state.slip) / MAX_SLIP);
+      state.tier = state.charge >= TIERS[2] ? 3 : state.charge >= TIERS[1] ? 2 : state.charge >= TIERS[0] ? 1 : 0;
+    } else if (state.charge > 0) {
+      if (state.tier > 0) {
+        state.boost = BOOST_TIME[state.tier - 1];
+        state.boostTier = state.tier;
+      }
+      state.charge = 0; state.tier = 0;
+    }
+    if (state.boost > 0) state.boost = Math.max(0, state.boost - dt);
 
     const bleed = (v, amount) => Math.sign(v) * Math.max(0, Math.abs(v) - amount);
     if (throttle > 0) {
@@ -359,7 +412,12 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
       state.speed = bleed(spd, DRAG * dt);
     }
     if (off) state.speed = bleed(state.speed, OFF_DRAG * dt);
-    state.speed = Math.max(canRev ? -V_REV : 0, Math.min(VMAX, state.speed));
+    // The boost pushes, and lifts the ceiling while it lasts. Once it expires
+    // the cap drops back and drag walks you down to it, so the speed you were
+    // given is spent rather than kept.
+    if (state.boost > 0 && state.speed > 0) state.speed += BOOST_PUSH * dt;
+    const cap = state.boost > 0 ? VMAX * BOOST_CAP[state.boostTier - 1] : VMAX;
+    state.speed = Math.max(canRev ? -V_REV : 0, Math.min(cap, state.speed));
 
     const f = Math.abs(state.speed) / VMAX;
     // Steering is referred to the direction of TRAVEL: turn the wheel one way
@@ -368,7 +426,6 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     const way = state.speed < 0 ? -1 : 1;
     // A car cannot pivot on the spot, but it must keep SOME authority at a
     // crawl or a nudge into a kerb is permanent — the bike taught me that.
-    const sliding = drift && state.speed > 55;
     state.turnRate = steer * (T_SLOW + (T_FAST - T_SLOW) * f)
       * (0.22 + 0.78 * Math.min(1, Math.abs(state.speed) / 30)) * way
       * (1 - wet * (1 - WET_GRIP))
@@ -398,9 +455,15 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
       // single cone or kerb under one corner lifted the entire car onto it.
       const fl = ground.ceilingAt(state.x, state.z, 1);
       if (fl > -900) {
-        // Riding up over something costs you: cones scatter, you lose speed,
-        // you keep going. That is the whole point of letting the car climb.
-        if (fl - state.y + RIDE > 4 && Math.abs(state.speed) > 40) impact(0.22, false);
+        // Riding up over something costs SPEED, in proportion to how big the
+        // thing was. A kerb is nothing, a skip is most of your momentum, and
+        // either way you are still moving — which is the whole point.
+        const rise = fl - (state.y - RIDE);
+        if (rise > 2 && Math.abs(state.speed) > 25) {
+          state.speed *= Math.max(0.25, 1 - rise * CLIMB_COST);
+          state.shake = Math.min(1, rise / 18);
+          state.crash = Math.max(state.crash, 0.18);
+        }
         state.y = fl + RIDE;
       }
       // How much of the motion the world refused. A glancing scrape along a
@@ -452,6 +515,7 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     if (y !== undefined) { state.y = y; state.yView = y; }
     state.speed = 0; state.turnRate = 0; state.roll = 0; state.stuck = 0; state.slip = 0;
     state.crash = 0; state.wedged = false; state.rev = 0; state.offRoad = false;
+    state.charge = 0; state.tier = 0; state.boost = 0;
     root.rotation.z = 0; chassis.rotation.z = 0;
   }
 
@@ -466,6 +530,13 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     state.lampGlow += (wantGlow - state.lampGlow) * Math.min(1, dt * 18);
     for (const m of brakeMats) m.color.setScalar(state.lampGlow);
     revMesh.visible = state.speed < -1;
+    const show = state.tier > 0 ? state.tier : (state.boost > 0 ? state.boostTier : 0);
+    sparkMesh.visible = show > 0;
+    if (show > 0) {
+      const c = TIER_COL[show];
+      const flick = 0.7 + Math.random() * 0.5;
+      for (const m of sparkMats) m.color.setRGB(c[0] * flick, c[1] * flick, c[2] * flick);
+    }
 
     state.yView += (state.y - state.yView) * Math.min(1, dt * 9);
     root.position.set(state.x, state.yView, state.z);

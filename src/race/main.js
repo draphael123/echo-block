@@ -234,7 +234,7 @@ hud.circuit.textContent = track.name;
 const LAPS = 3;
 let lapTime = 0, lap = 0, running = false, done = false;
 let s = 80, prevS = 80, crashes = 0, wasDown = false, downAt = 0;
-let struck = 0, msgUntil = 0;
+let struck = 0, msgUntil = 0, wasBoosting = false;
 let best = +(localStorage.getItem('dynamo.lap') || 0) || null;
 const splits = [];
 
@@ -317,6 +317,8 @@ function tick() {
   // hit -- but still a slowdown you drive out of, not a spin.
   if (!car.state.crash && car.state.speed > 40 && rival.hits(car.state.x, car.state.z, car.state.heading)) {
     car.impact(0.7, true);
+    rival.shunt(car.state.x, car.state.z, car.state.speed);
+    audio.impact(0.6);
     hud.msg.textContent = 'contact';
     msgUntil = time + 1.2;
   }
@@ -324,7 +326,8 @@ function tick() {
     const t = traffic.hits(car.state.x, car.state.z, car.state.heading);
     if (t) {
       car.impact(0.82, true);
-      traffic.shove(t);
+      traffic.shove(t, car.state.x, car.state.z);
+      audio.impact(0.7);
       hud.msg.textContent = 'you hit a car';
       msgUntil = time + 1.6;
     }
@@ -360,6 +363,8 @@ function tick() {
   scene.fog.density = 0.00135 + wet * 0.00055;
 
   audio.update(car.state.speed, V_MAX, throttle, car.state.slip, car.state.offRoad);
+  if (car.state.boost > 0 && !wasBoosting) audio.kerb();
+  wasBoosting = car.state.boost > 0;
   car.present(dt);
   rival.update(dt, LAPS);
   traffic.update(dt, track.path.total);
@@ -421,7 +426,11 @@ function tick() {
 
   hud.speed.textContent = `${Math.round(Math.abs(car.state.speed) * 0.08 * 3.6)}`;
   hud.gear.textContent = car.state.speed < -1 ? 'R' : '';
-  hud.drift.classList.toggle('on', Math.abs(car.state.slip) > 0.12);
+  const tier = car.state.tier || (car.state.boost > 0 ? car.state.boostTier : 0);
+  hud.drift.classList.toggle('on', tier > 0 || Math.abs(car.state.slip) > 0.12);
+  hud.drift.textContent = car.state.boost > 0 ? 'boost' : (tier > 0 ? 'drift ' + '●'.repeat(tier) : 'drift');
+  hud.drift.className = 'on t' + tier;
+  if (tier === 0 && Math.abs(car.state.slip) <= 0.12) hud.drift.className = '';
   hud.time.textContent = lapTime.toFixed(2);
   hud.best.textContent = best ? `best ${best.toFixed(2)}s` : '';
   hud.lap.textContent = `lap ${Math.min(lap + 1, LAPS)}/${LAPS}`;

@@ -7,7 +7,10 @@
 //
 // It is also where the lamps upgrade finally earns its money, and where the
 // tunnels give the only sodium-lit stretch in the city.
-const HALF = 124;
+// 140. It is the bypass; it should be the widest thing in the city and it
+// was only sixteen voxels wider than the town road.
+// the bypass, and it should feel like one
+const HALF = 196;
 const H = (f) => Math.round(HALF * f);
 
 export default {
@@ -69,24 +72,35 @@ export default {
   ],
 
   crossings: [],
-  parked: [],
+  parked: [[2900, 1], [3080, 1], [3260, 1], [3440, -1], [3620, -1]],
 
+  // A bypass has nobody walking on it, and that is right -- but the SERVICES
+  // does, and it was empty. This is the only place on the circuit with people.
   life: [
+    { s: 2950, side: 1, dir: 1, span: 120 },
     { s: 3050, side: 1, dir: 1, span: 160 },
+    { s: 3120, side: -1, dir: 1, idle: true },
     { s: 3200, side: -1, dir: -1, span: 140 },
+    { s: 3320, side: 1, dir: -1, span: 130 },
+    { s: 3450, side: -1, dir: 1, span: 150 },
   ],
 
   traffic: [
-    { s: 500, u: 60, speed: 120, dir: 1 },
-    { s: 2200, u: -60, speed: 104, dir: -1 },
-    { s: 3900, u: 56, speed: 132, dir: 1 },
-    { s: 5500, u: -56, speed: 96, dir: -1 },
-    { s: 7000, u: 62, speed: 116, dir: 1 },
+    { s: 500, u: 74, speed: 120, dir: 1 },
+    { s: 1600, u: -74, speed: 104, dir: -1 },
+    { s: 2800, u: 70, speed: 132, dir: 1 },
+    { s: 3900, u: -70, speed: 96, dir: -1 },
+    { s: 5000, u: 76, speed: 126, dir: 1 },
+    { s: 6100, u: -76, speed: 110, dir: -1 },
+    { s: 7200, u: 72, speed: 138, dir: 1 },
+    { s: 8100, u: -72, speed: 100, dir: -1 },
   ],
 
   furniture: {
-    drains: [800, 3000, 5200, 7400],
-    signs: [[1000, 1, 'sign'], [4000, -1, 'sign'], [6600, 1, 'sign']],
+    drains: [800, 1900, 3000, 4100, 5200, 6300, 7400, 8300],
+    signs: [[1000, 1, 'sign'], [2400, -1, 'sign'], [4000, -1, 'sign'],
+            [5600, 1, 'sign'], [6600, 1, 'sign'], [7900, -1, 'sign']],
+    benches: [[3100, 1], [3400, -1]],
   },
 
   landmarks: { gasholder: [120, -60, 50, 140], waterTower: [-260, 220], pylons: 6 },

@@ -9,7 +9,8 @@
 // learned once and repeated. R1 is a 260 hairpin, R2 a 520 sweeper that is
 // unlit and therefore the one you commit to on faith.
 const H = (half, f) => Math.round(half * f);
-const HALF = 108;
+// a grand prix grid needs six cars abreast, and a car is 26 voxels
+const HALF = 150;
 
 export default {
   id: 'parade',

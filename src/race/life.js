@@ -74,6 +74,11 @@ export function buildLife(path, spots, ground, elev) {
       u0: spot.u,                  // the line down the footway they belong on
       baulked: 0,                  // times this beat has run into something
       since: 0,                    // seconds walked cleanly since the last one
+      // The ends of the beat they have LEARNED, as opposed to the ones they
+      // were given. Without these, a walker whose span runs into a phone box
+      // turns round, walks to the far end, turns round, and walks into the same
+      // phone box — for ever, which is exactly what it looks like.
+      lim: [null, null],
     });
     // one in three has a dog with them — but not the ones standing at a bus
     // stop, who would be holding it still for four minutes
@@ -141,7 +146,7 @@ export function buildLife(path, spots, ground, elev) {
       if (w.dog) w.dog.root.visible = near;
       // Out of sight they stop being simulated, so the height they remember is
       // stale by the time they come back. Forget it and re-establish.
-      if (!near) { w.fy = null; continue; }
+      if (!near) { w.fy = null; w.lim = [null, null]; continue; }
 
       // While they are down, the RAGDOLL owns the root — writing a position
       // here every frame would pin them to the pavement mid-tumble, which is
@@ -186,6 +191,10 @@ export function buildLife(path, spots, ground, elev) {
       // through one used to be walked through. Turn round instead — and if this
       // end of the beat keeps being blocked, cross to the other side, which is
       // what a person does and gives us jaywalkers for free.
+      // never walk back into somewhere they already found blocked
+      if (w.lim[1] !== null && w.dir > 0 && w.s >= w.lim[1]) { w.s = w.lim[1]; w.dir = -1; }
+      if (w.lim[0] !== null && w.dir < 0 && w.s <= w.lim[0]) { w.s = w.lim[0]; w.dir = 1; }
+
       let fy = step(w, tmp.x, tmp.z);
       if (fy === null) {
         // GO ROUND IT. Turning back was the first version, and on a beat with a
@@ -203,13 +212,17 @@ export function buildLife(path, spots, ground, elev) {
         }
       }
       if (fy === null) {
+        // REMEMBER it. Turning round is what a person does once; doing it again
+        // at the same lamp post every twelve seconds is what a bug does.
+        w.lim[w.dir > 0 ? 1 : 0] = w.s - w.dir * 6;
         w.s -= w.dir * w.pace * dt;
         w.dir = -w.dir;
         w.baulked++;
         w.since = 0;
-        // Boxed in at BOTH ends of the beat, not merely turned round once at
-        // one of them — otherwise a single bin makes somebody cross the road.
-        if (w.baulked >= 4) { w.baulked = 0; w.cross = true; w.reach = Math.abs(w.u); }
+        // Penned in at BOTH ends with nowhere to pace: cross the road instead.
+        if (w.lim[0] !== null && w.lim[1] !== null && w.lim[1] - w.lim[0] < 60) {
+          w.cross = true; w.reach = Math.abs(w.u);
+        }
         path.place(w.s, w.u + w.side * flinch, tmp);
       } else {
         w.fy = fy;
@@ -304,10 +317,11 @@ export function buildTraffic(path, buildCar, lanes, elev) {
   function update(dt, total) {
     for (const t of cars) {
       if (t.boost) { t.boost = Math.max(0, t.boost - 240 * dt); }
+      if (t.kick) t.kick -= Math.sign(t.kick) * Math.min(Math.abs(t.kick), 22 * dt);
       t.s += t.dir * (t.speed + (t.boost || 0)) * dt;
       if (t.s > total) t.s -= total;
       if (t.s < 0) t.s += total;
-      path.place(t.s, t.u, tmp);
+      path.place(t.s, t.u + (t.kick || 0), tmp);
       t.c.root.position.set(tmp.x, elev ? elev(t.s) : 0, tmp.z);
       t.c.root.rotation.y = Math.atan2(tmp.tx * t.dir, tmp.tz * t.dir);
     }
@@ -328,9 +342,20 @@ export function buildTraffic(path, buildCar, lanes, elev) {
     return null;
   }
 
-  // Knocked forward by the hit, then it settles back to its own pace. Cheap,
-  // but without it you bounce off something that never reacted at all.
-  function shove(t) { if (t) t.boost = 150; }
+  // Knocked forward AND sideways, then it settles back onto its own lane. The
+  // first version only nudged the speed, which is invisible from behind — the
+  // lateral kick is the half you can actually see, and the slow drift back is
+  // what makes it read as a car recovering rather than a prop on rails.
+  function shove(t, fromX, fromZ) {
+    if (!t) return;
+    t.boost = 150;
+    if (fromX === undefined) { t.kick = (t.kick || 0) + 20; return; }
+    const dx = t.c.root.position.x - fromX, dz = t.c.root.position.z - fromZ;
+    // which side of the traffic car the hit came from, in ITS frame
+    const sh = Math.sin(t.c.root.rotation.y), ch = Math.cos(t.c.root.rotation.y);
+    const lx = dx * ch - dz * sh;
+    t.kick = (t.kick || 0) + Math.sign(lx || 1) * 26;
+  }
 
   return { group, cars, update, hits, shove };
 }

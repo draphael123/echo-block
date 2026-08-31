@@ -54,8 +54,24 @@ export function buildRival(track, ground, buildCar, opts = {}) {
     return Math.abs(lx) < 27 && Math.abs(lz) < 54;
   }
 
+  // AND IT TAKES ONE. The rival was solid in the sense that hitting it cost YOU
+  // speed, and in no other sense: it drove on at the same pace on the same line
+  // as though nothing had happened, which reads as scenery you bounce off. It
+  // gets shoved sideways off its racing line and loses speed like anybody else,
+  // and because the driver steers back toward the line, it recovers rather than
+  // being permanently ruined by one nudge.
+  function shunt(fromX, fromZ, speed) {
+    const dx = car.root.position.x - fromX, dz = car.root.position.z - fromZ;
+    const len = Math.hypot(dx, dz) || 1;
+    const push = 14 + Math.min(26, speed / 8);
+    car.state.x += (dx / len) * push;
+    car.state.z += (dz / len) * push;
+    car.state.heading += (dx * Math.cos(car.state.heading) - dz * Math.sin(car.state.heading)) / len * 0.22;
+    car.impact(0.45, true);
+  }
+
   return {
-    root: car.root, car, driver, update, hits,
+    root: car.root, car, driver, update, hits, shunt,
     start() { running = true; },
     reset() {
       running = false; finished = null; dist = 0;

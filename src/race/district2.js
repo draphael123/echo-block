@@ -240,3 +240,83 @@ export function embankment(w, x, y, z, len, dir, side, h = 30) {
     }
   }
 }
+
+// ===================================================== SET PIECE: THE SHIP
+// The road runs out onto a moored container ship and off the other end.
+//
+// This is the thing the Docks was missing. It had cranes and containers beside
+// the road, which makes it the Parade with dock scenery on the verge — you
+// drive PAST a dock. Driving ACROSS the deck of a ship is somewhere you can
+// only be on this circuit, and it is the one bit of the lap anybody will
+// describe to someone else afterwards.
+//
+// Built as a hull hanging BELOW the road rather than as a road laid on top of
+// a hull, because the ribbon has already put the deck exactly where the
+// elevation profile says it goes. All this has to do is make it look like the
+// deck of something floating.
+export function shipHull(w, x, y, z, halfWide, dir, depth) {
+  const n = dir === 'x' ? [0, 1] : [1, 0];
+  for (let u = -halfWide; u <= halfWide; u++) {
+    const px = x + n[0] * u, pz = z + n[1] * u;
+    const a = Math.abs(u);
+    if (a < halfWide - 3) {
+      // the deck plate, and the shadow under it
+      w.set(px, y - 1, pz, 'metalDark');
+      continue;
+    }
+    // the sheer: sides fall away and tuck in toward the waterline
+    for (let k = 0; k < depth; k++) {
+      const tuck = Math.round(Math.pow(k / depth, 2.2) * 9);
+      const uu = u > 0 ? u - tuck : u + tuck;
+      w.set(x + n[0] * uu, y - 1 - k, z + n[1] * uu,
+        k < 3 ? 'rust' : ((k >> 2) % 2 ? 'skipSteel' : 'skipRust'));
+    }
+    // gunwale rail along the top
+    w.set(px, y + 1, pz, 'metalDark');
+    if (a === halfWide) for (let k = 2; k < 7; k += 2) w.set(px, y + k, pz, 'metal');
+  }
+}
+
+// Stacks either side of the deck lane, which is what makes it a corridor.
+export function deckCargo(w, x, y, z, off, dir, seed) {
+  const n = dir === 'x' ? [0, 1] : [1, 0];
+  for (const side of [-1, 1]) {
+    const bx = x + n[0] * off * side, bz = z + n[1] * off * side;
+    const high = 1 + Math.floor(hash3(bx, seed, bz) * 3);
+    for (let k = 0; k < high; k++) {
+      const col = pick(BOX_COLOURS, bx + k, bz, seed);
+      if (dir === 'x') w.shell(bx - 14, y + k * 26, bz - 30, 28, 25, 60, 1, col, { bottom: false });
+      else w.shell(bx - 30, y + k * 26, bz - 14, 60, 25, 28, 1, col, { bottom: false });
+    }
+  }
+}
+
+// The island: bridge, funnel, lit windows. Set to ONE side so the lane stays
+// clear, and tall, because it is the thing you see from the far quay.
+export function shipIsland(w, x, y, z) {
+  w.shell(x, y, z, 46, 62, 40, 2, 'paper', { top: false, bottom: false });
+  for (let k = 10; k < 58; k += 12)
+    for (let i = 3; i < 43; i += 9) w.box(x + i, y + k, z - 1, 6, 5, 1, 'winWarmDim');
+  // the wheelhouse, glazed the whole way round
+  w.shell(x - 3, y + 62, z - 3, 52, 12, 46, 2, 'paper', { top: false, bottom: false });
+  w.box(x - 2, y + 66, z - 4, 50, 7, 1, 'winWarm');
+  w.box(x - 4, y + 74, z - 4, 54, 2, 48, 'metalDark');
+  // funnel and mast
+  cyl(w, x + 23, y + 76, z + 20, 9, 26, 'doorRed', true);
+  cyl(w, x + 23, y + 96, z + 20, 10, 3, 'metalDark');
+  for (let k = 0; k < 30; k++) w.set(x + 23, y + 78 + k, z + 6, 'metalDark');
+  ball(w, x + 23, y + 110, z + 6, 2, 'tailLight');
+}
+
+// The ramp you drive up, with its side rails and a hinge at the quay.
+export function roRoRamp(w, x, y, z, halfWide, dir, drop) {
+  const n = dir === 'x' ? [0, 1] : [1, 0];
+  for (const side of [-1, 1]) {
+    const px = x + n[0] * halfWide * side, pz = z + n[1] * halfWide * side;
+    for (let k = 0; k < 9; k++) w.set(px, y + k, pz, k > 6 ? 'coneOrange' : 'metalDark');
+  }
+  for (let u = -halfWide; u <= halfWide; u += 1) {
+    const px = x + n[0] * u, pz = z + n[1] * u;
+    for (let k = 1; k <= drop; k++) w.set(px, y - k, pz, 'metalDark');
+  }
+}

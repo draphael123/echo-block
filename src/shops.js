@@ -119,13 +119,51 @@ export function shopParade(w, lid, neon, anchors, x, z) {
     w.box(dx + dw, y + 1, fz, 1, DH, 2, 'metalDark');
     w.box(dx, y, fz - 1, dw, 1, 4, 'concreteOld');                  // threshold
   };
+
+  // A DOOR, not a hole.
+  //
+  // The entrance was a cut in the wall with a one-voxel strip of blue either
+  // side standing in for leaves folded back, which from the street reads as a
+  // black gap under a lit sign. A shop is a place you can see somebody has just
+  // walked out of, so this is the whole thing: a painted frame with a proper
+  // reveal, two glazed leaves with a mid-rail, a kick plate and a push bar, a
+  // brass threshold, and a lit OPEN card in the glass.
+  //
+  // The leaves stay FOLDED BACK against the reveal rather than swinging into
+  // the opening, because the opening is also the doorway the walk field has to
+  // let you through — an inward-standing door is a wall with a handle on it.
+  const shopDoor = (dx, dw, tall) => {
+    const h = tall - 4;
+    for (const [lx, dir] of [[dx + 1, 1], [dx + dw - 3, -1]]) {
+      // the leaf: stile, glass, mid-rail, kick plate
+      w.box(lx, y + 2, fz + 2, 2, h, 13, 'doorBlue');
+      w.box(lx + (dir > 0 ? 2 : -1), y + 6, fz + 3, 1, h - 12, 11, 'carGlass');
+      w.box(lx + (dir > 0 ? 2 : -1), y + h - 7, fz + 3, 1, 2, 11, 'doorBlue');  // mid-rail
+      w.box(lx + (dir > 0 ? 2 : -1), y + 2, fz + 3, 1, 4, 11, 'doorBlue');      // kick plate
+      // push bar, on the swinging edge
+      w.box(lx, y + 15, fz + 2 + (dir > 0 ? 12 : 12), 2, 2, 2, 'chrome');
+      w.box(lx, y + 14, fz + 13, 2, 4, 1, 'chrome');
+    }
+    // a deep painted reveal, so the frame reads as joinery and not as a cut
+    for (const rx of [dx, dx + dw - 1])
+      w.box(rx, y + 1, fz + 1, 1, tall - 1, 5, 'doorBlue');
+    w.box(dx, y + tall - 2, fz + 1, dw, 2, 5, 'doorBlue');          // head
+    w.box(dx, y + 1, fz - 2, dw, 1, 3, 'chrome');                   // brass threshold
+    // the mat inside, and the light over the door
+    w.box(dx + 2, y + 1, fz + 6, dw - 4, 1, 12, 'binGreen');
+    w.box(dx + (dw >> 1) - 3, y + tall + 1, fz - 3, 6, 2, 3, 'metalDark');
+    w.box(dx + (dw >> 1) - 2, y + tall, fz - 3, 4, 1, 2, 'porchBulb');
+  };
+
   const SDX = x + 66, SDW = 26;
   doorway(SDX, SDW);
-  w.box(SDX + 1, y + 2, fz + 3, 1, DH - 4, 14, 'doorBlue');         // leaves, folded back
-  w.box(SDX + SDW - 2, y + 2, fz + 3, 1, DH - 4, 14, 'doorBlue');
+  shopDoor(SDX, SDW, DH);
+  // OPEN, in the glass beside the handle
+  w.box(SDX + 5, y + 20, fz + 1, 7, 4, 1, 'neonSign');
+
   const LDX = x + STORE_W + 34, LDW = 22;
   doorway(LDX, LDW);
-  w.box(LDX + LDW - 2, y + 2, fz + 3, 1, DH - 4, 12, 'doorBlue');
+  shopDoor(LDX, LDW, DH);
 
   // ---- fascia, signs, awning
   lid.box(x - 1, y + 35, fz - 1, W + 2, 13, 2, 'doorBlue');

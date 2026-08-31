@@ -122,12 +122,15 @@ const ASSAYS = {
         tightestCarWidths: +tightest.toFixed(2),
         percentUnder3Wide: Math.round(pinched * 100),
       },
-      holds: median < 4.5 || pinched > 0.15,
+      // Bounded BELOW as well as above. 3.6 car widths measured as "you have
+      // to aim it" and drove like a corridor; a road you cannot race two cars
+      // down fails this claim in the other direction.
+      holds: median >= 4.2 && median < 7 && pinched < 0.2,
       say: `median corridor ${median.toFixed(1)} car widths, tightest ${tightest.toFixed(1)}`
         + `, ${Math.round(pinched * 100)}% of the lap under three`
-        + ` — ${median < 4.5 || pinched > 0.15
-          ? 'you have to aim it'
-          : 'there is room to be sloppy; the narrowness is set dressing'}`,
+        + ` — ${median < 4.2 ? 'too tight to race two cars down'
+          : median >= 7 ? 'room to be sloppy; the narrowness is set dressing'
+          : 'tight enough to place the car, wide enough to fight over'}`,
     };
   },
 

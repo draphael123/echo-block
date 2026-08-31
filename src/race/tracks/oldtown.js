@@ -8,10 +8,18 @@
 //
 // Lit throughout, because darkness is not the constraint here — width is. Using
 // the same trick twice would make the second track a re-run of the first.
-// 46, not 60. The assay measured the first version at 4.7 car widths of usable
-// corridor -- wider than it sounds, because a car is only 26 voxels -- and
-// reported the narrowness as set dressing, which it was. This is 3.5.
-const HALF = 46;
+// 76.
+//
+// This has now been 60 (measured as set dressing), then 46 (measured as "you
+// have to aim it"), and 46 is WRONG -- it drove like a corridor. The assay was
+// right that 60 asked nothing and wrong about what to do next, because its
+// threshold was a number I invented rather than one anybody had driven. A
+// playtest beats an instrument whose scale has never been calibrated.
+//
+// 152 voxels is 12.2 metres: narrower than the Parade's 17 by enough to feel
+// like an old town, wide enough to race two cars down.
+// still the narrowest in the city, but raceable
+const HALF = 108;
 const H = (f) => Math.round(HALF * f);
 
 export default {
@@ -24,7 +32,7 @@ export default {
   // what the Parade has, and almost no verge before the buildings start.
   asks: 'width',
   lapMetres: 359,
-  road: { half: HALF, kerb: 4, pave: 30, verge: 6, apron: 4 },
+  road: { half: HALF, kerb: 4, pave: 34, verge: 8, apron: 5 },
 
   // Six legs and six corners, none of them ninety degrees. The closure solver
   // makes this shape possible at all — it could not be hand-derived the way
@@ -61,41 +69,59 @@ export default {
   ],
 
   hazards: [
-    { s: 520, u: H(0.62), r: 18, kind: 'works' },
-    { s: 1420, u: H(-0.6), r: 20, kind: 'broken' },
-    { s: 2280, u: H(0.58), r: 18, kind: 'skip' },
-    { s: 3120, u: H(-0.62), r: 18, kind: 'works' },
-    { s: 3900, u: H(0.6), r: 20, kind: 'broken' },
-    { s: 4400, u: H(-0.58), r: 18, kind: 'works' },
+    { s: 520, u: H(0.6), r: 26, kind: 'works' },
+    { s: 1180, u: H(-0.58), r: 28, kind: 'broken' },
+    { s: 1900, u: H(0.56), r: 26, kind: 'skip' },
+    { s: 2600, u: H(-0.6), r: 26, kind: 'works' },
+    { s: 3320, u: H(0.58), r: 28, kind: 'broken' },
+    { s: 4050, u: H(-0.56), r: 26, kind: 'works' },
   ],
 
-  crossings: [960, 2640, 4180],
-  parked: [[340, 1], [1180, -1], [1920, 1], [2900, -1], [3760, 1], [4520, -1]],
+  crossings: [700, 1560, 2400, 3240, 4020],
+  parked: [
+    [240, 1], [340, -1], [620, 1], [900, -1], [1180, 1], [1460, -1],
+    [1780, 1], [1920, -1], [2280, 1], [2600, -1], [2900, 1], [3180, -1],
+    [3460, 1], [3760, -1], [4080, 1], [4340, 1], [4520, -1],
+  ],
 
   life: [
     { s: 180, side: 1, dir: 1, span: 140 },
     { s: 300, side: -1, dir: -1, span: 120 },
     { s: 430, side: 1, dir: -1, span: 110 },
     { s: 560, side: -1, dir: 1, idle: true },
+    { s: 600, side: -1, dir: 1, idle: true },
+    { s: 720, side: 1, dir: 1, span: 130 },
     { s: 880, side: 1, dir: 1, span: 130 },
+    { s: 1010, side: -1, dir: -1, span: 150 },
     { s: 1180, side: -1, dir: -1, span: 140 },
+    { s: 1340, side: 1, dir: 1, span: 120 },
     { s: 1600, side: 1, dir: 1, span: 120, pace: 44 },
+    { s: 1820, side: -1, dir: 1, span: 140 },
     { s: 2100, side: -1, dir: 1, span: 130 },
+    { s: 2320, side: 1, dir: -1, span: 150 },
     { s: 2500, side: 1, dir: -1, span: 120 },
+    { s: 2680, side: -1, dir: 1, idle: true },
     { s: 2900, side: -1, dir: -1, span: 140 },
+    { s: 3150, side: 1, dir: 1, span: 130, pace: 50 },
+    { s: 3400, side: -1, dir: -1, span: 140 },
+    { s: 3700, side: 1, dir: 1, span: 120 },
+    { s: 3980, side: -1, dir: 1, span: 130 },
+    { s: 4250, side: 1, dir: -1, span: 140 },
   ],
 
   traffic: [
-    { s: 400, u: 30, speed: 64, dir: 1 },
-    { s: 1300, u: -30, speed: 58, dir: -1 },
-    { s: 2400, u: 28, speed: 70, dir: 1 },
+    { s: 400, u: 42, speed: 64, dir: 1 },
+    { s: 1300, u: -42, speed: 58, dir: -1 },
+    { s: 2400, u: 40, speed: 70, dir: 1 },
+    { s: 3200, u: -40, speed: 66, dir: -1 },
+    { s: 4100, u: 44, speed: 72, dir: 1 },
   ],
 
   furniture: {
-    phone: [700], shelters: [[1900, -1]],
-    benches: [[520, 1], [1620, -1], [2720, 1]],
-    drains: [400, 1500, 2600],
-    signs: [[300, 1, 'stop'], [1400, -1, 'sign'], [2800, 1, 'stop']],
+    phone: [700, 3100], shelters: [[1900, -1], [3600, 1]],
+    benches: [[520, 1], [980, -1], [1620, -1], [2160, 1], [2720, 1], [3400, -1], [4100, 1]],
+    drains: [400, 1100, 1500, 2200, 2600, 3300, 4000, 4400],
+    signs: [[300, 1, 'stop'], [1400, -1, 'sign'], [2200, 1, 'sign'], [2800, 1, 'stop'], [3900, -1, 'sign']],
   },
 
   landmarks: { waterTower: [40, 20], pylons: 0 },
