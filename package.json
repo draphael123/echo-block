@@ -1,0 +1,6 @@
+{
+  "name": "echo-block",
+  "private": true,
+  "type": "module",
+  "scripts": { "dev": "node serve.mjs" }
+}
