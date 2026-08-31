@@ -158,6 +158,29 @@ export function buildCar(paint = 0) {
   const w = new VoxWorld();
   const { L, W } = shell(w, c);
 
+  // A CONTACT SHADOW.
+  //
+  // The car's ride height is now exact to the voxel and it STILL read as
+  // floating, because nothing was grounding it: the only shadow-casting light
+  // is a moon at night, which throws almost nothing, so the car sat on the road
+  // with clean air between it and its own darkness. A soft dark patch under a
+  // vehicle is what the eye actually uses to decide something is resting on a
+  // surface — this is doing more work than the ride height ever did.
+  const shadowTex = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const rad = g.createRadialGradient(32, 32, 2, 32, 32, 31);
+    rad.addColorStop(0, 'rgba(0,0,0,0.72)');
+    rad.addColorStop(0.55, 'rgba(0,0,0,0.34)');
+    rad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = rad;
+    g.fillRect(0, 0, 64, 64);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;      // unflagged canvas textures render washed
+    return t;
+  })();
+
   const root = new THREE.Group();
   root.name = 'car';
   const chassis = new THREE.Group();          // takes the body roll
@@ -165,6 +188,20 @@ export function buildCar(paint = 0) {
   mesh.position.set(0, 0, -L / 2);            // pivot about the middle
   chassis.add(mesh);
   root.add(chassis);
+  mesh.traverse(o => { if (o.isMesh && o.material && o.material.isMeshStandardMaterial) o.castShadow = true; });
+
+  // Slightly longer and wider than the car, so it reads as spread light rather
+  // than as a decal cut to the silhouette. Under the BODY, not the group, so it
+  // does not roll with the chassis.
+  const shadow = new THREE.Mesh(
+    new THREE.PlaneGeometry(W * 2.1, L * 1.5),
+    new THREE.MeshBasicMaterial({
+      map: shadowTex, transparent: true, opacity: 0.85, depthWrite: false,
+      toneMapped: false, fog: true,
+    }));
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.renderOrder = -1;
+  root.add(shadow);
 
   // one shadowless spot for the beam, plus a pool light so the road right in
   // front of the car is never black
@@ -314,6 +351,9 @@ export function buildCar(paint = 0) {
     state.yView += (state.y - state.yView) * Math.min(1, dt * 9);
     root.position.set(state.x, state.yView, state.z);
     root.rotation.y = state.heading;
+    // The shadow stays ON the ground and flat to the world while the car above
+    // it pitches, rolls and jolts — that contrast is what sells the contact.
+    shadow.position.y = 0.6 - (root.position.y - state.yView);
     // Body roll reads the corner for you before the tyres do — and leans HARD
     // into a slide, which is most of what sells the drift from behind.
     const want = THREE.MathUtils.clamp(
