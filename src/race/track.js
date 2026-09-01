@@ -2088,42 +2088,46 @@ export async function buildTrack(trackSpec, onPhase) {
     }
   }
 
-  // THE GROUNDING AUDIT. The relief pass made every circuit hillier, and a
-  // prop anchored at one height on sloping ground floats at its far end.
-  // Sample the prop band beside the road; any column whose LOWEST voxel
-  // hangs 4–20 above the local surface is a floating prop (higher is a
-  // legitimate overhead — bunting, gantries, canopies). Counted per
-  // district, because the count tells you which BUILDER to fix.
+  // THE GROUNDING PASS. The relief made every circuit hillier, and a prop
+  // anchored at one height on sloping ground floats at its downhill end —
+  // which the playtest photographed, twice, from the driver's seat. So this
+  // FIXES rather than tallies: any column beside the road whose lowest
+  // voxel hangs 2–12 above the local surface gets legs — filled down to the
+  // ground in its own material (a neutral post for glowing ones). A fence
+  // on a crest reads as a fence built down the slope, because now it is.
+  // Higher hangs are legitimate overheads (bunting, canopies, crossbars);
+  // tree leaves, ground carpets and vehicle overhangs are left alone.
   {
     const gf = frame();
-    let floats = 0, softFloats = 0;
-    const byDist = {}, byMat = {};
-    // ground-cover carpets (an allotment's dirt, a copse's litter) float
-    // SOFTLY on slopes — a few voxels, far from the kerb, invisible at
-    // night. They are counted apart so the hard count stays actionable.
-    const SOFT = new Set(['dirt', 'grass', 'grassDry', 'leafLitter', 'gravel']);
-    for (let s = 0; s < path.total; s += 6) {
+    let grounded = 0, floats = 0;
+    const byDist = {};
+    const SKIP = new Set(['leafDark', 'leafMid', 'dirt', 'grass', 'grassDry',
+      'leafLitter', 'gravel', 'carBody', 'carPanel', 'carGlass', 'rubber', 'chrome']);
+    const GLOW = new Set(['winWarm', 'winWarmDim', 'winTV', 'porchBulb', 'neonSign',
+      'stripLight', 'sodium', 'tailLight', 'chillGlow', 'phoneGlow', 'headLight']);
+    for (let s = 0; s < path.total; s += 2) {
       const gy = GROUND_Y + elev(s);
-      for (const side of [-1, 1]) for (let u = ROAD_HALF + 6; u <= SET + 60; u += 6) {
+      for (const side of [-1, 1]) for (let u = ROAD_HALF + 4; u <= SET + 70; u += 2) {
         path.place(s, side * u, gf);
         const x = Math.round(gf.x), z = Math.round(gf.z);
+        if (w.get(x, gy, z) || w.get(x, gy - 1, z)) continue;
         let lowest = null, mat = null;
         for (let k = 1; k <= 20; k++) { const v = w.get(x, gy + k, z); if (v) { lowest = k; mat = v; break; } }
-        // tree canopies HANG — that is what a canopy is. Everything else
-        // hanging is a prop that lost its ground.
-        if (lowest !== null && lowest >= 4 && mat !== 'leafDark' && mat !== 'leafMid'
-            && !w.get(x, gy, z) && !w.get(x, gy - 1, z)) {
-          if (SOFT.has(mat)) { softFloats++; continue; }
+        if (lowest === null || SKIP.has(mat)) continue;
+        if (lowest >= 2 && lowest <= 12) {
+          const fill = GLOW.has(mat) ? 'metalDark' : mat;
+          for (let k = lowest - 1; k >= 0; k--) w.set(x, gy + k, z, fill);
+          grounded++;
+        } else if (lowest > 12) {
           floats++;
           const d2 = sectionAt(s).district;
           byDist[d2] = (byDist[d2] || 0) + 1;
-          byMat[mat] = (byMat[mat] || 0) + 1;
         }
       }
     }
-    if (floats > 20) console.warn('track: grounding audit — ' + floats
-      + ' floating prop columns beside the road (' + softFloats + ' soft ground patches, judged tolerable): '
-      + JSON.stringify(byDist) + ' materials: ' + JSON.stringify(byMat));
+    if (grounded) console.log('track: grounding pass gave legs to ' + grounded + ' hanging columns');
+    if (floats > 30) console.warn('track: grounding — ' + floats
+      + ' columns still hang above the fill window: ' + JSON.stringify(byDist));
   }
 
 
