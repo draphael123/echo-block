@@ -125,7 +125,9 @@ export default {
   // THE LEVEL CROSSING on the flats: barriers cycle on the race clock, red
   // lamps blinking while they are down. Read the lamps from distance and
   // lift, or arrive on the wrong beat and wear the arm.
-  moving: [{ kind: 'crossing', s: 5900 }],
+  // — and A WIDE LOAD with escorts and amber beacons crawling the whole
+  // bypass: you catch it every lap somewhere new. The Ring's parade.
+  moving: [{ kind: 'crossing', s: 5900 }, { kind: 'convoy', s: 0, u: 150 }],
   // Sodium, in the small hours. Everything orange except the sky, and the
   // thickest fog in the city -- which does the same job as the crests do:
   // it takes the distance away from you.

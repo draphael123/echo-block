@@ -751,6 +751,34 @@ const DISTRICT = {
         D2.crane(c.w, x, gy, z, 120 + (i % 2) * 24, 130));
     // the lighthouse, at the seaward end of the quay — the harbour's landmark
     c.blit(sec.to - 90, SET + 140, c.pr.lighthouse);
+    // A STRADDLE CRANE over the road itself, on the long quay only: lattice
+    // legs both kerbs, a beam at 126, and a container hanging mid-lift over
+    // the traffic — the working harbour, working directly over your head.
+    if (sec.to - sec.from > 1200) {
+      const gs = sec.from + 950, half3 = ROAD_HALF + 26;
+      for (const side of [-1, 1])
+        for (const ds of [-9, 9])
+          c.put(gs + ds, side * half3, (x, z, ff, gy) => {
+            c.w.box(x - 1, gy, z - 1, 3, 126, 3, 'metalDark');
+            for (let k = 12; k < 120; k += 24) c.w.box(x - 1, gy + k, z - 1, 3, 2, 3, 'doorYellow');
+          });
+      for (let u = -half3; u <= half3; u += 0.8)
+        c.put(gs, u, (x, z, ff, gy) => {
+          if (!c.w.get(x, gy - 1, z) && !c.w.get(x, gy - 2, z) && !c.w.get(x, gy - 3, z))
+            c.w.set(x, gy - 1, z, 'asphaltPatch');
+          for (let k = 0; k < 10; k++)
+            c.w.set(x, gy + 126 + k, z, (k < 2 || k > 7) ? 'metalDark' : 'doorYellow');
+        });
+      // the trolley, the cables, and the box mid-lift
+      c.put(gs, 46, (x, z, ff, gy) => {
+        c.w.box(x - 4, gy + 120, z - 4, 9, 6, 9, 'metalDark');
+        for (const [cx2, cz2] of [[-3, -3], [3, 3]])
+          for (let k = 108; k < 120; k++) c.w.set(x + cx2, gy + k, z + cz2, 'metalDark');
+        c.w.box(x - 6, gy + 96, z - 12, 13, 12, 25, 'doorRed');
+        for (let dz2 = -12; dz2 <= 12; dz2 += 4) c.w.box(x - 6, gy + 96, z + dz2, 13, 12, 1, 'rust');
+        c.w.set(x, gy + 138, z, 'tailLight');
+      });
+    }
     c.run(sec.from, sec.to, SET - 4, 60, (x, z, ff, gy) => {
       const [bx, bz] = c.back(ff, x, z, 30);
       D2.bollards(c.w, bx, gy, bz, 60, c.along(ff));
@@ -769,10 +797,29 @@ const DISTRICT = {
     // the lap sounds like this leg looks. The coal wharf beyond keeps its
     // container stacks, so the two container legs stop being twins.
     if (sec.name === 'the reach') {
+      // THE HULL CANYON, made legible. The playtest drove between two
+      // grounded ships and read them as WALLS — because in the dark a
+      // plated wall is all they were. What says "ship" at night: a bow
+      // that flares and RISES at each end, two rows of lit portholes, a
+      // white superstructure island over the rail, nav lights at the
+      // ends (port red, starboard green), and lit derrick tips.
+      // NOT run(): the docks' reach is an arc of r~460 and a hull offset of
+      // 344 compresses the inside line to 0.25 — under run()'s degeneracy
+      // guard, which SKIPPED the whole inside ship, while the outside line
+      // stretched to 1.75 and gapped into a slat fence at step 1. The
+      // positions are still valid (compression is not folding, 344 < r), so
+      // march s directly at 0.4 and let the inside overwrite itself solid.
+      const from2 = sec.from + 60, to2 = sec.to - 60;
+      const hullAt = (s, side, fn) => {
+        c.path.place(s, side * (ROAD_HALF + 44), c.f);
+        fn(Math.round(c.f.x), Math.round(c.f.z), c.f, GROUND_Y + elev(s), s);
+      };
       for (const side of [-1, 1])
-        c.run(sec.from + 60, sec.to - 60, side * (ROAD_HALF + 44), 1, (x, z, ff, gy, s) => {
+        for (let hs = from2; hs < to2; hs += 0.4) hullAt(hs, side, (x, z, ff, gy, s) => {
           const i = Math.round(s);
-          const h = 50 + ((i >> 6) % 2) * 5;
+          const dEnd = Math.min(s - from2, to2 - s);
+          const bow = Math.max(0, 1 - dEnd / 130);           // 1 at the tips
+          const h = 50 + ((i >> 6) % 2) * 5 + Math.round(bow * bow * 14);  // the sheer
           for (let k = 0; k < h; k++) {
             const m = k < 4 ? 'rust'
               : k === h - 6 ? 'paper'
@@ -780,9 +827,26 @@ const DISTRICT = {
             c.w.set(x, gy + k, z, m);
           }
           c.w.set(x, gy + h, z, 'metal');
-          if (i % 64 < 2) for (let k = 26; k < 36; k += 4) c.w.set(x, gy + k, z, 'winWarmDim');
-          if (i % 180 < 2)                       // a derrick over the rail
+          // portholes: two lit rows, dense enough to read as a liner
+          if (i % 28 < 2) {
+            c.w.set(x, gy + 24, z, hash3(x, 1, z) > 0.4 ? 'winWarm' : 'winWarmDim');
+            c.w.set(x, gy + 34, z, hash3(x, 2, z) > 0.5 ? 'winWarmDim' : 'winWarm');
+          }
+          // nav lights on the bow and stern: port red, starboard green
+          if (dEnd < 3) c.w.box(x, gy + h + 1, z, 1, 3, 1, side < 0 ? 'tailLight' : 'chillGlow');
+          if (i % 180 < 2) {                     // a derrick over the rail
             for (let k = 0; k < 34; k++) c.w.set(x, gy + h + k, z, 'metalDark');
+            c.w.set(x, gy + h + 34, z, 'sodium');            // masthead light
+          }
+          // the superstructure island, white over the rail, two window rows
+          const spanA = from2 + (to2 - from2) * (side < 0 ? 0.62 : 0.3);
+          if (s > spanA && s < spanA + 56) {
+            for (let k = h; k < h + 28; k++) {
+              const win = (k === h + 10 || k === h + 18) && i % 6 < 3;
+              c.w.set(x, gy + k, z, win ? 'winWarm' : 'paper');
+            }
+            c.w.box(x, gy + h + 28, z, 1, 2, 1, 'metalDark');
+          }
         });
       return;
     }
@@ -793,6 +857,33 @@ const DISTRICT = {
           D2.containers(c.w, bx, gy, bz, 2, 3, 4, Math.round(s) + (side > 0 ? 0 : 91));
       });
     c.put(sec.from + 240, SET + 210, (x, z, ff, gy) => D2.crane(c.w, x, gy, z, 132, 120));
+    // CONTAINER BRIDGES: a crane parked its work mid-air — a container
+    // spanning the road on stacks, twice a leg. The docks' own gantry, made
+    // of the docks' own material, at the town's one overhead standard.
+    for (const bs of [sec.from + 160, sec.to - 200]) {
+      const half2 = ROAD_HALF + 38;
+      // the stacks either side, banded like every container in the yard
+      for (const side of [-1, 1])
+        for (let ds = -12; ds <= 12; ds++)
+          c.put(bs + ds, side * half2, (x, z, ff, gy) => {
+            for (let k = 0; k < GANTRY_H; k++)
+              c.w.set(x, gy + k, z, ((k / 25) | 0) % 2 ? 'doorBlue' : 'skipRust');
+          });
+      // the span: one 26-high container laid across, ribbed, 9 deep
+      for (let ds = -4; ds <= 4; ds++)
+        for (let u = -half2; u <= half2; u += 0.8)
+          c.put(bs + ds, u, (x, z, ff, gy) => {
+            // the gantry pinhole lesson: any empty column under the span
+            // gets road first, or its floor IS the span
+            if (!c.w.get(x, gy - 1, z) && !c.w.get(x, gy - 2, z) && !c.w.get(x, gy - 3, z))
+              c.w.set(x, gy - 1, z, 'asphaltPatch');
+            const band = ((Math.abs(u) / 62) | 0) % 2 ? 'doorRed' : 'doorYellow';
+            const rib = (Math.round(u) % 5 === 0);
+            for (let k = 0; k < 26; k++)
+              c.w.set(x, gy + GANTRY_H + k, z,
+                (rib || k < 2 || k > 23 || Math.abs(ds) === 4) ? 'metalDark' : band);
+          });
+    }
   },
 
   sheds(c, sec) {
@@ -1111,9 +1202,29 @@ const DISTRICT = {
             // cannot see over is just a corridor again -- and solid, so you
             // cannot drive off it.
             for (let k = 0; k < 15; k++) c.w.set(x, road + k, z, k > 12 ? 'concrete' : 'concreteOld');
+            // red lights along the parapet every 60 — the viaduct drawn as a
+            // line of lights across the dark, from half the lap away
+            if ((Math.round(s) % 60) < 1) c.w.set(x, road + 15, z, 'tailLight');
           }
         });
       }
+
+    // THE CITY BELOW. The drop is the set piece and it fell into pure black
+    // — three hundred voxels of nothing reads as fog, not height. A scatter
+    // of lit windows on the valley floor is the cheapest possible town, and
+    // it is what makes the crossing feel three hundred voxels UP.
+    for (let s = s0 - 100; s < s1 + 100; s += 7) {
+      for (const side of [-1, 1]) {
+        const r2 = hash3(Math.round(s), side, 7);
+        if (r2 < 0.45) continue;
+        const u2 = side * (DECK + 60 + r2 * 700);
+        c.put(s, u2, (x, z, ff, gy) => {
+          const road = gy - 3;
+          const wy = road - DROP + 4 + Math.round(hash3(x, 3, z) * 26);
+          c.w.set(x, wy, z, r2 > 0.92 ? 'sodium' : (r2 > 0.7 ? 'winWarm' : 'winWarmDim'));
+        });
+      }
+    }
 
     // Piers and arches, all of it BELOW the deck. surround() is told this leg
     // is a structure, so the ground does not come up with it and the drop is
@@ -1299,6 +1410,24 @@ const DISTRICT = {
     // kilometre out, which is what a services leg is FOR
     c.blit(sec.from + 500, SET + 68, c.pr.petrol);
     c.blit(sec.from + 360, -(SET + 66), c.pr.billboardA);
+    // THE OASIS, properly: a tall neon totem you can read from the sweep,
+    // and a rank of parked lorries sleeping nose-in — a motorway services
+    // at 3am is a lit island with trucks around it, and this one was a shed
+    c.put(sec.from + 120, SET + 34, (x, z, ff, gy) => {
+      c.w.box(x, gy, z, 3, 64, 3, 'metalDark');
+      c.w.box(x - 5, gy + 64, z - 2, 13, 22, 4, 'metalDark');
+      c.w.box(x - 4, gy + 66, z - 1, 11, 8, 2, 'neonSign');
+      c.w.box(x - 4, gy + 76, z - 1, 11, 8, 2, 'stripLight');
+    });
+    for (let i = 0; i < 4; i++)
+      c.put(sec.from + 320 + i * 76, -(SET + 46), (x, z, ff, gy) => {
+        const a2 = c.along(ff) === 'x';
+        const W2 = a2 ? 22 : 52, D2b = a2 ? 52 : 22;
+        c.w.box(x - (W2 >> 1), gy, z - (D2b >> 1), W2, 4, D2b, 'metalDark');
+        c.w.box(x - (W2 >> 1) + 1, gy + 4, z - (D2b >> 1) + 1, W2 - 2, 22, D2b - 2,
+          i % 2 ? 'paper' : 'skipSteel');
+        c.w.set(x, gy + 8, z, 'tailLight');
+      });
     bankRun(c, sec, 26);
     gantryOver(c, sec.to - 260, ROAD_HALF + 30, 0, false);
   },
@@ -1546,6 +1675,18 @@ function hazards(w, path) {
         path.place(h.s + d, h.u, cf);
         w.box(Math.round(cf.x) - 1, elev(h.s + d) + 9, Math.round(cf.z) - 1, 2, 3, 2,
           ((d >> 3) % 2) ? 'coneOrange' : 'paper');
+      }
+      // A FLOODLIGHT MAST over the dig — night roadworks have one, it makes
+      // the site READ from distance, and it hands the dark legs a landmark
+      // without touching the sight mechanic (the glow is local).
+      path.place(h.s + (span >> 1) + 14, h.u + Math.sign(h.u) * 18, cf);
+      {
+        const mx = Math.round(cf.x), mz = Math.round(cf.z), my = elev(h.s);
+        w.box(mx, my, mz, 2, 42, 2, 'metalDark');
+        w.box(mx - 3, my + 42, mz - 1, 8, 3, 3, 'metalDark');
+        w.box(mx - 2, my + 43, mz, 6, 1, 1, 'stripLight');
+        w.box(mx - 4, my, mz + 4, 6, 5, 8, 'metalDark');       // the generator
+        w.set(mx - 3, my + 5, mz + 5, 'signRed');
       }
     } else if (h.kind === 'skip') {
       // TWO skips end to end. One is 44 voxels on a 216-voxel road: something

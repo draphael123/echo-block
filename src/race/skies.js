@@ -33,10 +33,13 @@ export const SKIES = {
   midnight: {
     top: '#141d38', horizon: '#33456e', haze: '#7a4a1f', below: '#151d2e', ridge: '#0d1322',
     fog: '#161f33', fogD: 0.00058, clear: '#141d38',
-    hemiSky: '#3b537f', hemiGround: '#2c2119', hemi: 1.22,
-    key: '#bdd2f2', keyI: 1.9, sun: [-320, 470, -240],
+    // second readability bump (playtest, 2026-09-01): the ambient floor and
+    // exposure rise again — the dark legs keep their CONTRAST against the
+    // lit ones, which is the mechanic; their absolute blackness was not.
+    hemiSky: '#3b537f', hemiGround: '#2c2119', hemi: 1.38,
+    key: '#bdd2f2', keyI: 2.05, sun: [-320, 470, -240],
     disc: [0.86, 0.90, 1.00], stars: 1,
-    exposure: 1.80, threshold: 0.72,
+    exposure: 1.92, threshold: 0.72,
   },
 
   // Just after sunset over the old town: the sky still has light in it, low and
@@ -91,9 +94,11 @@ export const SKIES = {
   // warm murk is doing the same job as the crests: it takes the distance away.
   sodium: {
     top: '#191a2c', horizon: '#4a3a3c', haze: '#9a5a1c', below: '#322a38', ridge: '#26212d',
-    fog: '#2b2430', fogD: 0.00088, clear: '#191a2c',
-    hemiSky: '#5a4660', hemiGround: '#33251a', hemi: 0.98,
-    key: '#c9b9d8', keyI: 1.05, sun: [280, 520, 300],
+    // the murk thins (playtest: "still hard to see") — the crests are the
+    // Ring's distance-taker; the fog only needs to dress them, not double them
+    fog: '#2b2430', fogD: 0.00072, clear: '#191a2c',
+    hemiSky: '#5a4660', hemiGround: '#33251a', hemi: 1.12,
+    key: '#c9b9d8', keyI: 1.18, sun: [280, 520, 300],
     disc: [0.88, 0.84, 0.96], stars: 0.6,
     exposure: 1.60, threshold: 0.80,
   },

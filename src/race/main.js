@@ -247,10 +247,33 @@ let wet = 0;
 
 const audio = createAudio();
 const music = createMusic();
+// THE PAUSE. Esc halts the sim dead — the loop still paints, nothing moves.
+let paused = false;
+function setPaused(p) {
+  if (p === paused) return;
+  paused = p;
+  const el = document.getElementById('pause');
+  if (el) el.classList.toggle('hidden', !paused);
+  if (paused) audio.update(0, V_MAX, 0, 0, false);
+}
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   audio.start();
   music.start('race');
+  if (k === 'escape') {
+    if (!track || swapping) return;        // nothing to pause yet
+    // overlays own their own esc: the picker closes itself, the garage too
+    if (picker.isUp && picker.isUp()) return;
+    if (garage.isOpen && garage.isOpen()) { garage.close(); return; }
+    setPaused(!paused);
+    return;
+  }
+  if (paused) {
+    // the pause menu answers three keys and swallows the rest
+    if (k === 'r') { setPaused(false); reset(); }
+    if (k === 't') { setPaused(false); pickerShow(); }
+    return;
+  }
   if (k === 'm') { const m = audio.mute(); music.mute(m); hud.msg.textContent = m ? 'sound off' : 'sound on'; msgUntil = time + 1.2; }
   if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
   keys.add(k);
@@ -260,8 +283,15 @@ addEventListener('keydown', (e) => {
   // is the game's whole question in one key.
   if (k === 'c') {
     car.state.dynMode = car.state.dynMode === 'lights' ? 'engine' : 'lights';
-    hud.msg.innerHTML = 'dynamo &rarr; <b>' + car.state.dynMode.toUpperCase() + '</b>';
-    msgUntil = time + 1.1;
+    hud.msg.innerHTML = 'dynamo &rarr; <b>' + car.state.dynMode.toUpperCase() + '</b>'
+      + '<span class="dim">' + (car.state.dynMode === 'lights'
+        ? 'charge feeds the beam — see further' : 'charge feeds the engine — go faster') + '</span>';
+    msgUntil = time + 1.6;
+    // twice is understanding: after that the tutorial toast retires for good
+    if (!savefile.dynTaught) {
+      savefile.dynTaughtN = (savefile.dynTaughtN || 0) + 1;
+      if (savefile.dynTaughtN >= 2) { savefile.dynTaught = true; Garage.save(savefile); }
+    }
   }
   if (k === 'h') { hud.help.classList.toggle('hidden'); hud.hint.classList.toggle('hidden'); }
   // The championship: N swaps the next round IN PLACE — the circuit was built
@@ -409,6 +439,7 @@ let gp = null, inGP = false;       // recomputed per circuit by applyTrack
 let lapTime = 0, lap = 0, running = false, done = false;
 let s = 80, prevS = 80, crashes = 0, wasDown = false, downAt = 0;
 let struck = 0, msgUntil = 0, wasBoosting = false, wasAir = false, lastLight = 99;
+let dynTipAt = 0;                    // the one-time dynamo tutorial toast
 // The race clock — the same clock the rivals keep, so finish ORDER can be
 // ranked by when everybody actually crossed the line (see field.standings).
 let raceClock = 0;
@@ -1163,6 +1194,84 @@ function buildMover(m) {
     };
   }
 
+  if (m.kind === 'convoy') {
+    // A WIDE LOAD crawls the whole bypass with escort cars and amber
+    // beacons — the Ring's answer to the Parade's parade. You catch it
+    // every lap somewhere new, and passing a 40-wide load at 260 is the
+    // kind of moment a bypass at 3am actually has.
+    const u0 = m.u || 150;
+    const pfC = pathFrame();
+    const amber = new THREE.MeshBasicMaterial({ color: 0xffb04c, toneMapped: false });
+    const beacons = [];
+    const mkEscort = () => {
+      const e2 = new THREE.Group();
+      const b = new THREE.Mesh(new THREE.BoxGeometry(22, 13, 46),
+        new THREE.MeshStandardMaterial({ color: 0xd8d8d0, roughness: 0.8 }));
+      b.position.y = 9;
+      const bc = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 4), amber);
+      bc.position.set(0, 18, 0);
+      beacons.push(bc);
+      e2.add(b, bc);
+      return e2;
+    };
+    const lead = mkEscort(), tail = mkEscort();
+    const load = new THREE.Group();
+    {
+      const bed = new THREE.Mesh(new THREE.BoxGeometry(40, 6, 96),
+        new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 0.9 }));
+      bed.position.y = 6;
+      const cargo = new THREE.Mesh(new THREE.BoxGeometry(34, 30, 68),
+        new THREE.MeshStandardMaterial({ color: 0x3f5a5e, roughness: 0.85 }));
+      cargo.position.y = 24;
+      cargo.castShadow = true;
+      load.add(bed, cargo);
+      for (const [bx2, bz2] of [[-18, -44], [18, -44], [-18, 44], [18, 44]]) {
+        const bc = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 3), amber);
+        bc.position.set(bx2, 11, bz2);
+        beacons.push(bc);
+        load.add(bc);
+      }
+      for (const sx of [-20.5, 20.5]) {
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 96), amber);
+        stripe.position.set(sx, 7, 0);
+        load.add(stripe);
+      }
+    }
+    const vehicles = [
+      { g: lead, off: 78, hw: 14, hl: 26 },
+      { g: load, off: 0, hw: 24, hl: 52 },
+      { g: tail, off: -80, hw: 14, hl: 26 },
+    ];
+    for (const v of vehicles) g.add(v.g);
+    const SPEED = 62;
+    return {
+      g,
+      update(dt, t) {
+        const total = track.path.total;
+        const head = (t * SPEED) % total;
+        for (let bi = 0; bi < beacons.length; bi++)
+          beacons[bi].visible = ((t * 3 + bi) | 0) % 2 === 0;
+        for (const v of vehicles) {
+          const sp = ((head + v.off) % total + total) % total;
+          track.path.place(sp, u0, pfC);
+          v.g.position.set(pfC.x, track.elev(sp) + 2, pfC.z);
+          v.g.rotation.y = Math.atan2(pfC.tx, pfC.tz);
+          if (running && !done && !car.state.crash) {
+            const dx = car.state.x - v.g.position.x, dz = car.state.z - v.g.position.z;
+            const sh = Math.sin(v.g.rotation.y), ch = Math.cos(v.g.rotation.y);
+            const lz = dx * sh + dz * ch, lx = dx * ch - dz * sh;
+            if (Math.abs(lx) < v.hw && Math.abs(lz) < v.hl) {
+              car.impact(0.75, true);
+              audio.impact(0.65);
+              hud.msg.textContent = 'the wide load!';
+              msgUntil = time + 1.6;
+            }
+          }
+        }
+      },
+    };
+  }
+
   if (m.kind === 'boat') {
     // A sailboat working along the harbour beyond the quay edge. Pure
     // spectacle — no collision — but a horizon that MOVES is what makes the
@@ -1346,6 +1455,11 @@ function frame() {
 
 function tick() {
   if (swapping || !track) return;    // mid-swap the world does not exist
+  if (paused) {                      // frozen, but still painted
+    clock.getDelta();                // discard the paused time
+    post.render(scene, camera, time);
+    return;
+  }
   const dt = Math.min(clock.getDelta(), 0.05);
   time += dt;
   renderer.shadowMap.needsUpdate = (frames++ % 3) === 0;
@@ -1386,6 +1500,10 @@ function tick() {
       lampsGo(time);
       hud.msg.innerHTML = '<b class="light go">go</b>';
       msgUntil = time + 1.0;
+      // TEACH THE DYNAMO, until the player has used it twice. One line, at
+      // the start of the race, gone the moment it is understood — a system
+      // nobody is told about is a system nobody used (the playtest said so).
+      if (!savefile.dynTaught) dynTipAt = time + 1.4;
     } else {
       throttle = 0; steer = 0; drift = false;
     }
@@ -1570,6 +1688,13 @@ function tick() {
   stats.topSpeed = Math.max(stats.topSpeed, Math.abs(car.state.speed));
   stats.bigAir = Math.max(stats.bigAir, car.state.bigAir);
 
+  if (dynTipAt && time > dynTipAt && !msgUntil) {
+    dynTipAt = 0;
+    hud.msg.innerHTML = '<b style="color:#7fd4ff">&#9889; THE DYNAMO</b>'
+      + '<span class="dim">drift, graze traffic &amp; jump to charge it &mdash; '
+      + '<b>C</b> sends the charge to your LIGHTS or your ENGINE</span>';
+    msgUntil = time + 6;
+  }
   if (msgUntil && time > msgUntil && !done) { hud.msg.textContent = ''; msgUntil = 0; }
   if (car.state.crash > 0 && !wasDown) { crashes++; downAt = s; audio.impact(car.state.shake || 0.5); }
   wasDown = car.state.crash > 0;
@@ -1682,7 +1807,11 @@ function tick() {
   // rushes, the buildings loom, and nothing about the sim changed at all.
   const crouch = fSpd * fSpd * 22;
   const wantUp = (CAM.up - crouch) * zoom;
-  const lowCap = sec.district === 'gatehouse' ? 46 : null;
+  // Every ROOFED district caps the camera, not just the gatehouse: the Old
+  // Town GRID sits under the market hall's 112 deck, and a zoomed-out
+  // camera (84 x 1.9) was inside the joists before the lights went out.
+  const ROOF_CAP = { gatehouse: 46, markethall: 62, tunnel: 64 };
+  const lowCap = ROOF_CAP[sec.district] !== undefined ? ROOF_CAP[sec.district] : null;
   camDrop += (((lowCap !== null && lowCap < wantUp) ? wantUp - lowCap : 0) - camDrop) * Math.min(1, dt * 4);
   const back = (CAM.back - fSpd * fSpd * 14) * zoom, up = wantUp - camDrop;
   // Height is relative to the CAR, not to zero — on a 4-metre profile a fixed
@@ -1764,7 +1893,11 @@ function tick() {
       const k = Math.min(1, (t6 - 3.2) / 2.6);
       const e = k * k * (3 - 2 * k);
       track.path.at(START.s - 320, fI);
-      const hy = track.elev(START.s - 320) + 210;
+      // A grid under a ROOF gets a low sweep in, not a dive — the Old Town's
+      // ceremony descended straight through the market hall's shingles.
+      const roofedStart = sectionAt(START.s).district in
+        { markethall: 1, gatehouse: 1, tunnel: 1 };
+      const hy = track.elev(START.s - 320) + (roofedStart ? 86 : 210);
       camera.position.set(
         fI.x + (camPos.x - fI.x) * e, hy + (camPos.y - hy) * e, fI.z + (camPos.z - fI.z) * e);
       camera.lookAt(car.state.x, car.state.yView + 12, car.state.z);
@@ -1868,6 +2001,10 @@ const picker = mountTrackSelect({
 const pickerShow = () => picker.show();
 const paintGarage = () => garage.paint();
 const toggleGarage = () => garage.toggle();
+// the pause menu's buttons — same three verbs as its keys
+document.getElementById('p-resume')?.addEventListener('click', () => setPaused(false));
+document.getElementById('p-restart')?.addEventListener('click', () => { setPaused(false); reset(); });
+document.getElementById('p-circuits')?.addEventListener('click', () => { setPaused(false); picker.show(); });
 
 window.DYNAMO = {
   scene, camera, renderer, post, track, car, ground, life, traffic, field, gp: GP,

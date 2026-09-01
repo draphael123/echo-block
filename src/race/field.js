@@ -82,20 +82,29 @@ export function buildField(track, ground, buildCar, { count = FIELD_SIZE, player
     update(dt, laps, player) {
       for (const c of cars) c.update(dt, laps, player);
       // Rivals have no car-vs-car collision and were driving through each
-      // other — over a thousand frames of overlap per race, cars fully inside
-      // one another off the line. This is not physics, just manners: two
-      // centres inside 40 voxels get nudged apart along the line between
-      // them, a little per frame, and the drivers steer back to their own
-      // lines afterwards like they do after any shove.
+      // other. This is not physics, just manners — and it is RECTANGLE
+      // manners now: the old 40-voxel circle matched the car's width but a
+      // car is 58 LONG, so nose-to-tail pairs still overlapped by a wheelbase
+      // and the playtest saw them fused into one vehicle. Test in the lead
+      // car's own frame and push apart mostly SIDEWAYS, which is both what
+      // reads and what un-stacks a train.
       for (let i = 0; i < cars.length; i++) for (let j = i + 1; j < cars.length; j++) {
         const a = cars[i].car.state, b = cars[j].car.state;
         const dx = b.x - a.x, dz = b.z - a.z;
-        const d = Math.hypot(dx, dz);
-        if (d > 40 || d < 0.01) continue;
-        const push = Math.min(2.4, (40 - d) * 0.2);
-        const nx = dx / d, nz = dz / d;
-        a.x -= nx * push; a.z -= nz * push;
-        b.x += nx * push; b.z += nz * push;
+        const sh = Math.sin(a.heading), ch = Math.cos(a.heading);
+        const along = dx * sh + dz * ch;         // + is ahead of a
+        const side = dx * ch - dz * sh;          // + is to a's right
+        if (Math.abs(along) > 66 || Math.abs(side) > 32) continue;
+        const pushS = Math.min(2.6, (32 - Math.abs(side)) * 0.22 + 0.6);
+        const dirS = Math.sign(side || (i % 2 ? 1 : -1));
+        // sideways separation, plus a small along-nudge so a dead-astern
+        // pair splits instead of see-sawing
+        const pushA = Math.min(1.2, (66 - Math.abs(along)) * 0.05);
+        const dirA = Math.sign(along || 1);
+        a.x -= (ch * dirS * pushS + sh * dirA * pushA) * 0.5;
+        a.z -= (-sh * dirS * pushS + ch * dirA * pushA) * 0.5;
+        b.x += (ch * dirS * pushS + sh * dirA * pushA) * 0.5;
+        b.z += (-sh * dirS * pushS + ch * dirA * pushA) * 0.5;
       }
     },
     setWet(w) { for (const c of cars) c.car.setWet(w); },
