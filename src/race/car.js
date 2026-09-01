@@ -189,15 +189,38 @@ export const BODIES = [
   { body: 'doorGreen', roof: 'doorGreen', trim: 'chrome', name: 'racing', swatch: '#2f6440' },
   { body: 'metalDark', roof: 'metalDark', trim: 'rust', name: 'primer', swatch: '#2b2f36' },
   { body: 'plasticRed', roof: 'shirtCream', trim: 'chrome', name: 'rally', swatch: '#b0403a' },
+  { body: 'paper', roof: 'paper', trim: 'metalDark', name: 'white', swatch: '#d8d4c8' },
+  { body: 'plasticBlue', roof: 'plasticBlue', trim: 'chrome', name: 'electric', swatch: '#3a6ea8' },
+  { body: 'coneOrange', roof: 'metalDark', trim: 'metalDark', name: 'hazard', swatch: '#c96a2a' },
+  { body: 'trunk', roof: 'trunk', trim: 'rust', name: 'bronze', swatch: '#6a4a34' },
+];
+
+// LIVERIES: a stripe scheme painted over the base coat, in an accent the
+// player picks. Basic customization, but the difference between "a red
+// car" and "MY red car" is exactly one stripe.
+export const LIVERIES = [
+  { id: 0, name: 'plain' },
+  { id: 1, name: 'racing stripes' },        // twin stripes, nose to tail
+  { id: 2, name: 'side flash' },            // a band along the sills
+  { id: 3, name: 'roof & bonnet' },         // contrast top
+];
+export const ACCENTS = [
+  { mat: 'paper', name: 'white', swatch: '#d8d4c8' },
+  { mat: 'metalDark', name: 'black', swatch: '#2b2f36' },
+  { mat: 'plasticRed', name: 'red', swatch: '#b0403a' },
+  { mat: 'doorYellow', name: 'gold', swatch: '#b9862f' },
+  { mat: 'chillGlow', name: 'neon', swatch: '#7fd4ff' },
 ];
 
 // A 1986 body, facing +Z, in the shape the chassis asks for. The base is
 // the three-door hatch; the estate squares the tail, the wedge drops the
 // roofline and stretches the nose, the kei shrinks everything.
-function shell(w, c, parts, ch) {
+function shell(w, c, parts, ch, style) {
   const d = (ch && ch.dims) || { L: 58, W: 26, roofH: 22, rear: 'hatch' };
   const L = d.L, W = d.W, sill = 5, hw = W >> 1;
   const RH = d.roofH;
+  const accent = style && ACCENTS[style.accent] ? ACCENTS[style.accent].mat : 'paper';
+  const livery = (style && style.livery) || 0;
   // What you have bought, on the outside of the car. Every part shows, because
   // an upgrade you cannot see is a number in a menu — and the lamps in
   // particular ARE the mechanic, so they had better be the thing you notice.
@@ -248,6 +271,27 @@ function shell(w, c, parts, ch) {
   // mirrors — small, but they are most of what says "car" in silhouette
   w.box(-hw - 2, sill + 15, cz + cL - 3, 2, 3, 3, c.body);
   w.box(hw, sill + 15, cz + cL - 3, 2, 3, 3, c.body);
+
+  // THE LIVERY, painted over the coat in the accent
+  if (livery === 1) {
+    // twin racing stripes: bonnet, roof, tail — the full length of the top
+    for (const sx of [-4, 2]) {
+      w.box(sx, sill + 11, L - 14, 3, 1, 12, accent);       // bonnet
+      w.box(sx, sill + RH + 2, cz + 1, 3, 1, cL - 2, accent); // roof
+      w.box(sx, sill + 11, 2, 3, 1, 10, accent);            // tail
+    }
+  } else if (livery === 2) {
+    // the side flash: a band along both flanks, kicked up at the tail
+    for (const side of [-1, 1]) {
+      const x2 = side < 0 ? -hw : hw - 1;
+      w.box(x2, sill + 3, 8, 1, 2, L - 20, accent);
+      w.box(x2, sill + 5, 8, 1, 2, 10, accent);
+    }
+  } else if (livery === 3) {
+    // contrast top: roof and bonnet in the accent
+    w.box(-hw + 2, sill + RH, cz + 1, W - 4, 2, cL - 2, accent);
+    w.box(-hw + 2, sill + 10, L - 14, W - 4, 1, 12, accent);
+  }
 
   // wheels, sunk into arches — fatter with better tyres
   const tyre = lv('tyres');
@@ -334,7 +378,7 @@ function reverseLamps(w, d) {
   w.box(hw - 12, sill + 7, -2, 3, 2, 1, 'headLight');
 }
 
-export function buildCar(paint = 0, tune = {}, parts = null, chassisId = 'brindle') {
+export function buildCar(paint = 0, tune = {}, parts = null, chassisId = 'brindle', style = null) {
   const ch = chassisOf(chassisId);
   // parts tune stacks ON the chassis's own character
   const T = {
@@ -350,7 +394,7 @@ export function buildCar(paint = 0, tune = {}, parts = null, chassisId = 'brindl
   let wet = 0;
   const c = BODIES[paint % BODIES.length];
   const w = new VoxWorld();
-  const { L, W } = shell(w, c, parts, ch);
+  const { L, W } = shell(w, c, parts, ch, style);
 
   // A CONTACT SHADOW.
   //

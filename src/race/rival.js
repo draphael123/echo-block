@@ -28,6 +28,11 @@ export function buildRival(track, ground, buildCar, opts = {}) {
   car.respawn(f.x, f.z, Math.atan2(f.tx, f.tz), track.elev(startS) - 1);
 
   let running = false, finished = null, dist = 0;
+  // THE HUMAN THIRD: a launch is a reaction, not a solenoid. Each driver
+  // leaves the line a beat apart, which un-stacks the first corner and makes
+  // a good start something the player can WIN. And every ~20 seconds one of
+  // them breathes — a half-second lift, the mistake you catch them on.
+  let launchHold = 0, errUntil = 0, nextErr = 0;
   // The race clock, and the moment this car crossed the line. Ranking finished
   // cars by frozen PROGRESS was epsilon noise — every finisher freezes a voxel
   // or two past the wrap, so the table came out in roster order. The clock all
@@ -43,6 +48,12 @@ export function buildRival(track, ground, buildCar, opts = {}) {
     }
     t += dt;
     const d = driver.drive(car, dt);
+    if (t < launchHold) { d.throttle = 0; }
+    if (t > nextErr) {
+      errUntil = t + 0.45 + Math.random() * 0.3;
+      nextErr = t + 16 + Math.random() * 18;
+    }
+    if (t < errUntil) d.throttle = Math.min(d.throttle, 0.08);
     // THE PLAYER EXISTS. The driver plans its own race and is blind to cars —
     // which read as ghosts the moment you were alongside one. The plan stands;
     // this is reflex on top of it: a car close ahead gets a steer away and a
@@ -56,6 +67,14 @@ export function buildRival(track, ground, buildCar, opts = {}) {
         const press = 1 - ahead / 130;
         d.steer = Math.max(-1, Math.min(1, d.steer + (side > 0 ? -0.55 : 0.55) * press));
         if (ahead < 75 && d.throttle > 0.25) d.throttle = 0.25;
+      }
+      // AND IT DEFENDS. A car close behind and offset gets the door closed on
+      // it — a drift toward the attacking side, mild enough that the switchback
+      // (feint one way, cut the other) beats it. That is a racing rival, not a
+      // moving chicane: it reacts, and its reaction is exploitable.
+      if (ahead < -20 && ahead > -140 && Math.abs(side) < 40 && st.speed > 120 && t >= errUntil) {
+        const press = 1 - (-ahead - 20) / 120;
+        d.steer = Math.max(-1, Math.min(1, d.steer + (side > 0 ? 0.28 : -0.28) * press));
       }
     }
     // allowReverse false: a racing driver does not select reverse, and the
@@ -97,7 +116,12 @@ export function buildRival(track, ground, buildCar, opts = {}) {
 
   return {
     root: car.root, car, driver, update, hits, shunt,
-    start() { running = true; },
+    start() {
+      running = true;
+      launchHold = Math.random() * 0.35;
+      nextErr = 8 + Math.random() * 18;
+      errUntil = 0;
+    },
     reset() {
       running = false; finished = null; dist = 0; t = 0; finishedT = null;
       driver.reset(startS);

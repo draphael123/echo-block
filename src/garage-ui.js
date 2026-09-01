@@ -8,7 +8,7 @@
 // bought — the circuit rebuilds its car on the spot, the hub just says thanks
 // — which keeps the shop from having to know which page it is on.
 import * as Garage from './race/garage.js';
-import { BODIES, CHASSIS } from './race/car.js';
+import { BODIES, CHASSIS, LIVERIES, ACCENTS } from './race/car.js';
 
 const CSS = `
 #garage {
@@ -37,6 +37,9 @@ const CSS = `
 #garage .swatches { display: flex; gap: 6px; }
 #garage .sw { width: 20px; height: 20px; min-width: 0; padding: 0; border-radius: 50%; border: 2px solid #2b3547; cursor: pointer; }
 #garage .sw.on { border-color: #ffd9a0; }
+#garage .liveries { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+#garage .lv { min-width: 0; padding: 5px 9px; font-size: 10px; }
+#garage .lv.on { border-color: #ffd9a0; color: #ffd9a0; }
 #garage .note { color: #5b657a; font-size: 10px; letter-spacing: .1em; margin: 16px 0 0; line-height: 1.7; }
 `;
 
@@ -119,6 +122,42 @@ export function mountGarage({ save, onChange, closeHint = 'G to close' } = {}) {
     row.appendChild(document.createElement('span'));
     partsEl.appendChild(row);
 
+    // The livery: a stripe scheme and the colour it is painted in. Free for
+    // the same reason the respray is — this is identity, not power.
+    const lrow = document.createElement('div');
+    lrow.className = 'row';
+    lrow.innerHTML = '<div><div class="nm">Livery</div><div class="bl">stripes, flashes, a contrast roof</div></div>';
+    const lv = document.createElement('div');
+    lv.className = 'liveries';
+    LIVERIES.forEach((l) => {
+      const b2 = document.createElement('button');
+      b2.className = 'lv' + (l.id === (save.livery || 0) ? ' on' : '');
+      b2.textContent = l.name;
+      b2.onclick = () => { save.livery = l.id; Garage.save(save); changed(); };
+      lv.appendChild(b2);
+    });
+    lrow.appendChild(lv);
+    lrow.appendChild(document.createElement('span'));
+    partsEl.appendChild(lrow);
+
+    if ((save.livery || 0) !== 0) {
+      const arow = document.createElement('div');
+      arow.className = 'row';
+      arow.innerHTML = '<div><div class="nm">Accent</div><div class="bl">what the livery is painted in</div></div>';
+      const asw = document.createElement('div');
+      asw.className = 'swatches';
+      ACCENTS.forEach((a, i) => {
+        const dot = document.createElement('button');
+        dot.className = 'sw' + (i === (save.accent || 0) ? ' on' : '');
+        dot.style.background = a.swatch;
+        dot.title = a.name;
+        dot.onclick = () => { save.accent = i; Garage.save(save); changed(); };
+        asw.appendChild(dot);
+      });
+      arow.appendChild(asw);
+      arow.appendChild(document.createElement('span'));
+      partsEl.appendChild(arow);
+    }
   }
 
   paint();

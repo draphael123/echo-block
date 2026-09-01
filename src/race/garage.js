@@ -53,6 +53,7 @@ export const PARTS = [
 const BLANK = {
   v: VERSION,
   money: 0, races: 0, paint: 0,
+  livery: 0, accent: 0,       // the stripe scheme and its colour
   parts: { engine: 0, brakes: 0, tyres: 0, lamps: 0 },
   cars: ['brindle'],      // chassis owned
   chassis: 'brindle',     // chassis driven

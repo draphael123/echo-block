@@ -21,20 +21,10 @@
       radial-gradient(ellipse 70% 50% at 20% -10%, rgba(59, 83, 127, .35), transparent 60%),
       linear-gradient(#0a0e18, #0d1322);
   }
-  /* a road that runs to the horizon, in pure CSS, because the menu should
-     not need a 20-second build to say what the game is */
-  #road {
-    position: fixed; left: 50%; bottom: -12vh; width: 46vh; height: 62vh;
-    transform: translateX(-50%) perspective(300px) rotateX(55deg);
-    transform-origin: bottom;
-    background:
-      repeating-linear-gradient(#0000 0 44px, #ffc98a55 44px 70px) 50% 0 / 6px 100% no-repeat,
-      linear-gradient(90deg, #ffc98a33 0 4px, #0000 4px calc(100% - 4px), #ffc98a33 calc(100% - 4px)),
-      #131b2c;
-    animation: roll 1.6s linear infinite;
-    opacity: .5;
-  }
-  @keyframes roll { to { background-position: 50% 114px, 0 0; } }
+  /* YOUR CAR, under a streetlamp. The menu used to fake a road in CSS; now it
+     shows the actual save — paint, livery, parts, chassis — because the first
+     thing a racing game should put on screen is the thing you race. */
+  #stage { position: fixed; inset: 0; display: block; width: 100%; height: 100%; }
   #title {
     position: fixed; top: 9vh; left: 0; right: 0; text-align: center; pointer-events: none;
   }
@@ -71,7 +61,7 @@
 </head>
 <body>
 <div id="bg"></div>
-<div id="road"></div>
+<canvas id="stage"></canvas>
 <div id="fade"></div>
 <div id="title"><h1>DYNAMO</h1><p>night racing &middot; the town of echo block</p></div>
 <button id="garagebtn">garage</button>
@@ -80,12 +70,110 @@
 { "imports": { "three": "./vendor/three/three.module.js" } }
 </script>
 <script type="module">
+import * as THREE from 'three';
 import { mountTrackSelect } from './src/track-select.js';
 import { mountGarage } from './src/garage-ui.js';
 import * as Garage from './src/race/garage.js';
 import { createMusic } from './src/music.js';
+import { buildCar } from './src/race/car.js';
 
 const save = Garage.load();
+
+// ------------------------------------------------------------- the forecourt
+// One car, one lamp, one slow turn. Transparent clear colour so the page's own
+// night gradient stays the sky, and everything rendered is just what the lamp
+// touches.
+const canvas = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.25;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(30, 1, 1, 4000);
+
+// the pool of tarmac the lamp buys out of the dark
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(420, 48),
+  new THREE.MeshStandardMaterial({ color: 0x161d2c, roughness: 0.92, metalness: 0 }));
+ground.rotation.x = -Math.PI / 2;
+scene.add(ground);
+
+// the streetlamp: a post, an arm, and a head that glows the town's amber
+const lamp = new THREE.Group();
+const lampMat = new THREE.MeshStandardMaterial({ color: 0x2a2f38, roughness: 0.6, metalness: 0.3 });
+const post = new THREE.Mesh(new THREE.BoxGeometry(7, 148, 7), lampMat);
+post.position.y = 74;
+lamp.add(post);
+const arm = new THREE.Mesh(new THREE.BoxGeometry(7, 6, 52), lampMat);
+arm.position.set(0, 146, 24);
+lamp.add(arm);
+const head = new THREE.Mesh(
+  new THREE.BoxGeometry(14, 8, 22),
+  new THREE.MeshStandardMaterial({ color: 0xffd9a0, emissive: 0xffb45c, emissiveIntensity: 2.2 }));
+head.position.set(0, 140, 44);
+lamp.add(head);
+lamp.position.set(-26, 0, -78);
+scene.add(lamp);
+
+// light: the lamp's warm cone, a cold moon rim, and just enough hemisphere
+// that the shadowed flank reads as shape instead of hole
+// r170 physical lights: punctual intensity is candela, so this is a real
+// lamp's worth, not a unitless nudge
+const spot = new THREE.SpotLight(0xffc98a, 90000, 0, 0.68, 0.55, 2);
+spot.position.set(-26, 140, -34);
+spot.target.position.set(10, 0, 20);
+scene.add(spot, spot.target);
+// the stage cheat: a soft warm fill from the camera's side of the car, so the
+// flank you actually see holds the lamp's colour instead of falling to black
+const fillWarm = new THREE.PointLight(0xffc098, 26000, 0, 2);
+fillWarm.position.set(130, 70, 150);
+scene.add(fillWarm);
+const rim = new THREE.DirectionalLight(0x9fb6e4, 0.55);
+rim.position.set(180, 120, 240);
+scene.add(rim);
+scene.add(new THREE.HemisphereLight(0x3b537f, 0x0a0e18, 0.5));
+
+const turntable = new THREE.Group();
+scene.add(turntable);
+let menuCar = null;
+function refreshCar() {
+  if (menuCar) {
+    turntable.remove(menuCar.root);
+    menuCar.root.traverse(o => { if (o.isMesh && o.geometry) o.geometry.dispose(); });
+  }
+  menuCar = buildCar(save.paint, Garage.tuneOf(save), save.parts, save.chassis,
+    { livery: save.livery || 0, accent: save.accent || 0 });
+  menuCar.beam.visible = false;
+  turntable.add(menuCar.root);
+}
+refreshCar();
+
+// framed low and to the left, so the picker card owns the middle of the screen
+function fit() {
+  const w2 = innerWidth, h2 = innerHeight;
+  renderer.setSize(w2, h2, false);
+  camera.aspect = w2 / h2;
+  camera.position.set(150, 78, 200);
+  // aim right of the car so the car itself sits screen-left, clear of the picker
+  camera.lookAt(w2 > 760 ? 60 : 0, 26, w2 > 760 ? -45 : 0);
+  camera.updateProjectionMatrix();
+}
+fit();
+addEventListener('resize', fit);
+
+// a handle for harnesses and debugging: pose and render on demand
+window.MENU = { renderer, scene, camera, turntable,
+  render: () => renderer.render(scene, camera) };
+
+const clock = new THREE.Clock();
+function loop() {
+  requestAnimationFrame(loop);
+  const dt = Math.min(0.05, clock.getDelta());
+  turntable.rotation.y += dt * 0.22;
+  if (menuCar) menuCar.present(dt);
+  renderer.render(scene, camera);
+}
+loop();
 const fade = document.getElementById('fade');
 const go = (url) => { fade.classList.add('on'); setTimeout(() => { location.href = url; }, 300); };
 const picker = mountTrackSelect({
@@ -98,7 +186,7 @@ const picker = mountTrackSelect({
 });
 picker.show();
 
-const garage = mountGarage({ save, closeHint: 'ESC to close' });
+const garage = mountGarage({ save, closeHint: 'ESC to close', onChange: refreshCar });
 document.getElementById('garagebtn').addEventListener('click', () => garage.open());
 
 // the mellow half of the radio, once the browser allows it — obeying the

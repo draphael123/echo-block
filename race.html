@@ -30,6 +30,14 @@
     font: 300 62px/.82 "Helvetica Neue", Helvetica, Arial, sans-serif;
     color: #f6ecda; letter-spacing: -.02em;
     font-variant-numeric: tabular-nums;
+    transition: color .25s, text-shadow .25s;
+  }
+  /* the readout heats up at the top end, and burns while the NOS does */
+  #speed.hot { color: #ffc98a; text-shadow: 0 0 18px rgba(255, 180, 92, .45); }
+  #speed.nos { color: #9fdcff; text-shadow: 0 0 22px rgba(127, 212, 255, .6); animation: nospulse .5s ease-in-out infinite; }
+  @keyframes nospulse {
+    0%, 100% { text-shadow: 0 0 18px rgba(127, 212, 255, .5); }
+    50% { text-shadow: 0 0 34px rgba(127, 212, 255, .85); }
   }
   #speed::after {
     content: 'km/h'; font-size: 11px; font-weight: 600; color: #6d7688;

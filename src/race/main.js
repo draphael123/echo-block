@@ -141,7 +141,8 @@ const savefile = Garage.load();
 // `let`, because buying a part or a respray rebuilds the car in place: the body
 // is meshed from voxels, so a wider tyre or an extra pair of lamps is a
 // different mesh, and it is cheap enough to throw the old one away.
-let car = buildCar(savefile.paint, Garage.tuneOf(savefile), savefile.parts, savefile.chassis);
+const carStyle = () => ({ livery: savefile.livery || 0, accent: savefile.accent || 0 });
+let car = buildCar(savefile.paint, Garage.tuneOf(savefile), savefile.parts, savefile.chassis, carStyle());
 // only the PLAYER'S car has a NOS tank — see car.js
 car.state.dynEnabled = true;
 
@@ -149,7 +150,7 @@ function rebuildCar() {
   const keep = { ...car.state };
   scene.remove(car.root);
   car.root.traverse(o => { if (o.isMesh && o.geometry) o.geometry.dispose(); });
-  car = buildCar(savefile.paint, Garage.tuneOf(savefile), savefile.parts, savefile.chassis);
+  car = buildCar(savefile.paint, Garage.tuneOf(savefile), savefile.parts, savefile.chassis, carStyle());
   scene.add(car.root);
   Object.assign(car.state, keep);
 }
@@ -558,7 +559,7 @@ function ghostTimeAt(atS) {
 let ghost = null;
 function buildGhost() {
   if (ghost) { scene.remove(ghost.root); }
-  const g = buildCar(savefile.paint);
+  const g = buildCar(savefile.paint, {}, null, savefile.chassis, carStyle());
   g.beam.visible = false;
   g.root.traverse((o) => {
     if (o.isMesh) {
@@ -2033,9 +2034,25 @@ function tick() {
     // the juice: freeze, punch, fringe — all scaled by how hard it was
     const sev = car.state.shake || 0.4;
     if (sev > 0.35 && settings.fx !== false) hitStop = 0.028 + sev * 0.05;
-    camPunch = sev;
+    camPunch = sev * 1.3;
     punchDir = Math.sign(Math.sin(time * 13) || 1);   // varied, feels less canned
     aberKick = Math.max(aberKick, sev * 1.1);
+    // SPARKS off the contact — the smoke pool run hot and fast for a beat.
+    // A wall you hit at speed should look like metal meeting stone, not fog.
+    if (settings.fx !== false && sev > 0.3) {
+      const hs = car.state.heading;
+      const n = 3 + Math.round(sev * 4);
+      for (let sp = 0; sp < n; sp++) {
+        const p2 = puffs[puffIdx++ % PUFF_N];
+        p2.m.position.set(
+          car.state.x + Math.sin(hs) * 26 + (Math.random() - 0.5) * 22,
+          car.state.yView + 4 + Math.random() * 10,
+          car.state.z + Math.cos(hs) * 26 + (Math.random() - 0.5) * 22);
+        p2.m.material.color.setHex(Math.random() < 0.5 ? 0xffb45c : 0xff8a3c);
+        p2.life = 0.16 + Math.random() * 0.14;   // sparks die fast — that IS the read
+        p2.m.visible = true;
+      }
+    }
   }
   wasDown = car.state.crash > 0;
   // Only a car that cannot get itself out gets put back on the road.
@@ -2170,8 +2187,8 @@ function tick() {
   // away and took the speed read with them; the lens gives some of it back.
   // A boost opens it four more and the air two: both are moments, and the
   // lens is how a camera says "moment".
-  const wantFov = 34 + fSpd * fSpd * 13
-    + (car.state.boost > 0 || car.state.nos ? 4 : 0) + (car.state.air > 0 ? 2 : 0);
+  const wantFov = 34 + fSpd * fSpd * 15
+    + (car.state.boost > 0 || car.state.nos ? 5 : 0) + (car.state.air > 0 ? 2 : 0);
   if (Math.abs(camera.fov - wantFov) > 0.02) {
     camera.fov += (wantFov - camera.fov) * Math.min(1, dt * 3);
     camera.updateProjectionMatrix();
@@ -2207,6 +2224,11 @@ function tick() {
     aberKick *= Math.max(0, 1 - dt * 4.5);
   }
   post.params.aberration = 0.9 + (settings.fx !== false ? aberKick * 3.4 : 0);
+  // THE TUNNEL: the frame edges close in with speed. It is the strongest
+  // "you are going fast" signal a screen has, so it is speed-squared — nothing
+  // at cruise, unmistakable flat out, and the NOS leans on it harder still.
+  post.params.vignette = 0.85
+    + (settings.fx !== false ? fSpd * fSpd * 0.28 + (car.state.nos ? 0.14 : 0) : 0);
   // tyre smoke while the slip angle is live
   puffTimer -= dt;
   if (Math.abs(car.state.slip) > 0.15 && car.state.air === 0 && puffTimer <= 0) {
@@ -2239,7 +2261,7 @@ function tick() {
     streakMat.opacity += (wantOp - streakMat.opacity) * Math.min(1, dt * 6);
     if (streakMat.opacity > 0.02) {
       const tx2 = Math.sin(h), tz2 = Math.cos(h);
-      const len = 14 + fSpd * 30 + (car.state.boost > 0 ? 16 : 0);
+      const len = 14 + fSpd * 40 + (car.state.boost > 0 || car.state.nos ? 20 : 0);
       for (let i2 = 0; i2 < STREAK_N; i2++) {
         let ax = streakA[i2 * 3], ay = streakA[i2 * 3 + 1], az = streakA[i2 * 3 + 2];
         // stream backwards past the car; respawn ahead when passed
@@ -2301,6 +2323,8 @@ function tick() {
   fill.position.set(car.state.x + 340, car.state.yView + 110, car.state.z + 260);
 
   hud.speed.textContent = `${Math.round(Math.abs(car.state.speed) * 0.08 * 3.6)}`;
+  // the readout itself knows when you are flying
+  hud.speed.className = car.state.nos ? 'nos' : (fSpd > 0.86 ? 'hot' : '');
   hud.gear.textContent = car.state.speed < -1 ? 'R' : '';
   const tier = car.state.tier || (car.state.boost > 0 ? car.state.boostTier : 0);
   hud.drift.classList.toggle('on', tier > 0 || Math.abs(car.state.slip) > 0.12);
