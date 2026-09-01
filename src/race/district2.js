@@ -332,3 +332,119 @@ export function roRoRamp(w, x, y, z, halfWide, dir, drop) {
     for (let k = 1; k <= drop; k++) w.set(px, y - k, pz, 'metalDark');
   }
 }
+
+// ===================================================== THE VARIETY PASS
+// Civic buildings shared between circuits — a pub, a petrol station, a
+// billboard, a bell tower, a lighthouse. A lap that only passes frontage
+// reads as texture; a lap that passes PLACES reads as a town. All follow the
+// prototype convention: corner at (x, z), face at z + dep.
+
+// The one warm room on the street. Big lit ground-floor windows, a string of
+// bulbs over the door, a hanging sign — every town has the same pub, which is
+// why sharing it between circuits is right rather than lazy.
+export function pub(w, x, y, z) {
+  const W = 72, D = 52, H = 46, fz = z + D - 1;
+  w.shell(x, y, z, W, H, D, 1, 'brick', { bottom: false });
+  w.box(x, y + H, z, W, 2, D, 'brickDark');                       // parapet
+  w.box(x + 2, y + H + 1, z + 2, W - 4, 1, D - 4, 'shingleDark'); // roof deck
+  w.box(x + 6, y + H + 2, z + 8, 6, 13, 6, 'brickDark');          // chimney
+  for (const wx of [x + 8, x + 46]) {                             // saloon glass
+    w.box(wx, y + 8, fz, 18, 13, 1, 'winWarm');
+    for (let k = 4; k < 18; k += 5) w.box(wx + k, y + 8, fz, 1, 13, 1, 'wood');
+    w.box(wx - 1, y + 6, fz, 20, 2, 1, 'woodPale');
+  }
+  w.box(x + 31, y, fz, 10, 17, 1, 'doorGreen');                   // the door
+  w.box(x + 33, y + 9, fz, 2, 2, 1, 'winWarmDim');                // its fanlight
+  for (let k = 0; k < W - 8; k += 3)                              // bulb string
+    w.set(x + 4 + k, y + 24, fz, k % 6 ? 'metalDark' : 'porchBulb');
+  for (const wx of [x + 10, x + 31, x + 52])                      // rooms above
+    w.box(wx, y + 30, fz, 10, 10, 1, wx === x + 31 ? 'winWarmDim' : 'glassDark');
+  w.box(x + W - 3, y + 36, fz - 4, 1, 1, 5, 'metalDark');         // sign bracket
+  w.box(x + W - 4, y + 27, fz + 2, 3, 9, 1, 'neonSign');          // the sign
+}
+
+// A petrol station: the brightest thing on any bypass. A flat canopy with a
+// lit underside, two pump islands, a red totem — placed where the dark legs
+// need one landmark you can steer by from half a kilometre out.
+export function petrol(w, x, y, z) {
+  const W = 120, D = 70, CH = 30;
+  w.box(x, y - 1, z, W, 1, D, 'concrete');                        // apron slab
+  for (const [px, pz] of [[x + 14, z + 10], [x + W - 18, z + 10], [x + 14, z + D - 18], [x + W - 18, z + D - 18]])
+    w.box(px, y, pz, 4, CH, 4, 'metal');
+  w.box(x + 4, y + CH + 1, z + 2, W - 8, 4, D - 4, 'paper');      // canopy
+  w.box(x + 6, y + CH, z + 4, W - 12, 1, D - 8, 'stripLight');    // lit underside
+  w.box(x + 4, y + CH + 2, z + D - 3, W - 8, 2, 1, 'tailLight');  // lit fascia band
+  for (const px of [x + 30, x + 68]) {                            // pump islands
+    w.box(px, y, z + 26, 18, 2, 8, 'concreteOld');
+    for (const dx of [3, 12]) {
+      w.box(px + dx, y + 2, z + 28, 4, 11, 4, 'signRed');
+      w.set(px + dx + 1, y + 9, z + 28, 'screen');
+    }
+  }
+  w.box(x + W - 8, y, z + D - 10, 4, 42, 4, 'metalDark');         // the totem
+  w.box(x + W - 13, y + 42, z + D - 12, 14, 12, 4, 'signRed');
+  w.box(x + W - 11, y + 45, z + D - 8, 10, 6, 1, 'stripLight');   // the lightbox
+}
+
+// A billboard: two posts and a lit hoarding. The ad is colour blocks, because
+// at racing speed a poster is a palette, not a message.
+export function billboard(w, x, y, z, seed = 0) {
+  const W = 64, H = 26;
+  // GLOW KEYS ONLY. The first palette used sign colours, which do not emit —
+  // a hoarding that is not lit is a black slab at night, which the audit
+  // found on every single one. An advert after dark is a lightbox.
+  const CS = ['neonSign', 'chillGlow', 'stripLight', 'winTV', 'sodium'];
+  for (const px of [x + 6, x + W - 9]) w.box(px, y, z + 4, 3, 32, 3, 'metalDark');
+  w.box(x, y + 30, z + 3, W, H, 2, 'metalDark');                  // backing
+  w.box(x + 2, y + 32, z + 5, W - 4, H - 4, 1, CS[seed % 5]);     // the ground
+  w.box(x + 4 + (seed * 7) % 22, y + 38, z + 5, 26, 9, 1, CS[(seed + 2) % 5]);
+  w.box(x + 8, y + 34, z + 5, 12, 2, 1, 'metalDark');             // small print
+  w.box(x + W - 22, y + 48, z + 5, 12, 4, 1, CS[(seed + 4) % 5]);
+}
+
+// A bell tower for the Old Town: stone shaft, lit belfry arches, a clock, a
+// pyramid cap. Tall enough to see over the roofs — the Old Town's answer to
+// the Parade's spire, and a landmark the whole inner lap can steer by.
+export function bellTower(w, x, y, z) {
+  const W = 30, H = 118, fz = z + W - 1;
+  w.box(x - 2, y, z - 2, W + 4, 8, W + 4, 'concreteOld');         // plinth
+  w.box(x, y, z, W, H, W, (bx, by, bz) =>
+    hash3(bx, by, bz) > 0.86 ? 'concreteOld' : 'brickDark');
+  // the belfry: an arched lit opening on each face
+  for (let k = 0; k < 16; k++) {
+    const wd = k > 11 ? 8 - (k - 11) * 2 : 8;
+    const at = y + H - 28 + k;
+    w.box(x + 15 - (wd >> 1), at, fz, wd, 1, 1, 'winWarm');
+    w.box(x + 15 - (wd >> 1), at, z, wd, 1, 1, 'winWarm');
+    w.box(x, at, z + 15 - (wd >> 1), 1, 1, wd, 'winWarm');
+    w.box(x + W - 1, at, z + 15 - (wd >> 1), 1, 1, wd, 'winWarm');
+  }
+  // the clock, on the road face
+  w.box(x + 10, y + H - 48, fz, 10, 10, 1, 'paper');
+  w.box(x + 14, y + H - 44, fz, 2, 5, 1, 'metalDark');            // hands
+  w.box(x + 15, y + H - 44, fz, 3, 2, 1, 'metalDark');
+  for (let k = 0; k < 13; k++)                                    // pyramid cap
+    w.box(x + k, y + H + k, z + k, W - 2 * k, 1, W - 2 * k, 'shingleDark');
+  w.set(x + 15, y + H + 14, z + 15, 'tailLight');                 // the finial
+}
+
+// A lighthouse for the Docks: banded drum, gallery, glowing lantern room —
+// the thing the whole harbour is arranged around.
+export function lighthouse(w, x, y, z) {
+  const cx = x + 13, cz = z + 13, H = 92;
+  for (let k = 0; k < H; k++) {
+    const r = 11 - Math.round(k / 44);
+    const band = ((k / 14) | 0) % 2 ? 'signRed' : 'paper';
+    for (let dx = -r; dx <= r; dx++) for (let dz = -r; dz <= r; dz++)
+      if (dx * dx + dz * dz <= r * r) w.set(cx + dx, y + k, cz + dz, band);
+  }
+  for (let dx = -12; dx <= 12; dx++) for (let dz = -12; dz <= 12; dz++)  // gallery
+    if (dx * dx + dz * dz <= 150) w.set(cx + dx, y + H, cz + dz, 'metalDark');
+  w.box(cx - 5, y + H + 1, cz - 5, 10, 9, 10, 'moonGlass');       // lantern room
+  for (const [dx, dz] of [[-5, -5], [4, -5], [-5, 4], [4, 4]])
+    w.box(cx + dx, y + H + 1, cz + dz, 1, 9, 1, 'metalDark');
+  w.box(cx - 6, y + H + 10, cz - 6, 12, 2, 12, 'metalDark');
+  w.box(cx - 4, y + H + 12, cz - 4, 8, 2, 8, 'signRed');          // the cap
+  w.box(cx - 2, y + H + 14, cz - 2, 4, 2, 4, 'signRed');
+  w.box(cx - 3, y, cz + 9, 6, 11, 3, 'doorGreen');                // keeper's door
+}

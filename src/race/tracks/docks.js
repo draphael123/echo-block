@@ -64,7 +64,7 @@ export default {
 
   hazards: [
     { s: 620, u: H(0.5), r: 30, kind: 'crate' },
-    { s: 1500, u: H(-0.42), r: 30, kind: 'works' },
+    { s: 1500, u: H(-0.42), r: 30, kind: 'barrels' },
     { s: 2300, u: H(0.44), r: 34, kind: 'broken' },
     { s: 3050, u: H(-0.48), r: 30, kind: 'works' },
     { s: 4100, u: H(0.4), r: 32, kind: 'crate' },
@@ -114,7 +114,12 @@ export default {
             [4700, 1, 'sign'], [5200, 1, 'sign'], [7000, -1, 'stop']],
   },
 
-  landmarks: { gasholder: [-40, 90, 52, 150], pylons: 5 },
+  landmarks: { gasholder: [-40, 90, 52, 150], waterTower: [-220, -140], pylons: 5 },
+
+  // THE WORKING HARBOUR: a crane load swings across the quay road on its
+  // cables. Time it or wear it — the only moving hazard on the circuit, and
+  // it belongs to the one leg with cranes on it.
+  moving: [{ kind: 'craneload', s: 350 }],
   // Dawn at the river, an hour before anyone else is up. The wet road is this
   // circuit's one mechanic and at midnight it was reflecting almost nothing --
   // a wet surface needs a BRIGHT sky to be worth having.

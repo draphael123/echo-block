@@ -73,7 +73,7 @@ export default {
   // 420+ so the S-flick stays drivable (the Parade's lesson).
   hazards: [
     { s: 520, u: H(0.45), r: 34, kind: 'works' },
-    { s: 1200, u: H(0.5), r: 34, kind: 'works' },
+    { s: 1200, u: H(0.5), r: 34, kind: 'barrels' },
     { s: 2000, u: H(-0.46), r: 34, kind: 'spill' },
     { s: 2600, u: H(-0.46), r: 36, kind: 'broken' },
     { s: 4200, u: H(0.44), r: 34, kind: 'spill' },
@@ -116,6 +116,11 @@ export default {
   },
 
   landmarks: { gasholder: [120, -60, 50, 140], waterTower: [-260, 220], pylons: 6 },
+
+  // THE LEVEL CROSSING on the flats: barriers cycle on the race clock, red
+  // lamps blinking while they are down. Read the lamps from distance and
+  // lift, or arrive on the wrong beat and wear the arm.
+  moving: [{ kind: 'crossing', s: 5900 }],
   // Sodium, in the small hours. Everything orange except the sky, and the
   // thickest fog in the city -- which does the same job as the crests do:
   // it takes the distance away from you.

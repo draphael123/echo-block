@@ -381,6 +381,9 @@ let raceClock = 0;
 let offCourse = 0, pinned = 0;
 // boost pads, with a per-pad cooldown so sitting on one is not an engine
 let PADS = [], padCool = [];
+// the moving set pieces — a crane load, a level crossing — spec-declared,
+// animated on the RACE clock so R resets their pattern with the race
+let movers = [];
 
 // ----------------------------------------------------- ghost, delta, sectors
 // THE GHOST is the best lap, embodied: position samples at 10Hz, saved with
@@ -581,6 +584,14 @@ function applySky(spec) {
 function applyTrack(spec, trk) {
   track = trk;
   scene.add(track.group);
+  // Upload every chunk to the GPU NOW, unculled for one frame. The attribute
+  // arrays free themselves on upload (see hydrateTrack), but a frustum-culled
+  // chunk uploads only when the camera happens upon it — which kept two
+  // gigabytes of CPU copies alive for chunks behind the player.
+  const chunkMeshes = [];
+  track.group.traverse(o => { if (o.isMesh) { chunkMeshes.push(o); o.frustumCulled = false; } });
+  renderer.render(scene, camera);
+  for (const o of chunkMeshes) o.frustumCulled = true;
   ground = new Ground(track.field);
 
   const lampCol = new THREE.Color(spec.lampColor || '#ffa23c');
@@ -631,6 +642,8 @@ function applyTrack(spec, trk) {
   nextRound = null;
   PADS = spec.pads || [];
   padCool = PADS.map(() => 0);
+  movers = (spec.moving || []).map(buildMover);
+  for (const mv of movers) scene.add(mv.g);
   ghostData = (savefile.ghosts && savefile.ghosts[track.id]) || null;
   gPtr = 0;
   if (ghostData) buildGhost();
@@ -643,6 +656,145 @@ function applyTrack(spec, trk) {
     voxels: track.voxels, buildMs: track.buildMs,
     lapMetres: Math.round(track.lapLength * 0.08),
   });
+}
+
+// THE MOVING SET PIECES. Static hazards ask one question — did you see it in
+// time — and every circuit now asks it nine ways. These ask a different one:
+// did you read the RHYTHM. Both run on the race clock, so restarting the race
+// restarts their pattern, and both only ever punish the player — the rivals
+// get a courtesy brake at the crossing instead, because a hazard the AI
+// cannot see is a lottery, not a test.
+function buildMover(m) {
+  const fm = pathFrame();
+  track.path.place(m.s, 0, fm);
+  const cx = fm.x, cz = fm.z;
+  const tx = fm.tx, tz = fm.tz, nx = fm.nx, nz = fm.nz;
+  const roadY = track.elev(m.s) + 2;
+  const g = new THREE.Group();
+
+  if (m.kind === 'craneload') {
+    // a container on cables under the quay cranes, pendulum-swinging across
+    // the road: lowest (and deadliest) dead centre, clear at the extremes
+    const L = 120, A = 0.62, pivotY = roadY + 140;
+    // the container is a GROUP: body plus corrugation ribs and corner posts,
+    // because a flat untextured box in a voxel world reads as a placeholder
+    const box = new THREE.Group();
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x8a4a2e, roughness: 0.9 });
+    const ribMat = new THREE.MeshStandardMaterial({ color: 0x63301c, roughness: 0.95 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(26, 24, 58), bodyMat);
+    body.castShadow = true;
+    box.add(body);
+    for (let rz = -24; rz <= 24; rz += 8) {
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(27.5, 20, 2.5), ribMat);
+      rib.position.set(0, 0, rz);
+      box.add(rib);
+    }
+    for (const cz of [-28.6, 28.6]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(27, 25, 2), ribMat);
+      post.position.set(0, 0, cz);
+      box.add(post);
+    }
+    box.rotation.y = Math.atan2(nx, nz);       // long axis across the road
+    const cableMat = new THREE.MeshBasicMaterial({ color: 0x14161c });
+    const cables = [-8, 8].map(() => new THREE.Mesh(new THREE.BoxGeometry(1.6, L, 1.6), cableMat));
+    // the jib the cables hang FROM — without it the load swung from empty
+    // sky. It runs from over the road out toward the quay cranes' side.
+    const jib = new THREE.Mesh(new THREE.BoxGeometry(5, 5, 340),
+      new THREE.MeshStandardMaterial({ color: 0x2c313d, roughness: 0.9 }));
+    jib.position.set(cx + nx * 120, pivotY + 4, cz + nz * 120);
+    jib.rotation.y = Math.atan2(nx, nz);
+    g.add(box, jib, ...cables);
+    const tAxis = new THREE.Vector3(tx, 0, tz).normalize();
+    return {
+      g,
+      update(dt, t) {
+        const th = A * Math.sin(t * 1.15);
+        const sw = Math.sin(th), cw = Math.cos(th);
+        const px = cx + nx * L * sw, pz = cz + nz * L * sw, py = pivotY - L * cw;
+        box.position.set(px, py, pz);
+        cables.forEach((c, i) => {
+          const off = i ? 8 : -8;
+          c.position.set(cx + nx * (L / 2) * sw + tx * off, pivotY - (L / 2) * cw,
+            cz + nz * (L / 2) * sw + tz * off);
+          c.quaternion.setFromAxisAngle(tAxis, th);
+        });
+        if (running && !done && !car.state.crash) {
+          const dx = car.state.x - px, dz = car.state.z - pz;
+          if (dx * dx + dz * dz < 1600 && py - 12 < roadY + 24) {
+            car.impact(0.75, true);
+            audio.impact(0.7);
+            hud.msg.textContent = 'the crane load!';
+            msgUntil = time + 1.6;
+          }
+        }
+      },
+    };
+  }
+
+  if (m.kind === 'crossing') {
+    // a level crossing: an arm from each kerb, red lamps blinking while they
+    // are down. The cycle is long enough to read from braking distance.
+    const half = track.roadHalf || ROAD_HALF;
+    const armMatR = new THREE.MeshBasicMaterial({ color: 0xd83a34, toneMapped: false });
+    const armMatW = new THREE.MeshStandardMaterial({ color: 0xe8eefc, roughness: 0.8 });
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x3a4152, roughness: 0.9 });
+    const lampMat = new THREE.MeshBasicMaterial({ color: 0xd83a34, toneMapped: false });
+    const arms = [], lamps = [];
+    const pf2 = pathFrame();
+    for (const side of [-1, 1]) {
+      track.path.place(m.s, side * (half + 14), pf2);
+      const post = new THREE.Mesh(new THREE.BoxGeometry(5, 20, 5), postMat);
+      post.position.set(pf2.x, roadY + 10, pf2.z);
+      const lamp = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), lampMat);
+      lamp.position.set(pf2.x, roadY + 24, pf2.z);
+      lamps.push(lamp);
+      const arm = new THREE.Group();
+      arm.position.set(pf2.x, roadY + 17, pf2.z);
+      arm.rotation.y = Math.atan2(-side * nx, -side * nz);
+      const len = half + 8;
+      for (let k = 0; k < len; k += 14) {
+        const seg = new THREE.Mesh(new THREE.BoxGeometry(3, 3, Math.min(14, len - k)),
+          (k / 14) % 2 ? armMatW : armMatR);
+        seg.position.set(0, 0, k + Math.min(14, len - k) / 2);
+        arm.add(seg);
+      }
+      arms.push(arm);
+      g.add(post, lamp, arm);
+    }
+    let angle = 1.35;                          // starts raised
+    return {
+      g,
+      update(dt, t) {
+        const P = 26, ph = t % P;
+        const wantDown = ph > 9 && ph < 16.5;
+        const target = wantDown ? 0 : 1.35;
+        angle += (target - angle) * Math.min(1, dt * 2.2);
+        for (const a of arms) a.rotation.x = -angle;
+        const down = angle < 0.3;
+        const warning = wantDown || down;
+        const blink = warning && Math.floor(t * 2.5) % 2 === 0;
+        for (const l of lamps) { l.visible = blink; if (blink) l.lookAt(camera.position); }
+        if (!running || done) return;
+        const d = (car.state.x - cx) * tx + (car.state.z - cz) * tz;
+        const lat = (car.state.x - cx) * nx + (car.state.z - cz) * nz;
+        if (down && !car.state.crash && Math.abs(d) < 12 && Math.abs(lat) < half
+            && Math.abs(car.state.speed) > 25) {
+          car.impact(0.7, true);
+          audio.impact(0.6);
+          hud.msg.textContent = 'the crossing barrier!';
+          msgUntil = time + 1.6;
+        }
+        // the rivals read the lamps: anyone approaching a lowered barrier
+        // eases off until it lifts, rather than driving through the arm
+        if (warning) for (const rv of field.cars) {
+          const st = rv.car.state;
+          const dd = (st.x - cx) * tx + (st.z - cz) * tz;
+          if (dd > -280 && dd < -20) st.speed *= Math.max(0, 1 - 2.4 * dt);
+        }
+      },
+    };
+  }
+  return { g, update() {} };
 }
 
 function teardownTrack() {
@@ -662,8 +814,16 @@ function teardownTrack() {
   scene.remove(traffic.group);
   disposeDeep(traffic.group);
   if (ghost) { scene.remove(ghost.root); disposeDeep(ghost.root, true); ghost = null; }
+  for (const mv of movers) { scene.remove(mv.g); disposeDeep(mv.g, true); }
+  movers = [];
   track = null; ground = null; field = null; START = null;
   smoke = null; life = null; traffic = null;
+  // and the last places a dead circuit's arrays can hide: the console API's
+  // live references and the renderer's cached render lists
+  if (window.DYNAMO) Object.assign(window.DYNAMO, {
+    track: null, ground: null, field: null, life: null, traffic: null,
+  });
+  renderer.renderLists.dispose();
 }
 
 // PREFETCH: the worker's idle time is the next circuit's build time. The
@@ -706,22 +866,42 @@ async function swapTrack(id) {
     if (pf && pf.id === id) payload = await pf.promise;
     let trk;
     if (payload) {
+      teardownTrack();
       trk = hydrateTrack(spec2, payload);
     } else {
       // one build at a time — drain a mismatched prefetch before asking
-      // for the circuit we actually want
+      // for the circuit we actually want. And FREE THE OLD CIRCUIT FIRST:
+      // a build's peak memory is the whole renderer process's, page and
+      // worker together, and keeping a dead circuit alive behind the boot
+      // screen was what ran the third build of a session out of memory.
       if (pf) await pf.promise;
+      teardownTrack();
       bootPhase('driving over', 0);
-      trk = await buildSomewhere(spec2, bootPhase);
+      // NO main-thread fallback here: if the worker cannot build (which in
+      // practice means the process is out of memory after a long session),
+      // a main-thread attempt burns a minute failing the same way. The
+      // catch below reloads into the target circuit instead — a clean
+      // process, the old-fashioned way.
+      trk = window.Worker
+        ? hydrateTrack(spec2, await workerBuild(id, bootPhase))
+        : await buildTrack(spec2, bootPhase);
     }
-    teardownTrack();
     SPEC = spec2;
     applySky(spec2);
     applyTrack(spec2, trk);
     reset(true);
+  } catch (err) {
+    console.error('track swap failed — reloading into the circuit instead:', err);
+    if (!track) {
+      // the old circuit is gone and the new one never arrived: a page load
+      // is the one move that always works, because it starts a fresh process
+      bootPhase('driving over the long way round', 0.1);
+      location.href = './race.html?track=' + id;
+      return;
+    }
   } finally {
     swapping = false;
-    document.body.classList.add('booted');
+    document.body.classList.toggle('booted', !!track);
   }
 }
 
@@ -946,6 +1126,8 @@ function tick() {
     const spot = safeSpot(track.path, ground, s);
     if (spot) { car.respawn(spot.x, spot.z, spot.heading, track.elev(spot.s) - 1); s = prevS = spot.s; }
   }
+
+  for (const mv of movers) mv.update(dt, raceClock);
 
   car.setWet(wet);
   field.setWet(wet);

@@ -64,6 +64,7 @@ export default {
   // Six of nine on unlit legs, one of those mid-corner on the long dark.
   hazards: [
     { s: 700, u: H(HALF, 0.62), r: 30, kind: 'works' },
+    { s: 1560, u: H(HALF, 0.42), r: 30, kind: 'chicane' },
     { s: 2060, u: H(HALF, -0.30), r: 32, kind: 'skip' },
     { s: 2480, u: H(HALF, 0.34), r: 30, kind: 'works' },
     { s: 2900, u: H(HALF, -0.34), r: 34, kind: 'broken' },

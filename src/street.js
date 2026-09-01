@@ -30,10 +30,12 @@ export function busShelter(w, x, y, z, dir = 1) {
 export function phoneBox(w, x, y, z) {
   const W = 11, D = 11, H = 30;
   w.shell(x, y, z, W, H, D, 1, 'phoneRed', { top: false, bottom: false });
-  w.box(x + 2, y + 5, z, W - 4, H - 12, 1, 'glassDark');
-  w.box(x + 2, y + 5, z + D - 1, W - 4, H - 12, 1, 'glassDark');
-  w.box(x, y + 5, z + 2, 1, H - 12, D - 4, 'glassDark');
-  w.box(x + W - 1, y + 5, z + 2, 1, H - 12, D - 4, 'glassDark');
+  // lit from inside — at night the iconic thing about a phone box IS the
+  // glow through its glazing; dark glass made it a monolith at the kerb
+  w.box(x + 2, y + 5, z, W - 4, H - 12, 1, 'winWarmDim');
+  w.box(x + 2, y + 5, z + D - 1, W - 4, H - 12, 1, 'winWarmDim');
+  w.box(x, y + 5, z + 2, 1, H - 12, D - 4, 'winWarmDim');
+  w.box(x + W - 1, y + 5, z + 2, 1, H - 12, D - 4, 'winWarmDim');
   w.box(x - 1, y + H, z - 1, W + 2, 3, D + 2, 'phoneRed');
   w.box(x + 1, y + H + 1, z - 2, W - 2, 2, 1, 'phoneGlow');        // sign panels
   w.box(x + 1, y + H + 1, z + D + 1, W - 2, 2, 1, 'phoneGlow');

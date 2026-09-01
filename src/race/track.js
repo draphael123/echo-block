@@ -336,6 +336,13 @@ function makeProtos() {
     shed: protoOf(D2.shed, 110, 84, true, [110, 84]),
     services: protoOf(D2.services, 240, 74, true),
     island: protoOf(D2.shipIsland, 46, 40, true),
+    // the variety pass: civic buildings shared between circuits
+    pub: protoOf(D2.pub, 72, 52, false),
+    petrol: protoOf(D2.petrol, 120, 70, false),
+    billboardA: protoOf(D2.billboard, 64, 12, false, [3]),
+    billboardB: protoOf(D2.billboard, 64, 12, false, [8]),
+    belltower: protoOf(D2.bellTower, 30, 30, false),
+    lighthouse: protoOf(D2.lighthouse, 26, 26, false),
   };
 }
 
@@ -521,7 +528,15 @@ const DISTRICT = {
       // end of it. Costs almost nothing and gives the parade depth, because
       // you can see down it as you go past.
       for (let s = sec.from + 150, i = 0; s < sec.to - 170; s += 196, i++) {
-        if (i % 3 === 2) { sideStreet(c, s, side); continue; }
+        if (i % 6 === 2) { sideStreet(c, s, side); continue; }
+        // every other gap gets THE PUB instead of a side street — the one
+        // warm room on the street, its bulb string lit, a phone box outside
+        if (i % 6 === 5) {
+          c.blit(s, side * SET, c.pr.pub);
+          c.put(s, side * (SET + 20), (x, z, ff, gy) => c.anchors.stacks.push([x, gy + 62, z]));
+          c.put(s + 56, side * PAVE_BACK, (x, z, ff, gy) => S.phoneBox(c.w, x - 4, gy, z - 4));
+          continue;
+        }
         c.blit(s, side * SET, i % 2 ? c.pr.terraceB : c.pr.terrace);
         c.put(s + 40, side * (SET + 30), (x, z, ff, gy) => c.anchors.stacks.push([x, gy + 86, z]));
         c.put(s + 92, side * (SET - 2), (x, z, ff, gy) => c.anchors.tvs.push([x, gy + 40, z]));
@@ -612,6 +627,8 @@ const DISTRICT = {
           if (r > 0.4) c.put(s + 20, side * (SET - 4), (x, z, ff, gy) => c.anchors.tvs.push([x, gy + 22, z]));
         } else {
           c.put(s, side * (PAVE_BACK + 14), (x, z, ff, gy) => P.tree(c.w, x, gy, z, 42, 15));
+          // the odd empty plot gets the phone box people actually walk to
+          if (r > 0.1) c.put(s + 52, side * PAVE_BACK, (x, z, ff, gy) => S.phoneBox(c.w, x - 4, gy, z - 4));
         }
       }
     }
@@ -631,6 +648,10 @@ const DISTRICT = {
       P.picketFence(c.w, x - (c.along(ff) === 'x' ? 26 : 0), gy,
         z - (c.along(ff) === 'x' ? 0 : 26), 52, c.along(ff)));
     c.run(sec.from + 60, sec.to, -(SET + 14), 130, (x, z, ff, gy) => P.tree(c.w, x, gy, z, 46, 16));
+    // a lit hoarding behind the tree line, so the park's dark edge has a far
+    // wall the eye can rest on
+    c.blit(mid - 320, -(SET + 64), c.pr.billboardA);
+    c.blit(mid + 330, -(SET + 64), c.pr.billboardB);
   },
 
   // The cut: the road runs between two retaining walls, which is WHY this leg
@@ -644,6 +665,8 @@ const DISTRICT = {
     c.put(sec.from + 120, SET + 34, (x, z, ff, gy) => D.pallets(c.w, x, gy, z, 5));
     c.put(sec.from + 410, -(SET + 38), (x, z, ff, gy) => D.oilDrums(c.w, x, gy, z, 9));
     c.put(sec.from + 460, SET + 30, (x, z, ff, gy) => D.silo(c.w, x, gy, z, 12, 54));
+    // a hoarding on the rim of the cutting, lit face leaning over the wall
+    c.blit(sec.from + 340, PAVE_BACK + 74, c.pr.billboardB);
   },
 
   // ---------------------------------------------------------- THE OLD TOWN
@@ -652,6 +675,14 @@ const DISTRICT = {
   stone(c, sec) {
     for (const side of [-1, 1])
       for (let s = sec.from + 60, i = 0; s < sec.to - 80; s += 88, i++) {
+        // the second unit on the left is the pub — same slot, same line,
+        // warmer light. Slot 1, because the Old Town's stone legs are short
+        // and a later slot never comes round.
+        if (side < 0 && i % 5 === 1) {
+          c.blit(s, side * (SET + 26), c.pr.pub);
+          c.put(s, side * (SET + 44), (x, z, ff, gy) => c.anchors.stacks.push([x, gy + 62, z]));
+          continue;
+        }
         c.blit(s, side * (SET + 26), i % 2 ? c.pr.stoneB : c.pr.stoneA);
         if (i % 2) c.put(s, side * (SET + 42), (x, z, ff, gy) => c.anchors.stacks.push([x, gy + 78, z]));
         c.put(s + 22, side * (SET + 12), (x, z, ff, gy) => c.anchors.tvs.push([x, gy + 38, z]));
@@ -679,6 +710,9 @@ const DISTRICT = {
       });
     c.blit(sec.from + 150, SET + 52, c.pr.stoneA);
     c.blit(sec.to - 180, -(SET + 52), c.pr.stoneB);
+    // THE BELL TOWER rises behind the wall at the leg's midpoint — the Old
+    // Town's landmark, visible over the roofs from most of the inner lap
+    c.blit((sec.from + sec.to) / 2, -(SET + 78), c.pr.belltower);
   },
 
   mews(c, sec) {
@@ -687,6 +721,7 @@ const DISTRICT = {
         c.blit(s, side * (SET + 30), i % 3 === 1 ? c.pr.mews : (i % 2 ? c.pr.stoneB : c.pr.stoneA));
         if (i % 2 === 0) c.put(s, side * (SET + 46), (x, z, ff, gy) => c.anchors.stacks.push([x, gy + 78, z]));
         c.put(s + 26, side * (SET + 16), (x, z, ff, gy) => c.anchors.tvs.push([x, gy + 38, z]));
+        if (i % 4 === 1) c.put(s + 58, side * PAVE_BACK, (x, z, ff, gy) => S.phoneBox(c.w, x - 4, gy, z - 4));
       }
   },
 
@@ -695,6 +730,8 @@ const DISTRICT = {
     for (let i = 0; i < 4; i++)
       c.put(sec.from + 140 + i * 210, SET + 70, (x, z, ff, gy) =>
         D2.crane(c.w, x, gy, z, 120 + (i % 2) * 24, 130));
+    // the lighthouse, at the seaward end of the quay — the harbour's landmark
+    c.blit(sec.to - 90, SET + 140, c.pr.lighthouse);
     c.run(sec.from, sec.to, SET - 4, 60, (x, z, ff, gy) => {
       const [bx, bz] = c.back(ff, x, z, 30);
       D2.bollards(c.w, bx, gy, bz, 60, c.along(ff));
@@ -1190,6 +1227,10 @@ const DISTRICT = {
     bankRun(c, sec, 34);
     for (let s = sec.from + 260; s < sec.to - 200; s += 620) gantryOver(c, s, ROAD_HALF + 30, 0, false);
     c.run(sec.from, sec.to, SET + 90, 260, (x, z, ff, gy) => P.tree(c.w, x, gy, z, 40, 14));
+    // lit hoardings above the banks — a motorway at night is adverts and
+    // sodium, and until now this one was only sodium
+    c.run(sec.from + 320, sec.to - 120, -(SET + 70), 740, (x, z, ff, gy, s) =>
+      c.blit(s, -(SET + 70), (Math.round(s) >> 3) % 2 ? c.pr.billboardA : c.pr.billboardB));
   },
 
   // Not new geometry: a roof over a road that already exists. The collision
@@ -1235,6 +1276,10 @@ const DISTRICT = {
   services(c, sec) {
     c.blit(sec.from + 220, SET + 90, c.pr.services);
     c.put(sec.from + 220, SET + 74, (x, z, ff, gy) => c.anchors.tvs.push([x, gy + 16, z]));
+    // the petrol station: a lit canopy you can steer by from half a
+    // kilometre out, which is what a services leg is FOR
+    c.blit(sec.from + 500, SET + 68, c.pr.petrol);
+    c.blit(sec.from + 360, -(SET + 66), c.pr.billboardA);
     bankRun(c, sec, 26);
     gantryOver(c, sec.to - 260, ROAD_HALF + 30, 0, false);
   },
@@ -1256,6 +1301,9 @@ const DISTRICT = {
             z - (c.along(ff) === 'x' ? 5 : 23), 46, 10, 16, c.along(ff));
       });
     c.run(sec.from + 80, sec.to, SET + 78, 210, (x, z, ff, gy) => P.tree(c.w, x, gy, z, 52, 18));
+    // the edge-of-town petrol station, glowing alone in the fields — the one
+    // lit thing on the dark last leg, and a marker for the lap's end
+    c.blit(sec.to - 140, SET + 44, c.pr.petrol);
   },
 };
 
@@ -1501,6 +1549,46 @@ function hazards(w, path) {
           hash3(i, z, x) > 0.6 ? 'plasticRed' : (hash3(i, x, z) > 0.5 ? 'wood' : 'paper'));
       }
       for (let i = 1; i <= 4; i++) cone(h.s - 100 - i * 26, h.u * 0.4);
+    } else if (h.kind === 'barrels') {
+      // DRUMS OFF A LORRY, and the slick they left. The drums are the wall;
+      // the slick is painted into the road surface so the beam reads the
+      // dark stain before it reads the drums. Every piece at its own (s, u).
+      for (let i = 0; i < 9; i++) {
+        const ds = Math.round((hash3(x, i * 5, z) - 0.5) * 64);
+        const du = Math.round((hash3(z, i * 11, x) - 0.5) * 58);
+        path.place(h.s + ds, h.u + du, cf);
+        const bx = Math.round(cf.x), bz = Math.round(cf.z), by = elev(h.s + ds);
+        if (hash3(i, x, z) > 0.72) w.box(bx - 5, by, bz - 3, 10, 6, 6, 'rust');  // tipped
+        else w.box(bx - 3, by, bz - 3, 7, 12, 7, i % 2 ? 'plasticBlue' : 'rust');
+      }
+      for (let ds = -34; ds <= 54; ds += 2) for (let du = -36; du <= 36; du += 2) {
+        if (hash3(ds, du, x) < 0.45) continue;
+        path.place(h.s + ds, h.u + du, cf);
+        w.set(Math.round(cf.x), elev(h.s + ds) - 1, Math.round(cf.z), 'rubber');
+      }
+      // road flares either end of the spill, because rust drums on dark
+      // asphalt are a trap without a light to hand the eye
+      for (const ds of [-44, 58]) {
+        path.place(h.s + ds, h.u, cf);
+        w.box(Math.round(cf.x) - 1, elev(h.s + ds), Math.round(cf.z) - 1, 2, 2, 2, 'tailLight');
+      }
+      for (let i = 1; i <= 4; i++) cone(h.s - 44 - i * 24, h.u - i * 6);
+    } else if (h.kind === 'chicane') {
+      // STONE BOLLARDS in a stagger: two clusters on opposite sides ninety
+      // apart, so the line through them is an S you have to read from
+      // distance rather than a wall you brake for.
+      for (const [ds, flip] of [[0, 1], [90, -1]]) {
+        for (let i = -2; i <= 2; i++) {
+          path.place(h.s + ds, h.u * flip + i * 14, cf);
+          const bx = Math.round(cf.x), bz = Math.round(cf.z), by = elev(h.s + ds);
+          // 6 wide with a GLOWING cap — the audit found the first version
+          // invisible on dark tarmac at night, which for a hazard is a trap
+          w.box(bx - 3, by, bz - 3, 6, 10, 6, 'concreteOld');
+          w.box(bx - 2, by + 10, bz - 2, 4, 1, 4, 'metalDark');
+          w.box(bx - 1, by + 10, bz - 1, 2, 2, 2, 'porchBulb');
+        }
+        for (let i = 1; i <= 3; i++) cone(h.s + ds - 26 - i * 20, h.u * flip + (i % 2 ? 14 : -14));
+      }
     } else {
       // broken down, so it is pointing where it was going, not at the kerb
       w.merge(wagon, { ox: x, oz: z, oy: gy, rotY: alongRot(f.tx, f.tz) });
@@ -1909,13 +1997,23 @@ export function hydrateTrack(trackSpec, p) {
   HAZARDS = p.hazards;
   const group = new THREE.Group();
   group.name = 'track';
+  // A circuit's attribute arrays are ~2.5GB of JS heap, and nothing on the
+  // main thread ever reads them — collision is the walkField, the map is the
+  // path, the sim never touches a mesh. So every attribute frees its CPU copy
+  // the moment the GPU has it, which is the difference between a session that
+  // can swap circuits all night and one that dies of ArrayBuffer OOM on the
+  // third build. Bounds are computed up front, while the positions still exist.
+  const free = (att) => { att.onUpload(function () { this.array = null; }); return att; };
   for (const m of p.meshes) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(m.pos, 3));
     if (m.nrm) g.setAttribute('normal', new THREE.BufferAttribute(m.nrm, 3));
     else g.computeVertexNormals();
-    if (m.col) g.setAttribute('color', new THREE.BufferAttribute(m.col, 3));
-    if (m.ind) g.setIndex(new THREE.BufferAttribute(m.ind, 1));
+    if (m.col) g.setAttribute('color', free(new THREE.BufferAttribute(m.col, 3)));
+    if (m.ind) g.setIndex(free(new THREE.BufferAttribute(m.ind, 1)));
+    g.computeBoundingSphere();
+    free(g.getAttribute('position'));
+    if (g.getAttribute('normal')) free(g.getAttribute('normal'));
     let mesh;
     if (m.kind === 'surround') {
       mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({
