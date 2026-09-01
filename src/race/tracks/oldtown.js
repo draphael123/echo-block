@@ -30,7 +30,11 @@
 // So the width goes back and the ENTRY LIST shrinks instead. Four cars on a
 // 152-voxel road is close racing; six is a queue. That is the honest trade and
 // it is a per-track one -- see `field` below.
-const HALF = 76;
+// 130, up from 76 (playtest, 2026-09-01): the whole city's roads widened
+// roughly 2x; the Old Town keeps LESS than the full doubling so it is
+// still visibly the narrow one -- 130 against the Parade's 280. The width
+// assay's calibration moved with it (see assay.js).
+const HALF = 130;
 const H = (f) => Math.round(HALF * f);
 
 export default {
@@ -82,10 +86,10 @@ export default {
   hazards: [
     { s: 520, u: H(0.6), r: 26, kind: 'works' },
     { s: 1180, u: H(-0.58), r: 28, kind: 'broken' },
-    { s: 1900, u: H(0.56), r: 26, kind: 'skip' },
+    { s: 1900, u: H(0.56), r: 26, kind: 'stall' },
     { s: 2600, u: H(-0.6), r: 26, kind: 'works' },
     { s: 3320, u: H(0.58), r: 28, kind: 'broken' },
-    { s: 4050, u: H(-0.56), r: 26, kind: 'works' },
+    { s: 4050, u: H(-0.56), r: 26, kind: 'stall' },
   ],
 
   crossings: [700, 1560, 2400, 3240, 4020],
@@ -121,11 +125,11 @@ export default {
   ],
 
   traffic: [
-    { s: 400, u: 42, speed: 64, dir: 1 },
-    { s: 1300, u: -42, speed: 58, dir: -1 },
-    { s: 2400, u: 40, speed: 70, dir: 1 },
-    { s: 3200, u: -40, speed: 66, dir: -1 },
-    { s: 4100, u: 44, speed: 72, dir: 1 },
+    { s: 400, u: 72, speed: 64, dir: 1 },
+    { s: 1300, u: -72, speed: 58, dir: -1 },
+    { s: 2400, u: 68, speed: 70, dir: 1 },
+    { s: 3200, u: -68, speed: 66, dir: -1 },
+    { s: 4100, u: 75, speed: 72, dir: 1 },
   ],
 
   furniture: {
@@ -145,5 +149,10 @@ export default {
   laps: 4,
   // Four, not six. The other three circuits take the full grid.
   field: 4,
+  // the measured clean racing-policy lap, which the purse pays pace against
+  // the road's own face and the streetlight's own colour -- see ribbon()
+  surface: 'cobble',
+  lampColor: '#ffc776',
+  refLap: 34,
   wet: 0,
 };

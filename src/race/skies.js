@@ -22,16 +22,21 @@
 // shader paints the ENTIRE lower hemisphere with it and any gap between the two
 // shows up as a hard horizontal bar that no amount of fog will touch. The sky
 // sphere is not fogged, which is how you tell that bar from distant ground.
+// READABILITY PASS (playtest, 2026-09-01): the first human lap said the dark
+// and the rain made the game hard to READ, not hard to drive. The mechanic
+// lives in sightRange() and the lamp pools, not in raw exposure -- so the
+// ambient floor and exposure come up, the fog thins, and the dark legs keep
+// their contrast against the lit ones rather than their blackness.
 export const SKIES = {
   // 11pm. The original, and still the Parade's -- the sight mechanic needs the
   // dark to be genuinely dark.
   midnight: {
     top: '#141d38', horizon: '#33456e', haze: '#7a4a1f', below: '#151d2e', ridge: '#0d1322',
-    fog: '#161f33', fogD: 0.00135, clear: '#141d38',
-    hemiSky: '#3b537f', hemiGround: '#2c2119', hemi: 0.68,
-    key: '#bdd2f2', keyI: 1.6, sun: [-320, 470, -240],
+    fog: '#161f33', fogD: 0.00086, clear: '#141d38',
+    hemiSky: '#3b537f', hemiGround: '#2c2119', hemi: 1.22,
+    key: '#bdd2f2', keyI: 1.9, sun: [-320, 470, -240],
     disc: [0.86, 0.90, 1.00], stars: 1,
-    exposure: 1.42, threshold: 0.72,
+    exposure: 1.80, threshold: 0.72,
   },
 
   // Just after sunset over the old town: the sky still has light in it, low and
@@ -44,10 +49,10 @@ export const SKIES = {
     // DIMMER on the ground than midnight, not brighter. The sun is below the
     // ridge; what is left is a lit sky over unlit streets, which is the whole
     // look. Lifting these with the sky colour is what blew the first pass out.
-    hemiSky: '#6f6a92', hemiGround: '#3a2a20', hemi: 0.50,
+    hemiSky: '#6f6a92', hemiGround: '#3a2a20', hemi: 0.80,
     key: '#ffb072', keyI: 0.95, sun: [520, 190, -300],
     disc: [1.00, 0.72, 0.42], stars: 0.25,
-    exposure: 1.10, threshold: 0.90,
+    exposure: 1.32, threshold: 0.90,
   },
 
   // Dawn at the river, an hour before anybody else is up. Cold, high, colourless
@@ -60,11 +65,11 @@ export const SKIES = {
     // middle of the frame was not the sky at all -- it was the distant ground,
     // which is genuinely dark at dawn and had no fog to fade into. River mist
     // at first light is the honest fix and the pretty one.
-    fog: "#7d90a0", fogD: 0.00170, clear: "#2b4a70",
-    hemiSky: '#93aec6', hemiGround: '#4a4238', hemi: 0.62,
+    fog: "#7d90a0", fogD: 0.00098, clear: "#2b4a70",
+    hemiSky: '#93aec6', hemiGround: '#4a4238', hemi: 0.88,
     key: '#e8d8c4', keyI: 0.80, sun: [-460, 130, 340],
     disc: [1.00, 0.93, 0.84], stars: 0.15,
-    exposure: 1.05, threshold: 0.94,
+    exposure: 1.30, threshold: 0.94,
   },
 
   // The small hours on the bypass, under sodium. Everything is orange except
@@ -72,11 +77,11 @@ export const SKIES = {
   // warm murk is doing the same job as the crests: it takes the distance away.
   sodium: {
     top: '#191a2c', horizon: '#4a3a3c', haze: '#9a5a1c', below: '#322a38', ridge: '#26212d',
-    fog: '#2b2430', fogD: 0.00170, clear: '#191a2c',
-    hemiSky: '#5a4660', hemiGround: '#33251a', hemi: 0.58,
+    fog: '#2b2430', fogD: 0.00110, clear: '#191a2c',
+    hemiSky: '#5a4660', hemiGround: '#33251a', hemi: 0.98,
     key: '#c9b9d8', keyI: 1.05, sun: [280, 520, 300],
     disc: [0.88, 0.84, 0.96], stars: 0.6,
-    exposure: 1.30, threshold: 0.80,
+    exposure: 1.60, threshold: 0.80,
   },
 };
 

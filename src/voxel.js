@@ -476,6 +476,65 @@ export function meshChunks(world, palette, opts) {
   return group;
 }
 
+// meshChunks, but it breathes. Meshing is the longest phase of a circuit
+// build (ten-plus seconds on the widened tracks) and a synchronous loop
+// freezes the boot screen solid for all of it — the game looked crashed
+// exactly when it was working hardest. Same chunks, same output; it yields to
+// the event loop every few chunks and reports progress so the boot screen can
+// say how far along it is.
+export async function meshChunksAsync(world, palette, opts, onStep) {
+  const { size = 192, name = 'vox', ...rest } = opts || {};
+  const group = new THREE.Group();
+  group.name = name + ':chunks';
+  const cells = world.bucket(size);
+  const total = cells.size;
+  let done = 0;
+  for (const [id, keys] of cells) {
+    let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      const x = Math.floor(k / (SPAN * SPAN)) - OFF;
+      const y = (Math.floor(k / SPAN) % SPAN) - OFF;
+      const z = (k % SPAN) - OFF;
+      if (x < x0) x0 = x; if (x > x1) x1 = x;
+      if (y < y0) y0 = y; if (y > y1) y1 = y;
+      if (z < z0) z0 = z; if (z > z1) z1 = z;
+    }
+    x0--; y0--; z0--; x1++; y1++; z1++;
+    const sx = x1 - x0 + 1, sy = y1 - y0 + 1, sz = z1 - z0 + 1;
+    const grid = new Uint8Array(sx * sy * sz);
+    const strideX = sy * sz;
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        const src = cells.get(id + dx * CHUNK_SPAN + dz);
+        if (!src) continue;
+        for (let i = 0; i < src.length; i++) {
+          const k = src[i];
+          const lx = Math.floor(k / (SPAN * SPAN)) - OFF - x0;
+          if (lx < 0 || lx >= sx) continue;
+          const ly = (Math.floor(k / SPAN) % SPAN) - OFF - y0;
+          if (ly < 0 || ly >= sy) continue;
+          const lz = (k % SPAN) - OFF - z0;
+          if (lz < 0 || lz >= sz) continue;
+          grid[lx * strideX + ly * sz + lz] = 1;
+        }
+      }
+    }
+    const m = meshWorld(world, palette, {
+      ...rest, name, only: keys, dense: { grid, x0, y0, z0, sx, sy, sz },
+    });
+    if (m.children.length) group.add(m);
+    done++;
+    if (done % 6 === 0) {
+      if (onStep) onStep(done / total);
+      // MessageChannel, not setTimeout: hidden tabs clamp timers to a full
+      // second, which would turn 25 yields into 25 seconds of extra build.
+      await new Promise(r => { const mc = new MessageChannel(); mc.port1.onmessage = r; mc.port2.postMessage(0); });
+    }
+  }
+  return group;
+}
+
 export function meshWorld(world, palette, opts) {
   const { shadows = true, name = 'vox', solidBelow, noFloorBelow, only, dense } = opts || {};
   const { matte, glow } = world.build(palette, { solidBelow, noFloorBelow, only, dense });

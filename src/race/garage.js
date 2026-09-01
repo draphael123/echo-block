@@ -47,17 +47,20 @@ const BLANK = {
   money: 0, races: 0, paint: 0,
   parts: { engine: 0, brakes: 0, tyres: 0, lamps: 0 },
   bests: {},              // per circuit, because one number for four tracks is a lie
+  ghosts: {},             // the best lap, embodied: 10Hz position samples per circuit
+  stats: {},              // races / wins / clean runs, per circuit
   look: null,             // what the kid looks like; null until they choose
   track: 'parade',
 };
 
-const fresh = () => ({ ...BLANK, parts: { ...BLANK.parts }, bests: {} });
+const fresh = () => ({ ...BLANK, parts: { ...BLANK.parts }, bests: {}, ghosts: {}, stats: {} });
 
 export function load() {
   let s;
   try { s = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { s = null; }
   const out = s
-    ? { ...fresh(), ...s, parts: { ...BLANK.parts, ...(s.parts || {}) }, bests: { ...(s.bests || {}) } }
+    ? { ...fresh(), ...s, parts: { ...BLANK.parts, ...(s.parts || {}) }, bests: { ...(s.bests || {}) },
+        ghosts: { ...(s.ghosts || {}) }, stats: { ...(s.stats || {}) } }
     : fresh();
 
   if (!s || (s.v || 1) < VERSION) {
@@ -126,9 +129,16 @@ export function buy(s, id) {
 // Beating the rival is worth roughly twice finishing behind it, and the clock
 // pays on top — so there is a reason to keep pushing once the position is
 // settled, and a reason to race cleanly rather than shunting your way past.
-export function purse({ won, laps, seconds, crashes, struck }) {
+//
+// Pace pays against THIS circuit's reference lap (spec.refLap — the measured
+// clean racing-policy lap), not against a wall-clock constant. `(150 − lap)`
+// was track-blind: every circuit's laps are 32–45s, so the whole term maxed
+// everywhere and the shortest race became twice the pay per minute of any
+// other. Now an on-pace lap earns the same headline number on all four, and
+// beating the reference is where the extra money is.
+export function purse({ won, laps, seconds, crashes, struck, refLap = 40 }) {
   const base = won ? 520 : 260;
-  const pace = Math.max(0, Math.round((150 - seconds / laps) * 6));
+  const pace = Math.max(0, Math.round((refLap + 12 - seconds / laps) * 55));
   const clean = Math.max(0, 180 - crashes * 60 - struck * 90);
   return Math.max(60, base + pace + clean);
 }

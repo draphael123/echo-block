@@ -13,7 +13,7 @@
 // slabs painted in the backdrop colour — walls with a window, which is exactly
 // what they looked like.
 import * as THREE from 'three';
-import { VoxWorld, meshWorld, meshChunks, hash3 } from '../voxel.js';
+import { VoxWorld, meshWorld, meshChunks, meshChunksAsync, hash3 } from '../voxel.js';
 import { PALETTE } from '../palette.js';
 import { FLOOR_MAX, HEAD, STEP_UP, Ground } from '../walk.js';
 import { house } from '../block.js';
@@ -205,13 +205,45 @@ function ribbon(w, path) {
       const x = Math.round(f.x + f.nx * u), z = Math.round(f.z + f.nz * u);
       const a = Math.abs(u), r = hash3(x, 0, z);
       if (a <= half) {
-        let c = r > 0.86 ? 'asphaltWorn' : (r < 0.10 ? 'asphaltPatch' : 'asphalt');
-        if (a > half - 3) c = 'asphaltPatch';
-        if (a > half - 9 && a < half - 5) c = 'roadLine';       // edge lines
-        // Four lanes wants three sets of markings, not one: a 15-metre road
-        // with a single stripe down it reads as an airstrip.
-        if (a > half / 2 - 2 && a < half / 2 + 1 && (s % 96) < 52) c = 'roadLine';
-        if (a < 2 && (s % 70) < 40) c = 'roadLine';             // centre dashes
+        // THE SURFACE IS THE TRACK'S FACE. Four circuits on one asphalt recipe
+        // read as one place with different weather (the playtest said so,
+        // twice) — and the road is the thing you actually stare at for the
+        // whole lap. Each circuit declares a surface in its spec:
+        //   street   — the Parade's worn asphalt and white dashes
+        //   cobble   — the Old Town's setts: mottled stone, no centre line
+        //   concrete — the Docks' slab pavement, seam joints, yellow edges
+        //   motorway — the Ring's fresh black top, rumble strips, lane dashes
+        const surf = SPEC.surface || 'street';
+        let c;
+        if (surf === 'cobble') {
+          const q = hash3(x >> 1, 1, z >> 1);
+          c = q > 0.7 ? 'concreteOld' : (q > 0.35 ? 'asphaltWorn' : (q > 0.08 ? 'asphalt' : 'brickDark'));
+          if (a > half - 3) c = 'concreteOld';
+          if (a > half - 8 && a < half - 5) c = 'concrete';       // stone gutters
+        } else if (surf === 'concrete') {
+          c = r > 0.9 ? 'asphaltWorn' : (hash3(x >> 3, 2, z >> 3) > 0.5 ? 'concrete' : 'concreteOld');
+          if ((s % 44) < 2 || (Math.round(a) % 64) < 2) c = 'asphaltPatch';   // slab joints
+          if (a > half - 3) c = 'asphaltPatch';
+          if (a > half - 10 && a < half - 5) c = 'doorYellow';    // dock edge lines
+          if (a < 2 && (s % 70) < 40) c = 'roadLine';
+        } else if (surf === 'motorway') {
+          c = r > 0.94 ? 'asphaltWorn' : 'asphalt';
+          if (a > half - 6) c = ((s % 24) < 12) ? 'plasticRed' : 'paper';     // rumble strip
+          else if (a > half - 12 && a < half - 8) c = 'roadLine';
+          if (a > half - 11 && a < half - 9 && (s % 56) < 2) c = 'porchBulb'; // catseyes
+          if (a > half / 3 - 2 && a < half / 3 + 1 && (s % 96) < 52) c = 'roadLine';
+          if (a > (half * 2) / 3 - 2 && a < (half * 2) / 3 + 1 && (s % 96) < 52) c = 'roadLine';
+          if (a < 2 && (s % 96) < 52) c = 'roadLine';
+        } else {
+          c = r > 0.86 ? 'asphaltWorn' : (r < 0.10 ? 'asphaltPatch' : 'asphalt');
+          if (a > half - 3) c = 'asphaltPatch';
+          if (a > half - 9 && a < half - 5) c = 'roadLine';       // edge lines
+          if (a > half - 8 && a < half - 6 && (s % 56) < 2) c = 'porchBulb';  // catseyes
+          // Four lanes wants three sets of markings, not one: a 15-metre road
+          // with a single stripe down it reads as an airstrip.
+          if (a > half / 2 - 2 && a < half / 2 + 1 && (s % 96) < 52) c = 'roadLine';
+          if (a < 2 && (s % 70) < 40) c = 'roadLine';             // centre dashes
+        }
         w.set(x, -1 + gy, z, c);
         if (riser !== null) w.set(x, -1 + riser, z, c);
       } else if (a <= half + KERB) {
@@ -338,8 +370,26 @@ function makeCtx(w, path, anchors, houses) {
   // Something laid down ALONG the road: hedges, fences, walls. It gets the
   // frame so it can work out which way it is running at that point, because on
   // an arc that answer changes every few voxels.
+  //
+  // AND IT CHECKS THE OFFSET LINE IS STILL A LINE. An offset u on the inside
+  // of a corner scales by (1 - u/r); when the widened cross-section exceeds a
+  // tight arc's radius the line collapses and then INVERTS — it folds past
+  // the arc's centre and sweeps backwards over whatever is there, which after
+  // the city-wide widening was the previous leg's carriageway (a chapel hedge
+  // at offset 343 on a radius-260 corner planted itself across the Parade).
+  // Measured directly: if stepping forward along s moves the offset point
+  // less than a third of a voxel per voxel — or backwards — nothing plants.
   const run = (from, to, u, step, fn) => {
-    for (let s = from; s < to; s += step) put(s, u, (x, z, ff, gy) => fn(x, z, ff, gy, s));
+    for (let s = from; s < to; s += step) {
+      path.at(s, f);
+      const tx = f.tx, tz = f.tz;
+      path.place(s + 12, u, f);
+      const x2 = f.x, z2 = f.z;
+      path.place(s, u, f);
+      const proj = ((x2 - f.x) * tx + (z2 - f.z) * tz) / 12;
+      if (proj < 0.33) continue;
+      fn(Math.round(f.x), Math.round(f.z), f, GROUND_Y + elev(s), s);
+    }
   };
   const along = (ff) => (Math.abs(ff.nz) > Math.abs(ff.nx) ? 'x' : 'z');
   // Step ALONG the track from a placement point. district builders that offset
@@ -397,6 +447,15 @@ function gantryOver(c, s, half, lift, signal) {
     c.put(s, side * half, (x, z, ff, gy) => c.w.box(x - 2, gy + lift, z - 2, 5, GANTRY_H, 5, 'metalDark'));
   for (let u = -half; u <= half; u++)
     c.put(s, u, (x, z, ff, gy) => {
+      // The road painter leaves the odd pinhole column on an arc, and a column
+      // whose ONLY voxels are this crossbar reads the crossbar as its floor —
+      // per-column floors measure from the lowest voxel — so a sign gantry
+      // grew a row of invisible 119-high wall segments across the carriageway.
+      // Any empty column under the bar's whole 3x3 footprint gets a road
+      // surface first.
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++)
+        if (!c.w.get(x + dx, gy - 1, z + dz) && !c.w.get(x + dx, gy - 2, z + dz) && !c.w.get(x + dx, gy - 3, z + dz))
+          c.w.set(x + dx, gy - 1, z + dz, 'asphaltPatch');
       c.w.box(x - 1, gy + lift + GANTRY_H, z - 1, 3, 5, 3, 'metalDark');
       if (signal) {
         if (Math.abs(u) % 20 < 3) c.w.box(x - 1, gy + lift + GANTRY_H - 8, z - 1, 3, 9, 3, 'metalDark');
@@ -405,6 +464,46 @@ function gantryOver(c, s, half, lift, signal) {
       } else if (Math.abs(u) < half * 0.5) {
         c.w.box(x, gy + lift + GANTRY_H - 22, z, 1, 20, 2, 'signGreen');
         if (Math.abs(u) % 9 < 4) c.w.box(x, gy + lift + GANTRY_H - 16, z, 1, 3, 3, 'signWhite');
+      }
+    });
+}
+
+// Is this world point near ANY part of the lap's carriageway? A leg's verge
+// can physically overlap a different leg's road — the long quay's off side IS
+// the dock gate's carriageway where the loop wraps around its last corner —
+// so big scenery fields (container stacks, most of all) must ask the whole
+// path, not just their own cross-section, before they plant anything.
+function nearRoad(path, x, z, clear) {
+  const pts = path.points;
+  const c2 = clear * clear;
+  for (let i = 0; i < pts.length; i += 2) {
+    const dx = pts[i] - x, dz = pts[i + 1] - z;
+    if (dx * dx + dz * dz < c2) return true;
+  }
+  return false;
+}
+// A container field's whole footprint (cols x 62 in +x, rows x 30 in +z, from
+// the anchor) must clear the carriageway, or it is not planted at all.
+function containersClear(c, bx, bz, cols, rows) {
+  const clear = ROAD_HALF + 34;
+  for (const [px, pz] of [[bx, bz], [bx + cols * 62, bz], [bx, bz + rows * 30], [bx + cols * 62, bz + rows * 30]])
+    if (nearRoad(c.path, px, pz, clear)) return false;
+  return true;
+}
+
+// Motorway embankments, marched in (s, u). The district2 builder marched a
+// world axis picked by a quarter turn, and on the east sweep's arc that walked
+// the rising grass bank INTO the carriageway — a 770-voxel run of 24–31-high
+// slices standing inside the road edge, leaning at whatever angle the axis
+// error happened to be. Each cross-slice here is planted from its own point's
+// frame, so the bank follows the road round the bend the way a bank does.
+function bankRun(c, sec, h) {
+  for (const side of [-1, 1])
+    c.run(sec.from, sec.to, side * (PAVE_BACK + 4), 2, (x, z, ff, gy) => {
+      for (let d = 0; d < h; d++) {
+        const k = Math.round(d * 0.8);
+        c.w.set(x + Math.round(ff.nx * d * side), gy + k, z + Math.round(ff.nz * d * side),
+          hash3(x + d, k, z) > 0.7 ? 'grassDry' : 'grass');
       }
     });
 }
@@ -447,15 +546,26 @@ const DISTRICT = {
   // Unlit, and the biggest single mass on the circuit. Going past a mill in the
   // dark is most of what this stretch has.
   mill(c, sec) {
-    const ax = legAxis(c.path, sec, c.f);
     c.blit(sec.from + 320, SET - 4, c.pr.mill);
     // the stack, so something is coming out of it
     c.put(sec.from + 320, SET + 62, (x, z, ff, gy) => c.anchors.stacks.push([x, gy + 158, z]));
     for (const [ds, r, h] of [[70, 15, 76], [112, 15, 76], [152, 13, 62]])
       c.put(sec.from + ds, SET + 30, (x, z, ff, gy) => D.silo(c.w, x, gy, z, r, h));
+    // The fence is marched in (s, u), one column per voxel of road. It used to
+    // be 42-voxel chainFence pieces laid along a quarter-turn world axis every
+    // 40 — exact on a straight, and on the Docks' curving mill leg the pieces
+    // zigzagged across the corridor and stood in the carriageway for the last
+    // 380 voxels of the leg, which is what the boot audit had been calling
+    // "8 points in sheds" for two sessions.
     for (const side of [-1, 1])
-      c.run(sec.from, sec.to, side * SET, 40, (x, z, ff, gy) =>
-        D.chainFence(c.w, ax === 'x' ? x - 20 : x, gy, ax === 'x' ? z : z - 20, 42, ax));
+      c.run(sec.from, sec.to, side * SET, 1, (x, z, ff, gy, s) => {
+        const i = Math.round(s - sec.from);
+        if (i % 22 === 0) { c.w.box(x, gy, z, 2, 25, 2, 'metalDark'); return; }
+        c.w.set(x, gy + 3, z, 'metalDark');            // bottom rail
+        c.w.set(x, gy + 13, z, 'metalDark');           // mid rail
+        if (i % 2 === 0) for (let k = 5; k < 22; k += 4) c.w.set(x, gy + k, z, 'metal');
+        c.w.set(x, gy + 22, z, 'metalDark');           // top rail
+      });
     c.put(sec.from + 470, -(SET + 20), (x, z, ff, gy) => D.pallets(c.w, x, gy, z, 4));
     c.put(sec.from + 250, -(SET + 26), (x, z, ff, gy) => D.oilDrums(c.w, x, gy, z, 7));
     c.put(sec.from + 545, SET + 12, (x, z, ff, gy) => S.skip(c.w, x - 22, gy, z - 10));
@@ -591,7 +701,7 @@ const DISTRICT = {
     });
     c.run(sec.from, sec.to, -(SET + 90), 220, (x, z, ff, gy, s) => {
       const [bx, bz] = c.back(ff, x, z, 60);
-      D2.containers(c.w, bx, gy, bz, 2, 2, 3, Math.round(s));
+      if (containersClear(c, bx, bz, 2, 2)) D2.containers(c.w, bx, gy, bz, 2, 2, 3, Math.round(s));
     });
   },
 
@@ -599,20 +709,38 @@ const DISTRICT = {
     for (const side of [-1, 1])
       c.run(sec.from, sec.to, side * (SET + 100), 200, (x, z, ff, gy, s) => {
         const [bx, bz] = c.back(ff, x, z, 60);
-        D2.containers(c.w, bx, gy, bz, 2, 3, 4, Math.round(s) + (side > 0 ? 0 : 91));
+        if (containersClear(c, bx, bz, 2, 3))
+          D2.containers(c.w, bx, gy, bz, 2, 3, 4, Math.round(s) + (side > 0 ? 0 : 91));
       });
     c.put(sec.from + 240, SET + 210, (x, z, ff, gy) => D2.crane(c.w, x, gy, z, 132, 120));
   },
 
   sheds(c, sec) {
+    // Per-shed setback. blit() snaps to a quarter turn, and on a bend the
+    // snap leaves the 110 x 84 shed up to 45 degrees off the road — its near
+    // corner swings (55 + 84)/sqrt2 = 98 voxels roadward of the anchor, which
+    // is how one stood in the dock-gate carriageway at u = -122..-154. But a
+    // blanket setback pushed every shed beyond what the rain lets you see, so
+    // each shed asks first: if the worst corner the snap can produce would
+    // touch ANY road, that one moves out; the rest stay at the kerbside
+    // distance the district was composed at.
     for (let s = sec.from + 140, i = 0; s < sec.to - 160; s += 200, i++) {
       const side = i % 2 ? 1 : -1;
-      c.blit(s, side * (SET + 46), c.pr.shed);
-      c.put(s + 30, side * (SET + 40), (x, z, ff, gy) => c.anchors.stacks.push([x, gy + 62, z]));
+      let at = SET + 46;
+      c.put(s, side * at, (x, z, ff, gy) => {
+        const clear = ROAD_HALF + 30;
+        for (const dt of [-55, 0, 55]) {
+          const px = x + ff.nx * -side * 98 + ff.tx * dt;
+          const pz = z + ff.nz * -side * 98 + ff.tz * dt;
+          if (nearRoad(c.path, px, pz, clear)) { at = SET + 106; break; }
+        }
+      });
+      c.blit(s, side * at, c.pr.shed);
+      c.put(s + 30, side * (at - 6), (x, z, ff, gy) => c.anchors.stacks.push([x, gy + 62, z]));
     }
     c.run(sec.from, sec.to, SET + 190, 240, (x, z, ff, gy, s) => {
       const [bx, bz] = c.back(ff, x, z, 30);
-      D2.containers(c.w, bx, gy, bz, 1, 2, 3, Math.round(s));
+      if (containersClear(c, bx, bz, 1, 2)) D2.containers(c.w, bx, gy, bz, 1, 2, 3, Math.round(s));
     });
   },
 
@@ -963,8 +1091,12 @@ const DISTRICT = {
             for (let k = 1; k < 6; k++) c.w.set(x, road - k, z, 'concreteOld');
             if (Math.abs(u) > DECK - 12)
               for (let k = 6; k < deep; k++) c.w.set(x, road - k, z, 'concreteOld');
+            // 22, not 15. The car climbs anything up to CAR_STEP (18), so a
+            // 15-voxel parapet was a kerb: you could drive up it, ride the
+            // apron beyond, and beach there. A parapet's whole job is to be
+            // the one wall on the deck the car cannot mount.
             if (Math.abs(u) > DECK - 3)
-              for (let k = 0; k < 15; k++) c.w.set(x, road + k, z, k > 12 ? 'concrete' : 'concreteOld');
+              for (let k = 0; k < 22; k++) c.w.set(x, road + k, z, k > 19 ? 'concrete' : 'concreteOld');
           });
       }
 
@@ -994,20 +1126,26 @@ const DISTRICT = {
   millyard(c, sec) {
     const mid = (sec.from + sec.to) / 2;
 
+    // The conveyor's underside was 78 — squarely in the 62–90 band the gantry
+    // comment calls "a bar across the eye", and UNDER the chase camera's 84,
+    // so the camera clipped through its deck every lap while its lit strip
+    // bloomed across the middle of the frame from 400 voxels out. 114 clears
+    // the town's one overhead standard (GANTRY_H) with the camera below it.
+    const CONVEYOR = GANTRY_H + 2;
     for (const at of [mid - 210, mid + 190]) {
       for (const side of [-1, 1])
         for (let ds = -6; ds <= 6; ds += 0.8)
           for (let du = -6; du <= 6; du += 0.8)
             c.put(at + ds, side * (ROAD_HALF + 20) + du, (x, z, ff, gy) => {
-              for (let k = 0; k < 78; k++) c.w.set(x, gy + k, z, k % 13 === 0 ? 'metal' : 'metalDark');
+              for (let k = 0; k < CONVEYOR; k++) c.w.set(x, gy + k, z, k % 13 === 0 ? 'metal' : 'metalDark');
             });
       for (let u = -(ROAD_HALF + 20); u <= ROAD_HALF + 20; u += 0.8)
         for (let ds = -9; ds <= 9; ds += 0.9)
           c.put(at + ds, u, (x, z, ff, gy) => {
             const shell = Math.abs(ds) > 7.5 || Math.abs(u) > ROAD_HALF + 18;
-            for (let k = 78; k < 96; k++)
-              c.w.set(x, gy + k, z, shell || k > 93 ? 'metal' : 'metalDark');
-            if (Math.abs(ds) < 1 && (Math.round(u) % 24) < 3) c.w.set(x, gy + 77, z, 'porchBulb');
+            for (let k = CONVEYOR; k < CONVEYOR + 18; k++)
+              c.w.set(x, gy + k, z, shell || k > CONVEYOR + 15 ? 'metal' : 'metalDark');
+            if (Math.abs(ds) < 1 && (Math.round(u) % 24) < 3) c.w.set(x, gy + CONVEYOR - 1, z, 'porchBulb');
           });
     }
 
@@ -1025,12 +1163,7 @@ const DISTRICT = {
 
   // ========================================================== THE RING ROAD
   motorway(c, sec) {
-    const ax = legAxis(c.path, sec, c.f);
-    for (const side of [-1, 1])
-      c.run(sec.from, sec.to, side * (PAVE_BACK + 4), 40, (x, z, ff, gy) => {
-        const [ex, ez] = c.back(ff, x, z, 20);
-        D2.embankment(c.w, ex, gy, ez, 42, c.along(ff), side, 34);
-      });
+    bankRun(c, sec, 34);
     for (let s = sec.from + 260; s < sec.to - 200; s += 620) gantryOver(c, s, ROAD_HALF + 30, 0, false);
     c.run(sec.from, sec.to, SET + 90, 260, (x, z, ff, gy) => P.tree(c.w, x, gy, z, 40, 14));
   },
@@ -1040,17 +1173,24 @@ const DISTRICT = {
   // ceiling four metres up costs nothing but voxels.
   tunnel(c, sec) {
     const half = ROAD_HALF + KERB + 10;
+    // The crown is GANTRY_H, the same overhead the market hall and every sign
+    // gantry clear. It was 62, which put the chase camera (84 x zoom) INSIDE
+    // the roof for the full length of both bores — the sodium showpiece
+    // rendered as a blank wall unless the player happened to be zoomed all the
+    // way in. The rule from gantryOver applies to a roof too: what matters is
+    // which side of the beam the camera is on.
+    const crown = GANTRY_H - 16;
     for (let s = sec.from + 60; s < sec.to - 60; s += 0.9) {
       const lit = (Math.round(s) % 90) < 30;
       for (let u = -half; u <= half; u++) {
         const a = Math.abs(u);
-        const top = Math.round(46 + Math.cos((a / half) * Math.PI * 0.5) * 16);
+        const top = Math.round(crown + Math.cos((a / half) * Math.PI * 0.5) * 16);
         c.put(s, u, (x, z, ff, gy) => {
           if (a > half - 5) for (let k = 0; k < top; k++)
             c.w.set(x, gy + k, z, (k >> 2) % 2 ? 'concreteOld' : 'concrete');
           c.w.set(x, gy + top, z, 'concreteOld');
           c.w.set(x, gy + top + 1, z, 'concrete');
-          if (lit && a < 4) c.w.set(x, gy + 58, z, 'sodium');
+          if (lit && a < 4) c.w.set(x, gy + crown + 8, z, 'sodium');
         });
       }
     }
@@ -1061,9 +1201,9 @@ const DISTRICT = {
     for (const s of [sec.from + 56, sec.to - 56])
       for (let u = -half - 10; u <= half + 10; u++) {
         const a = Math.abs(u);
-        const top = a <= half ? Math.round(46 + Math.cos((a / half) * Math.PI * 0.5) * 16) + 2 : 0;
+        const top = a <= half ? Math.round(crown + Math.cos((a / half) * Math.PI * 0.5) * 16) + 2 : 0;
         c.put(s, u, (x, z, ff, gy) => {
-          for (let k = top; k < 88; k++) c.w.set(x, gy + k, z, (k >> 3) % 2 ? 'concrete' : 'concreteOld');
+          for (let k = top; k < 134; k++) c.w.set(x, gy + k, z, (k >> 3) % 2 ? 'concrete' : 'concreteOld');
         });
       }
   },
@@ -1071,12 +1211,7 @@ const DISTRICT = {
   services(c, sec) {
     c.blit(sec.from + 220, SET + 90, c.pr.services);
     c.put(sec.from + 220, SET + 74, (x, z, ff, gy) => c.anchors.tvs.push([x, gy + 16, z]));
-    const ax = legAxis(c.path, sec, c.f);
-    for (const side of [-1, 1])
-      c.run(sec.from, sec.to, side * (PAVE_BACK + 4), 40, (x, z, ff, gy) => {
-        const [ex, ez] = c.back(ff, x, z, 20);
-        D2.embankment(c.w, ex, gy, ez, 42, c.along(ff), side, 26);
-      });
+    bankRun(c, sec, 26);
     gantryOver(c, sec.to - 260, ROAD_HALF + 30, 0, false);
   },
 
@@ -1115,6 +1250,17 @@ function dress(w, path, anchors, houses) {
       });
     }
   }
+
+  // Reflector posts, both verges, the whole lap. The widening pushed the
+  // buildings back and quietly took the sense of speed with them — speed is
+  // things passing CLOSE, and nothing passed close any more. Delineator posts
+  // every ninety voxels give the eye a metronome at the kerb: red caps on the
+  // left, white on the right, the way real delineators are handed.
+  for (const side of [-1, 1])
+    c.run(0, path.total, side * (ROAD_HALF + KERB + 4), 90, (x, z, ff, gy) => {
+      w.box(x, gy, z, 1, 7, 1, 'metalDark');
+      w.set(x, gy + 7, z, side < 0 ? 'signRed' : 'paper');
+    });
 
   for (const sec of SECTIONS) DISTRICT[sec.district](c, sec);
 
@@ -1224,8 +1370,20 @@ export let HAZARDS = [];
 
 function hazards(w, path) {
   const f = frame();
+  const cf = frame();
   const wagon = new VoxWorld();
   P.wagon(wagon, -11, 0, -25);
+  // Every piece of furniture sits at ONE point of the road, at that point's
+  // own height. It was all laid out from the hazard's single frame — tangent
+  // and normal offsets at one oy — which floated the broken wagon's cone fan
+  // over the Docks' falling stern ramp (an unclimbable wall of hovering
+  // cones), and swung the works barrier's straight tail across the Parade's
+  // last bend, where the racing line wedged on it every lap. Anything that
+  // spans road is built in (s, u); the furniture is not an exception.
+  const cone = (cs, cu) => {
+    path.place(cs, cu, cf);
+    S.roadCone(w, Math.round(cf.x), elev(cs) - 2, Math.round(cf.z));
+  };
   for (const h of HAZARDS) {
     path.place(h.s, h.u, f);
     const x = Math.round(f.x), z = Math.round(f.z);
@@ -1236,18 +1394,27 @@ function hazards(w, path) {
       // Sized off the carriageway, and sized to MATTER. At 0.46 of the half
       // width this blocked a quarter of the road, so the driver could clear it
       // with a twitch and the whole see-it-in-time mechanic priced at nothing.
-      // At 1.15 it takes most of one side and leaves a gap you have to aim for.
-      const span = Math.round(ROAD_HALF * 1.15);
-      for (let i = -4; i <= 4; i++)
-        S.roadCone(w, x + Math.round(f.nx * i * (span / 8)), -2 + gy, z + Math.round(f.nz * i * (span / 8)));
+      // At 1.15 it takes most of one side and leaves a gap you have to aim
+      // for -- ON THE OLD ROADS. After the city-wide widening the same
+      // fraction left a four-car gap and the sim called the dark decorative
+      // again; 1.45 keeps the gap a genuine aim at every width.
+      const span = Math.round(ROAD_HALF * 1.45);
+      for (let i = -4; i <= 4; i++) cone(h.s, h.u + i * (span / 8));
       // a tapering run of cones leading in, so it reads as roadworks and gives
       // the gap a shape rather than appearing as a wall
-      for (let i = 1; i <= 5; i++)
-        S.roadCone(w, x + Math.round(f.nx * (span / 2 - i * 9) + f.tx * i * 26), -2 + gy,
-          z + Math.round(f.nz * (span / 2 - i * 9) + f.tz * i * 26));
-      const bar = new VoxWorld();
-      S.barrier(bar, -(span >> 1), -1, -1, span);
-      w.merge(bar, { ox: x, oz: z, oy: gy, rotY: rot });
+      for (let i = 1; i <= 5; i++) cone(h.s + i * 26, h.u + (span / 2 - i * 9));
+      // The barrier fences the dig lengthwise: posts at the ends, rail
+      // segments marched along s at each point's own elevation, so it follows
+      // the road over a grade and round a bend instead of chording across it.
+      for (const d of [-(span >> 1), (span >> 1) - 2]) {
+        path.place(h.s + d, h.u, cf);
+        w.box(Math.round(cf.x) - 1, elev(h.s + d), Math.round(cf.z) - 1, 2, 12, 2, 'metalDark');
+      }
+      for (let d = -(span >> 1); d <= (span >> 1); d += 2) {
+        path.place(h.s + d, h.u, cf);
+        w.box(Math.round(cf.x) - 1, elev(h.s + d) + 9, Math.round(cf.z) - 1, 2, 3, 2,
+          ((d >> 3) % 2) ? 'coneOrange' : 'paper');
+      }
     } else if (h.kind === 'skip') {
       // TWO skips end to end. One is 44 voxels on a 216-voxel road: something
       // you steer round without thinking, which is not a hazard, it is scenery.
@@ -1255,22 +1422,56 @@ function hazards(w, path) {
       S.skip(sk, -22, -1, -10);
       for (const off of [-24, 24])
         w.merge(sk, { ox: x + Math.round(f.nx * off), oz: z + Math.round(f.nz * off), oy: gy, rotY: rot });
-      for (let i = 1; i <= 4; i++)
-        S.roadCone(w, x + Math.round(f.nx * (48 + i * 4) + f.tx * i * 24), -2 + gy,
-          z + Math.round(f.nz * (48 + i * 4) + f.tz * i * 24));
+      for (let i = 1; i <= 4; i++) cone(h.s + i * 24, h.u + 48 + i * 4);
+    } else if (h.kind === 'stall') {
+      // THE OLD TOWN'S OWN: a market stall pitched in the road — posts, a
+      // striped awning at bonnet height, a table of crates — with cones walked
+      // out both ways, because a stallholder warns both directions.
+      const st = new VoxWorld();
+      for (const [px, pz] of [[-16, -11], [13, -11], [-16, 8], [13, 8]])
+        st.box(px, 0, pz, 3, 22, 3, 'wood');
+      st.box(-19, 22, -13, 38, 2, 26, (bx) => ((bx >> 2) % 2 ? 'plasticRed' : 'shirtCream'));
+      st.box(-14, 10, -9, 28, 3, 18, 'woodPale');
+      for (let i = 0; i < 3; i++)
+        st.box(-11 + i * 9, 13, -6, 7, 5, 7, i % 2 ? 'flowerA' : 'grassDry');
+      w.merge(st, { ox: x, oz: z, oy: gy, rotY: alongRot(f.tx, f.tz) });
+      for (const d of [-1, 1])
+        for (let i = 1; i <= 3; i++) cone(h.s + d * i * 22, h.u + Math.sign(h.u) * -6 * i);
+    } else if (h.kind === 'crate') {
+      // THE DOCKS' OWN: a container off the back of something, slewed across
+      // the lane, its spill strewn around it at each box's own point of road.
+      const ct = new VoxWorld();
+      const col = hash3(x, 1, z) > 0.5 ? 'doorBlue' : 'doorRed';
+      ct.shell(-30, 0, -14, 60, 25, 28, 1, col, { bottom: false });
+      for (let i = 2; i < 58; i += 4) ct.box(-30 + i, 2, -15, 2, 21, 1, col);
+      ct.box(-26, 8, -16, 14, 6, 1, 'paper');
+      w.merge(ct, { ox: x, oz: z, oy: gy, rotY: (alongRot(f.tx, f.tz) + 90) % 360 });
+      for (const [ds, du] of [[-40, -22], [-32, 26], [36, -14], [46, 20], [54, -4]]) {
+        path.place(h.s + ds, h.u + du, cf);
+        w.box(Math.round(cf.x) - 4, elev(h.s + ds), Math.round(cf.z) - 4, 8, 7, 8,
+          hash3(ds, du, x) > 0.5 ? 'wood' : 'rust');
+      }
+      for (let i = 1; i <= 4; i++) cone(h.s + i * 24, h.u + 48 + i * 4);
+    } else if (h.kind === 'spill') {
+      // THE RING ROAD'S OWN: a shed load on the bypass — cargo scattered over
+      // a band of carriageway, every box at its own (s, u) and its own height.
+      // Each one is climbable and each one costs; the field is the hazard.
+      for (let i = 0; i < 16; i++) {
+        const ds = Math.round((hash3(x, i * 3, z) - 0.5) * 170);
+        const du = Math.round((hash3(z, i * 7, x) - 0.5) * ROAD_HALF * 0.6);
+        path.place(h.s + ds, h.u * 0.4 + du, cf);
+        const hgt = 6 + Math.round(hash3(i, x, z) * 6);
+        w.box(Math.round(cf.x) - 4, elev(h.s + ds), Math.round(cf.z) - 4, 8, hgt, 8,
+          hash3(i, z, x) > 0.6 ? 'plasticRed' : (hash3(i, x, z) > 0.5 ? 'wood' : 'paper'));
+      }
+      for (let i = 1; i <= 4; i++) cone(h.s - 100 - i * 26, h.u * 0.4);
     } else {
       // broken down, so it is pointing where it was going, not at the kerb
       w.merge(wagon, { ox: x, oz: z, oy: gy, rotY: alongRot(f.tx, f.tz) });
       // cones fanning out behind it, which is what you actually put out and
       // which widens the thing you have to avoid to something worth avoiding
-      for (let i = -3; i <= 3; i++)
-        S.roadCone(w,
-          x + Math.round(f.nx * i * 16 + f.tx * 40), -2 + gy,
-          z + Math.round(f.nz * i * 16 + f.tz * 40));
-      for (let i = 1; i <= 4; i++)
-        S.roadCone(w,
-          x + Math.round(f.nx * (i * 12) + f.tx * (40 + i * 22)), -2 + gy,
-          z + Math.round(f.nz * (i * 12) + f.tz * (40 + i * 22)));
+      for (let i = -3; i <= 3; i++) cone(h.s + 40, h.u + i * 16);
+      for (let i = 1; i <= 4; i++) cone(h.s + 40 + i * 22, h.u + i * 12);
     }
   }
 }
@@ -1405,7 +1606,17 @@ function surround(path) {
 let SPEC = null;
 export const spec = () => SPEC;
 
-export function buildTrack(trackSpec) {
+// Async, with a phase reporter. The build is ten to forty seconds of honest
+// work on the widened circuits, and a synchronous build froze the boot screen
+// for all of it — indistinguishable from a hang. `onPhase(label, frac)` feeds
+// the boot screen; the yields between phases (and inside the mesher) let it
+// actually paint.
+export async function buildTrack(trackSpec, onPhase) {
+  const breathe = (label, frac) => {
+    if (onPhase) onPhase(label, frac);
+    // MessageChannel, not setTimeout — hidden tabs clamp timers to a second
+    return new Promise(r => { const mc = new MessageChannel(); mc.port1.onmessage = r; mc.port2.postMessage(0); });
+  };
   SPEC = trackSpec;
   setRoad(trackSpec.road);
   setProfile(trackSpec.profile);
@@ -1430,30 +1641,74 @@ export function buildTrack(trackSpec) {
   const path = buildPath(trackSpec);
   const w = new VoxWorld();
   const anchors = { lamps: [], stacks: [], tvs: [] };
+  await breathe('surveying the route', 0.02);
   const protos = prototypes();
   mark('prototypes');
+  await breathe('laying the road', 0.06);
   ribbon(w, path);
   mark('ribbon');
+  await breathe('raising the town', 0.2);
   dress(w, path, anchors, protos);
   mark('districts');
+  await breathe('dressing the street', 0.34);
   parked(w, path);
   hazards(w, path);
   landmarks(w, path);
   mark('props');
 
+  // THE CARRIAGEWAY IS CLEAR BY CONSTRUCTION, NOT JUST BY REPORT.
+  //
+  // "Anything solid inside the painted road is a bug, every time, with no
+  // exceptions to argue about" — so stop arguing and delete it. Districts
+  // place from prototypes, world-axis fields and quarter-turn blits, and
+  // after the city-wide widening the cross-section can exceed a tight arc's
+  // radius, where inside offsets fold past the arc's centre and land their
+  // props anywhere (a graveyard planted itself across the Parade). Every
+  // class of that bug ends here: any column rising 4–28 over the road inside
+  // the carriageway, outside a hazard's footprint, is scrubbed — and COUNTED,
+  // because a scrub that hides leaks silently would teach us to stop fixing
+  // the placements themselves. Legitimate overheads (gantries at 112, tunnel
+  // crowns, the gatehouse vault, tree canopies at 30+) sit above the band.
+  {
+    // Sampled at 3-voxel pitch with strided height probes, and the cut covers
+    // the sampling cell — the exhaustive version cost five seconds of build
+    // for the same catches (nothing that matters to a car is under 3 voxels
+    // across, and the strided probes still hit anything 3+ thick in the band).
+    let scrubbed = 0;
+    const sf = frame();
+    for (let s = 0; s < path.total; s += 3) {
+      const road = elev(s);
+      for (let u = -(ROAD_HALF - 6); u <= ROAD_HALF - 6; u += 3) {
+        if (HAZARDS.some(h => Math.abs(h.s - s) < h.r + 170 && Math.abs(h.u - u) < h.r + 170)) continue;
+        path.place(s, u, sf);
+        const x = Math.round(sf.x), z = Math.round(sf.z);
+        // every k, no stride: a one-voxel-thick plate at exactly the skipped
+        // height defeated two strided versions of this probe in a row
+        for (let k = 3; k < 28; k++) {
+          if (w.get(x, road + k, z)) { w.cut(x - 2, road + 3, z - 2, 5, 25, 5); scrubbed++; break; }
+        }
+      }
+    }
+    if (scrubbed) console.warn('track: scrubbed ' + scrubbed + ' intruding columns out of the '
+      + 'carriageway — some district is still leaking props onto the road');
+  }
+
+
   const group = new THREE.Group();
   group.name = 'track';
+  await breathe('grading the land', 0.4);
   // solidBelow gives contact AO at the LOWEST point the ground reaches;
   // noFloorBelow only culls undersides down there too, so a raised stretch
   // keeps its underside and reads as an embankment instead of a hole to the sky.
   group.add(surround(path));
   mark('surround');
-  group.add(meshChunks(w, PALETTE, {
+  group.add(await meshChunksAsync(w, PALETTE, {
     name: 'track', size: 192,
     solidBelow: ELEV_MIN - 2, noFloorBelow: ELEV_MIN + GROUND_Y - 1,
-  }));
+  }, (frac) => { if (onPhase) onPhase('meshing the circuit', 0.42 + frac * 0.52); }));
 
   mark('mesh');
+  await breathe('walking the kerbs', 0.96);
 
   let bx0 = 1e9, bx1 = -1e9, bz0 = 1e9, bz1 = -1e9;
   for (let i = 0; i < path.points.length; i += 2) {
@@ -1505,7 +1760,11 @@ export function buildTrack(trackSpec) {
     // the thing it is excluding goes stale is worse than no audit, because you
     // learn to skim its output.
     const hz = new Set(HAZARDS.map(h => Math.round(h.s / 12) * 12));
-    const rogue = blockers.filter(([s]) => ![...hz].some(h => Math.abs(h - s) < 160));
+    // The window scales with the road: the works barrier runs span/2 =
+    // 0.575 x ROAD_HALF along s, and a fixed 160 was one voxel too tight the
+    // moment the city widened.
+    const win = Math.max(160, ROAD_HALF * 0.6 + 40);
+    const rogue = blockers.filter(([s]) => ![...hz].some(h => Math.abs(h - s) < win));
     if (rogue.length) {
       console.error('track: ' + rogue.length + ' points of the carriageway are not drivable, '
         + 'starting at s=' + rogue[0][0] + ' u=' + rogue[0][1]

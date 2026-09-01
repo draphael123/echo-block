@@ -21,6 +21,9 @@ export function run(track, policyName, opts = {}) {
   const dt = opts.dt || 1 / 120;
   const ground = new Ground(track.field);
   const c = buildCar(0);
+  // The circuit's own weather. This ran the Docks DRY, so its verdict
+  // described a track nobody races.
+  c.setWet(track.spec.wet || 0);
   const path = track.path;
   const laps = opts.laps || 1;
 
@@ -35,7 +38,7 @@ export function run(track, policyName, opts = {}) {
   });
   const seen = driver.hazardsSeen;
 
-  let t = 0, crashes = 0, blindHits = 0, wasDown = false, s = 80;
+  let t = 0, crashes = 0, blindHits = 0, wedges = 0, wasDown = false, s = 80;
   const LIMIT = 70 * laps + 90;
   const trace = [], crashLog = [];
   let nextTrace = 0;
@@ -66,8 +69,11 @@ export function run(track, policyName, opts = {}) {
     wasDown = c.state.crash > 0;
     if (c.state.wedged) {
       c.state.wedged = false;
+      wedges++;
       const spot = safeSpot(path, ground, s);
-      if (spot) { c.respawn(spot.x, spot.z, spot.heading, track.elev(spot.s) - 1); driver.reset(spot.s); }
+      // reseat, not reset — reset() zeroes the lap counter, so a wedged run
+      // silently started its race over and the time measured nothing.
+      if (spot) { c.respawn(spot.x, spot.z, spot.heading, track.elev(spot.s) - 1); driver.reseat(spot.s); }
     }
 
     // allowReverse false: the braking policy holds throttle at -1 through every
@@ -84,6 +90,10 @@ export function run(track, policyName, opts = {}) {
     finished: driver.lap >= laps,
     crashes,
     blindHits,
+    // A wedge is a first-class result. Every geometry fault this project has
+    // shipped resolved as a silent teleport, which is how "finished: true"
+    // kept getting reported over roads that stop cars dead.
+    wedges,
     avgSpeed: +(c.state.dist / t).toFixed(1),
     detail,
     trace,

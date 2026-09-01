@@ -64,6 +64,27 @@ const CSS = `
   cursor: pointer; font: inherit; padding: 4px 0 0;
 }
 #pick .drop:hover { color: #ff8a6a; }
+
+/* The pit wall: the campaign in one line — purse and what is bolted on. */
+#pick .wall {
+  display: flex; gap: 18px; align-items: baseline; flex-wrap: wrap;
+  padding: 10px 18px; margin-bottom: 14px;
+  border: 1px solid #232d3f; border-radius: 6px; background: rgba(12, 17, 28, .55);
+  font-size: 11px; letter-spacing: .08em; color: #6d7688;
+}
+#pick .wall b { color: #ffc98a; font-weight: 600; font-size: 13px; letter-spacing: .02em; }
+#pick .wall .fit i { font-style: normal; color: #8d97ab; margin-left: 4px; }
+#pick .tbl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px 14px; margin-top: 8px; }
+#pick .tbl span { display: flex; justify-content: space-between; font-size: 11px; color: #8d97ab; }
+#pick .tbl span b { color: #d8dfeb; font-weight: 600; }
+#pick .tbl span.you, #pick .tbl span.you b { color: #7fe08a; }
+#pick .medal {
+  display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+  margin-right: 8px; vertical-align: 2px;
+}
+#pick .medal.gold { background: #ffce54; box-shadow: 0 0 6px rgba(255, 206, 84, .7); }
+#pick .medal.silver { background: #c9d2e0; }
+#pick .medal.bronze { background: #c98d54; }
 `;
 
 export function mountTrackSelect({ save, onGo }) {
@@ -75,20 +96,47 @@ export function mountTrackSelect({ save, onGo }) {
   el.id = 'pick';
   el.innerHTML = '<div class="card"><h2>RIDE OUT</h2>'
     + '<div class="sub">four circuits, one town &mdash; and they do not ask the same thing</div>'
+    + '<div class="wall"></div>'
     + '<div class="list"></div><div class="season"></div>'
     + '<button class="close">esc &mdash; not tonight</button></div>';
   document.body.appendChild(el);
   const list = el.querySelector('.list');
   const season = el.querySelector('.season');
+  const wall = el.querySelector('.wall');
+
+  // The pit wall. The card is the door to the racing game, so the state of
+  // the campaign lives on it: what is in the purse and what is on the car.
+  const NUM = ['&mdash;', 'I', 'II', 'III'];
+  function paintWall() {
+    const p = save.parts || {};
+    wall.innerHTML = `<span><b>${save.money || 0}</b> in the tin</span>`
+      + `<span class="fit">engine<i>${NUM[p.engine || 0]}</i></span>`
+      + `<span class="fit">brakes<i>${NUM[p.brakes || 0]}</i></span>`
+      + `<span class="fit">tyres<i>${NUM[p.tyres || 0]}</i></span>`
+      + `<span class="fit">lamps<i>${NUM[p.lamps || 0]}</i></span>`
+      + `<span>${save.races || 0} race${save.races === 1 ? '' : 's'} run</span>`;
+  }
 
   function paint() {
+    paintWall();
     const here = pickTrack().id;
     list.innerHTML = '';
     for (const t of TRACKS) {
       const best = save.bests && save.bests[t.id];
+      // Medal against the circuit's own reference lap — the same number the
+      // purse pays pace against, so the target and the money agree.
+      const ref = t.refLap || 40;
+      const medal = best
+        ? (best <= ref + 2 ? 'gold' : best <= ref + 6 ? 'silver' : best <= ref + 12 ? 'bronze' : '')
+        : '';
+      const st = (save.stats && save.stats[t.id]) || null;
+      const tally = st && st.races
+        ? ` &middot; ${st.wins} win${st.wins === 1 ? '' : 's'}${st.clean ? ` &middot; ${st.clean} clean` : ''}`
+        : '';
       const row = document.createElement('div');
       row.className = 't' + (t.id === here ? ' on' : '');
-      row.innerHTML = `<div><div class="nm">${t.name}</div><div class="q">${t.blurb}</div></div>`
+      row.innerHTML = `<div><div class="nm">${medal ? `<i class="medal ${medal}"></i>` : ''}${t.name}</div>`
+        + `<div class="q">${t.blurb}${tally}</div></div>`
         + `<div class="meta">${best ? `<b>${best.toFixed(2)}s</b>` : '<b>no time yet</b>'}`
         + `${Math.round(t.lapMetres || 0)} m &middot; `
         + `${t.wet ? '<span class="wet">rain</span>' : 'clear'}</div>`;
@@ -110,10 +158,17 @@ export function mountTrackSelect({ save, onGo }) {
       const at = GP.roundTrack(gp);
       const t = TRACKS.find(x => x.id === at);
       const mine = GP.standings(gp).findIndex(r => r.you) + 1;
+      // The table itself, not just your row of it — a championship you can
+      // only see your own line of is a lap counter, not a season.
+      const tbl = gp.round
+        ? `<div class="tbl">${GP.standings(gp).map(r =>
+            `<span class="${r.you ? 'you' : ''}">${r.name}<b>${r.points}</b></span>`).join('')}</div>`
+        : '';
       row.innerHTML = `<div><div class="nm">Grand Prix &mdash; round ${gp.round + 1}</div>`
         + `<div class="q">${t.name}${gp.round ? ` &middot; you are ${mine}${['st','nd','rd'][mine - 1] || 'th'}` : ''}</div>`
         + `<div class="rounds">${GP.ROUNDS.map((_, i) =>
-          `<i class="${i < gp.round ? 'done' : i === gp.round ? 'now' : ''}"></i>`).join('')}</div></div>`
+          `<i class="${i < gp.round ? 'done' : i === gp.round ? 'now' : ''}"></i>`).join('')}</div>`
+        + tbl + `</div>`
         + `<div class="meta"><b>resume</b>${GP.ROUNDS.length - gp.round} to go</div>`;
       row.onclick = () => { chooseTrack(at); onGo(t); };
       season.appendChild(row);

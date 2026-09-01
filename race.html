@@ -55,6 +55,58 @@
   #best { font-size: 10px; color: #5d6678; letter-spacing: .1em; margin-top: 3px; }
   #pos { font: 700 12px/1 sans-serif; letter-spacing: .16em; color: #9ce0a8; margin-top: 8px; }
   #pos.behind { color: #ff8a6a; }
+  #delta { font: 700 13px/1 "Helvetica Neue", sans-serif; letter-spacing: .06em; margin-top: 4px; }
+  #delta.up { color: #7fe08a; }
+  #delta.down { color: #ff8a6a; }
+  /* the pre-race card */
+  #introcard {
+    position: fixed; left: 50%; bottom: 12%; transform: translateX(-50%);
+    text-align: center; color: #b9c3d4; pointer-events: none;
+    font: 500 13px/1.6 "Helvetica Neue", sans-serif;
+  }
+  #introcard h1 { margin: 0; font-size: 34px; font-weight: 400; color: #f6ecda; letter-spacing: .04em; }
+  #introcard p { margin: 2px 0 8px; color: #8d97ab; }
+  #introcard .facts { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: #6d7688; }
+  /* the results board */
+  #results {
+    position: fixed; inset: 0; display: grid; place-content: center;
+    background: rgba(4, 7, 14, .6); z-index: 40;
+    font: 500 13px/1.6 "Helvetica Neue", sans-serif; color: #b9c3d4;
+  }
+  #results.hidden { display: none; }
+  #results .rcard {
+    width: min(420px, 90vw); padding: 22px 26px;
+    background: rgba(10, 14, 24, .92); border: 1px solid #2a3350; border-radius: 8px;
+  }
+  #results h2 { margin: 0 0 2px; font-size: 12px; font-weight: 700; letter-spacing: .3em; color: #6d7688; text-transform: uppercase; }
+  #results .rhead { display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 24px; color: #f6ecda; margin-bottom: 14px; }
+  #results .rhead b { font-size: 14px; color: #ffc98a; font-weight: 600; }
+  #results .rrow { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px;
+    padding: 5px 8px; border-radius: 4px; font-variant-numeric: tabular-nums; }
+  #results .rrow i { font-style: normal; color: #6d7688; }
+  #results .rrow b { font-weight: 600; color: #d8dfeb; }
+  #results .rrow.you { background: rgba(127, 224, 138, .1); color: #d6f5da; }
+  #results .rrow.you b { color: #7fe08a; }
+  #results .rmeta { margin-top: 12px; color: #6d7688; font-size: 11px; letter-spacing: .04em; }
+  #results .rtable { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 14px; margin-top: 12px;
+    padding-top: 10px; border-top: 1px solid #232d3f; }
+  #results .rtable span { display: flex; justify-content: space-between; font-size: 11px; color: #8d97ab; }
+  #results .rtable span b { color: #d8dfeb; }
+  #results .rtable span.you, #results .rtable span.you b { color: #7fe08a; }
+  #results .rnext { margin-top: 8px; color: #ffc98a; font-size: 12px; }
+  #results .rhint { margin-top: 14px; color: #6d7688; font-size: 11px; letter-spacing: .12em; }
+  #results .rhint b { color: #b9c3d4; }
+  #boottrack {
+    width: 240px; height: 3px; margin-top: 14px;
+    background: #1c2336; border-radius: 2px; overflow: hidden;
+  }
+  #bootbar { width: 0; height: 100%; background: #ffc98a; transition: width .2s; }
+  /* the minimap: the circuit's true shape with everybody on it */
+  #map {
+    position: fixed; right: 18px; bottom: 18px; width: 150px; height: 150px;
+    opacity: .85; pointer-events: none;
+  }
 
   /* The order board. Five other cars in the dark are a set of tail lights;
      a list of names is a field you are working through. */
@@ -136,9 +188,12 @@
   <div id="where"><div id="circuit"></div><div id="sect"></div></div>
   <a id="back" href="./index.html">&larr; back to the block</a>
   <div id="dash"><div id="speed">0</div><div id="gear"></div><div id="drift">drift</div></div>
-  <div id="clock"><div id="time">0.00</div><div id="lap"></div><div id="best"></div><div id="pos"></div></div>
+  <div id="clock"><div id="time">0.00</div><div id="delta"></div><div id="lap"></div><div id="best"></div><div id="pos"></div></div>
   <div id="board"></div>
+  <canvas id="map" width="150" height="150"></canvas>
   <div id="msg"></div>
+  <div id="introcard" class="hidden"></div>
+  <div id="results" class="hidden"></div>
   <div id="cam">
     <button id="camL" title="look left (q)">&#9668;</button>
     <button id="camB" title="look behind (v)">&#8635;</button>
@@ -155,7 +210,7 @@
   </div>
   <div id="hint"><b>h</b> &mdash; controls</div>
 </div>
-<div id="boot"><div>building the circuit…</div><small id="bootmsg"></small></div>
+<div id="boot"><div>building the circuit…</div><small id="bootmsg"></small><div id="boottrack"><div id="bootbar"></div></div></div>
 
 <script type="importmap">
 { "imports": { "three": "./vendor/three/three.module.js" } }
@@ -176,7 +231,16 @@
     if (!window.DYNAMO) fail((e.message || 'script error') + (e.filename ? ' — ' + e.filename.split('/').pop() : ''));
   }, true);
   if (location.protocol === 'file:') fail('opened over file:// — ES modules are blocked. Serve it: npm run dev');
-  setTimeout(function () { if (!window.DYNAMO) fail('module never evaluated after 10s — check the console'); }, 10000);
+  // The build is async now and narrates its progress by bumping __BUILD_BEAT;
+  // a page is only dead if there is no DYNAMO and no heartbeat either.
+  var iv = setInterval(function () {
+    if (window.DYNAMO) { clearInterval(iv); return; }
+    var beat = window.__BUILD_BEAT || 0;
+    if (Date.now() - beat > 10000 && performance.now() > 10000) {
+      clearInterval(iv);
+      fail('module never evaluated — check the console');
+    }
+  }, 2500);
 })();
 </script>
 </body>

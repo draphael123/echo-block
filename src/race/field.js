@@ -30,6 +30,10 @@ const GRID_S = 80;              // where the back row sits
 // job of making a mirror full of headlights feel like a field of drivers. Pace
 // is the only thing that differs mechanically — same car, same physics, less
 // ambition — because a rival that cheats is not somebody you can learn from.
+// These numbers only mean something because of how driver.js applies them:
+// pace scales the driver's TARGETS (it lifts at pace x every cap), not the
+// throttle. As a throttle multiplier the whole 1.00–0.90 spread collapsed to
+// zero on corner-capped circuits and grid position decided every race.
 const RUNNERS = [
   { name: 'Vasey', policy: 'racing', pace: 1.00, paint: 2 },
   { name: 'Ó Broin', policy: 'racing', pace: 0.97, paint: 5 },
@@ -68,7 +72,25 @@ export function buildField(track, ground, buildCar, { count = FIELD_SIZE, player
     addTo(scene) { for (const c of cars) scene.add(c.root); },
     start() { for (const c of cars) c.start(); },
     reset() { for (const c of cars) c.reset(); },
-    update(dt, laps) { for (const c of cars) c.update(dt, laps); },
+    update(dt, laps, player) {
+      for (const c of cars) c.update(dt, laps, player);
+      // Rivals have no car-vs-car collision and were driving through each
+      // other — over a thousand frames of overlap per race, cars fully inside
+      // one another off the line. This is not physics, just manners: two
+      // centres inside 40 voxels get nudged apart along the line between
+      // them, a little per frame, and the drivers steer back to their own
+      // lines afterwards like they do after any shove.
+      for (let i = 0; i < cars.length; i++) for (let j = i + 1; j < cars.length; j++) {
+        const a = cars[i].car.state, b = cars[j].car.state;
+        const dx = b.x - a.x, dz = b.z - a.z;
+        const d = Math.hypot(dx, dz);
+        if (d > 40 || d < 0.01) continue;
+        const push = Math.min(2.4, (40 - d) * 0.2);
+        const nx = dx / d, nz = dz / d;
+        a.x -= nx * push; a.z -= nz * push;
+        b.x += nx * push; b.z += nz * push;
+      }
+    },
     setWet(w) { for (const c of cars) c.car.setWet(w); },
 
     // The first car whose box you are inside. One per frame is enough — you
@@ -84,10 +106,21 @@ export function buildField(track, ground, buildCar, { count = FIELD_SIZE, player
     // not straight-line distance — on a loop those two disagree by half a lap,
     // and the version that used straight-line distance put you second while you
     // were leading by a corner.
-    standings(playerProgress) {
-      const all = cars.map(c => ({ name: c.name, progress: c.progress, you: false }));
-      all.push({ name: 'you', progress: playerProgress, you: true });
-      all.sort((a, b) => b.progress - a.progress);
+    //
+    // FINISHED cars rank by WHEN they finished, not by progress. Frozen
+    // progress ties at laps*total+epsilon for every finisher, and sorting ties
+    // returns roster order — a rival that won by twenty seconds was ranked
+    // last. `playerFinishedT` is the player's race clock at the line, or null
+    // while they are still out.
+    standings(playerProgress, playerFinishedT = null) {
+      const all = cars.map(c => ({ name: c.name, progress: c.progress, fin: c.finishedT, you: false }));
+      all.push({ name: 'you', progress: playerProgress, fin: playerFinishedT, you: true });
+      all.sort((a, b) => {
+        if (a.fin !== null && b.fin !== null) return a.fin - b.fin;
+        if (a.fin !== null) return -1;
+        if (b.fin !== null) return 1;
+        return b.progress - a.progress;
+      });
       return all;
     },
   };

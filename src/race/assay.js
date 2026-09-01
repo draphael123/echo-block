@@ -36,7 +36,7 @@ function lap(track, opts = {}) {
   c.state.y = c.state.yView = track.elev(80) - 1;
 
   const driver = createDriver(track, { policy, startS: 80 });
-  let t = 0, contacts = 0, wasDown = false, offRoad = 0;
+  let t = 0, contacts = 0, wedges = 0, wasDown = false, offRoad = 0;
   const LIMIT = 90 * laps + 60;
 
   while (driver.lap < laps && t < LIMIT) {
@@ -47,8 +47,13 @@ function lap(track, opts = {}) {
     wasDown = c.state.crash > 0;
     if (c.state.wedged) {
       c.state.wedged = false;
+      wedges++;
       const spot = safeSpot(track.path, ground, d.s);
-      if (spot) { c.respawn(spot.x, spot.z, spot.heading, track.elev(spot.s) - 1); driver.reset(spot.s); }
+      // reseat, not reset — reset() zeroed the lap counter, so a wedged
+      // baseline restarted its race and the A/B measured the wedge, not the
+      // part. Three parts on two tracks once reported the identical 5.85s:
+      // the cost of one respawn cycle.
+      if (spot) { c.respawn(spot.x, spot.z, spot.heading, track.elev(spot.s) - 1); driver.reseat(spot.s); }
     }
     c.step(dt, d.throttle, d.steer, ground, false, false);
     t += dt;
@@ -57,6 +62,7 @@ function lap(track, opts = {}) {
     time: +t.toFixed(2),
     finished: driver.lap >= laps,
     contacts,
+    wedges,
     offRoad: +offRoad.toFixed(1),
     avg: +(c.state.dist / t).toFixed(1),
   };
@@ -125,11 +131,17 @@ const ASSAYS = {
       // Bounded BELOW as well as above. 3.6 car widths measured as "you have
       // to aim it" and drove like a corridor; a road you cannot race two cars
       // down fails this claim in the other direction.
-      holds: median >= 4.2 && median < 7 && pinched < 0.2,
+      //
+      // RECALIBRATED with the city-wide widening (playtest, 2026-09-01): a
+      // human drove the old 5.9-car-width median and called the whole city
+      // narrow. The Old Town's claim is now RELATIVE — clearly the tightest
+      // road in the city (its 130 half against the Parade's 280) — and the
+      // absolute window moves to match what was actually driven.
+      holds: median >= 7 && median < 13 && pinched < 0.15,
       say: `median corridor ${median.toFixed(1)} car widths, tightest ${tightest.toFixed(1)}`
         + `, ${Math.round(pinched * 100)}% of the lap under three`
-        + ` — ${median < 4.2 ? 'too tight to race two cars down'
-          : median >= 7 ? 'room to be sloppy; the narrowness is set dressing'
+        + ` — ${median < 7 ? 'too tight to race two cars down'
+          : median >= 13 ? 'room to be sloppy; the narrowness is set dressing'
           : 'tight enough to place the car, wide enough to fight over'}`,
     };
   },
@@ -203,20 +215,30 @@ export function parts(track) {
   // The baseline has to run in the SAME conditions as the parts, or on a wet
   // circuit every upgrade appears to cost you five seconds — which is the rain,
   // not the part. An A/B with two variables is not an A/B.
+  //
+  // And the same POLICY. The racing head never reads sightRange(), so a bigger
+  // beam could not show value through it on any circuit — the one upgrade the
+  // whole lighting design hangs on measured at zero on the two tracks it must
+  // matter on. Beam is A/B'd through the CAUTIOUS head, the one that drives by
+  // what it can see, against a cautious baseline.
   const wet = track.spec.wet || 0;
   const base = lap(track, { policy: 'racing', wet });
+  const baseSighted = lap(track, { policy: 'cautious', wet });
   const each = {};
   for (const [k, v] of Object.entries({ vmax: 1.25, brake: 1.6, grip: 1.32, beam: 1.9 })) {
-    const r = lap(track, { policy: 'racing', tune: { [k]: v }, wet });
+    const pol = k === 'beam' ? 'cautious' : 'racing';
+    const ref = k === 'beam' ? baseSighted : base;
+    const r = lap(track, { policy: pol, tune: { [k]: v }, wet });
     // A part the DRIVER cannot use is not a part that costs you time — it is a
     // measurement the harness cannot make. Saying "-110s" would be a lie about
     // the part when it is a fact about the bot.
     each[k] = r.finished
-      ? { time: r.time, saves: +(base.time - r.time).toFixed(2), contacts: r.contacts }
+      ? { time: r.time, saves: +(ref.time - r.time).toFixed(2), contacts: r.contacts,
+          ...(r.wedges || ref.wedges ? { note: `wedged ${ref.wedges}v${r.wedges} — treat the number as suspect` } : {}) }
       : { time: null, saves: null, contacts: r.contacts, note: 'driver could not finish with this fitted' };
   }
   console.log(`%c${track.name} — what a fully fitted part is worth`, 'font-weight:bold');
-  console.log('  baseline ' + base.time + 's');
+  console.log('  baseline ' + base.time + 's (sighted ' + baseSighted.time + 's for beam)');
   console.table(each);
-  return { track: track.id, base: base.time, each };
+  return { track: track.id, base: base.time, baseSighted: baseSighted.time, each };
 }

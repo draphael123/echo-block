@@ -10,7 +10,11 @@
 // unlit and therefore the one you commit to on faith.
 const H = (half, f) => Math.round(half * f);
 // a grand prix grid needs six cars abreast, and a car is 26 voxels
-const HALF = 150;
+// 280, roughly doubled from 150 (playtest, 2026-09-01): from the seat the
+// road read narrow at speed. The dodge maths scale with it; the two
+// opposite-side hazard pairs moved apart below because crossing distance
+// scales with the road while the driver's lateral ratio does not.
+const HALF = 280;
 
 export default {
   id: 'parade',
@@ -61,13 +65,13 @@ export default {
   hazards: [
     { s: 700, u: H(HALF, 0.62), r: 30, kind: 'works' },
     { s: 2060, u: H(HALF, -0.30), r: 32, kind: 'skip' },
-    { s: 2330, u: H(HALF, 0.34), r: 30, kind: 'works' },
+    { s: 2480, u: H(HALF, 0.34), r: 30, kind: 'works' },
     { s: 2900, u: H(HALF, -0.34), r: 34, kind: 'broken' },
-    { s: 3190, u: H(HALF, 0.30), r: 30, kind: 'works' },
+    { s: 3320, u: H(HALF, 0.30), r: 30, kind: 'works' },
     { s: 4300, u: H(HALF, -0.55), r: 32, kind: 'skip' },
     { s: 5430, u: H(HALF, 0.34), r: 30, kind: 'works' },
-    { s: 5700, u: H(HALF, -0.34), r: 34, kind: 'broken' },
-    { s: 6150, u: H(HALF, 0.28), r: 30, kind: 'works' },
+    { s: 5850, u: H(HALF, -0.34), r: 34, kind: 'broken' },
+    { s: 6250, u: H(HALF, 0.28), r: 30, kind: 'works' },
   ],
 
   // Kept clear of the parking bays, or a crosser baulks mid-road.
@@ -104,12 +108,12 @@ export default {
   ],
 
   traffic: [
-    { s: 600, u: 54, speed: 92, dir: 1 },
-    { s: 1750, u: -54, speed: 78, dir: -1 },
-    { s: 2700, u: 50, speed: 104, dir: 1 },
-    { s: 3900, u: -50, speed: 88, dir: -1 },
-    { s: 4900, u: 56, speed: 112, dir: 1 },
-    { s: 6050, u: -56, speed: 70, dir: -1 },
+    { s: 600, u: 100, speed: 92, dir: 1 },
+    { s: 1750, u: -100, speed: 78, dir: -1 },
+    { s: 2700, u: 94, speed: 104, dir: 1 },
+    { s: 3900, u: -94, speed: 88, dir: -1 },
+    { s: 4900, u: 104, speed: 112, dir: 1 },
+    { s: 6050, u: -104, speed: 70, dir: -1 },
   ],
 
   // Street furniture, in track coordinates.
@@ -126,5 +130,10 @@ export default {
   laps: 3,
 
   landmarks: { gasholder: [60, -40, 46, 132], waterTower: [-210, 190], pylons: 4 },
+  // the measured clean racing-policy lap, which the purse pays pace against
+  // the road's own face and the streetlight's own colour -- see ribbon()
+  surface: 'street',
+  lampColor: '#ffa23c',
+  refLap: 40,
   wet: 0,
 };

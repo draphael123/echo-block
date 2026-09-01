@@ -16,6 +16,7 @@ import { buildLife, buildTraffic } from './life.js';
 import { buildField, gridSlot, fieldSizeOf } from './field.js';
 import * as GP from './gp.js';
 import { createAudio } from './audio.js';
+import { createMusic } from '../music.js';
 import { frame as pathFrame } from './path.js';
 import { buildSmoke, neonFlicker } from '../fx.js';
 import * as Garage from './garage.js';
@@ -48,7 +49,15 @@ scene.fog = new THREE.FogExp2(new THREE.Color(SKY.fog), SKY.fogD);
 const sky = buildSky(SKY);
 scene.add(sky);
 
-const track = buildTrack(SPEC);
+// The boot screen narrates the build phase by phase with a real progress bar
+// — a forty-second synchronous build looked identical to a crash.
+const bootMsg = document.getElementById('bootmsg');
+const bootBar = document.getElementById('bootbar');
+const track = await buildTrack(SPEC, (label, frac) => {
+  window.__BUILD_BEAT = Date.now();          // the boot watchdog's heartbeat
+  if (bootMsg) bootMsg.textContent = label;
+  if (bootBar) bootBar.style.width = Math.round((frac || 0) * 100) + '%';
+});
 scene.add(track.group);
 const ground = new Ground(track.field);
 
@@ -77,8 +86,12 @@ scene.add(moon, moon.target);
 
 // Only the poles near the car are lit. The forward renderer loops every light
 // per pixel, and a circuit has an order of magnitude more poles than a block.
+// Each circuit lights its streets in its own colour — warm sodium on the
+// Parade, gas-lamp amber in the Old Town, cold floodlight white at the Docks,
+// deep sodium orange on the bypass. Cheapest atmosphere per byte in the game.
+const LAMP_COL = new THREE.Color(SPEC.lampColor || '#ffa23c');
 const LAMPS = track.anchors.lamps.map(([x, y, z]) => {
-  const l = new THREE.SpotLight(0xffa23c, 150000, 260, 0.85, 0.75, 2);
+  const l = new THREE.SpotLight(LAMP_COL, 170000, 280, 0.85, 0.75, 2);
   l.position.set(x, y, z);
   l.target.position.set(x, 2, z + 8);
   l.visible = false;
@@ -168,7 +181,7 @@ let zoom = 1;
 // heading. Held on a key or a button rather than latched: you want to glance
 // at what is beside you and then have the road back, and a camera you have to
 // put away is a camera you crash with.
-let camYaw = 0, camYawWant = 0;
+let camYaw = 0, camYawWant = 0, camDrop = 0;
 const camPos = new THREE.Vector3(), camAim = new THREE.Vector3();
 
 let lastW = 0, lastH = 0;
@@ -198,10 +211,12 @@ const keys = new Set();
 const wet = track.spec.wet || 0;
 
 const audio = createAudio();
+const music = createMusic();
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   audio.start();
-  if (k === 'm') { const m = audio.mute(); hud.msg.textContent = m ? 'sound off' : 'sound on'; msgUntil = time + 1.2; }
+  music.start('race');
+  if (k === 'm') { const m = audio.mute(); music.mute(m); hud.msg.textContent = m ? 'sound off' : 'sound on'; msgUntil = time + 1.2; }
   if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
   keys.add(k);
   if (k === 'r') reset();
@@ -247,6 +262,7 @@ const hud = {
   best: document.getElementById('best'),
   lap: document.getElementById('lap'),
   drift: document.getElementById('drift'),
+  delta: document.getElementById('delta'),
   gear: document.getElementById('gear'),
   pos: document.getElementById('pos'),
   circuit: document.getElementById('circuit'),
@@ -255,15 +271,88 @@ const hud = {
 };
 hud.circuit.textContent = track.name;
 
+// ------------------------------------------------------------------ minimap
+// The circuit's true shape with everybody on it. A racer glances at a map for
+// two facts — where does the road go next, and where is everybody — so it is
+// dots on an outline and nothing else.
+const map = document.getElementById('map');
+const mapCtx = map.getContext('2d');
+const MAP = (() => {
+  const f = pathFrame();
+  let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+  const pts = [];
+  for (let sm = 0; sm < track.path.total; sm += 24) {
+    track.path.at(sm, f);
+    pts.push([f.x, f.z]);
+    x0 = Math.min(x0, f.x); x1 = Math.max(x1, f.x);
+    z0 = Math.min(z0, f.z); z1 = Math.max(z1, f.z);
+  }
+  const pad = 12, W = map.width;
+  const sc = (W - pad * 2) / Math.max(x1 - x0, z1 - z0);
+  const ox = (W - (x1 - x0) * sc) / 2, oz = (W - (z1 - z0) * sc) / 2;
+  const px = (x, z) => [ox + (x - x0) * sc, oz + (z - z0) * sc];
+  const line = document.createElement('canvas');
+  line.width = line.height = W;
+  const g = line.getContext('2d');
+  g.strokeStyle = 'rgba(222,228,246,0.45)';
+  g.lineWidth = 4; g.lineJoin = 'round';
+  g.beginPath();
+  pts.forEach(([mx, mz], i) => { const [a, b] = px(mx, mz); if (i) g.lineTo(a, b); else g.moveTo(a, b); });
+  g.closePath(); g.stroke();
+  track.path.at(30, f);                       // the start line, marked
+  const [sx, sz] = px(f.x, f.z);
+  g.fillStyle = '#ffc98a'; g.fillRect(sx - 3, sz - 3, 6, 6);
+  return { line, px };
+})();
+function drawMap() {
+  mapCtx.clearRect(0, 0, map.width, map.height);
+  mapCtx.drawImage(MAP.line, 0, 0);
+  mapCtx.fillStyle = 'rgba(255,138,106,0.9)';
+  for (const r of field.cars) {
+    const [a, b] = MAP.px(r.car.state.x, r.car.state.z);
+    mapCtx.beginPath(); mapCtx.arc(a, b, 3, 0, 7); mapCtx.fill();
+  }
+  const [a, b] = MAP.px(car.state.x, car.state.z);
+  mapCtx.fillStyle = '#ffffff';
+  mapCtx.beginPath(); mapCtx.arc(a, b, 4.2, 0, 7); mapCtx.fill();
+}
+
 // Per circuit. Three laps of the Old Town's 359 metres is over in ninety
 // seconds and two of the Ring Road's 698 is a race with a shape; one number for
 // four tracks of wildly different length was a number chosen for one of them.
 const LAPS = SPEC.laps || 3;
 
+// THE GANTRY RUNS THE COUNTDOWN. The start lights lived in the HUD while the
+// steel frame the whole grid is staring at stayed decoration. Three lamps hang
+// under the crossbar as scene objects — red through the count, all-green at
+// GO, gone two seconds later. Lights only; the voxels are not touched.
+const lampFrame = pathFrame();
+const lampGeo = new THREE.PlaneGeometry(9, 9);
+const startLamps = [-44, 0, 44].map((u) => {
+  track.path.place(30, u, lampFrame);
+  const m = new THREE.Mesh(lampGeo, new THREE.MeshBasicMaterial({
+    color: 0xd83a34, transparent: true, opacity: 0.95, toneMapped: false, depthWrite: false,
+  }));
+  m.position.set(lampFrame.x, track.elev(30) + 100, lampFrame.z);
+  scene.add(m);
+  return m;
+});
+let lampsOffAt = 0;
+function lampsRed() {
+  lampsOffAt = 0;
+  for (const m of startLamps) { m.visible = true; m.material.color.setHex(0xd83a34); }
+}
+function lampsGo(at) {
+  lampsOffAt = at + 2;
+  for (const m of startLamps) m.material.color.setHex(0x59d977);
+}
+
 // A standing start needs a start. Without it the race began the instant you
 // touched the throttle, which on a six-car grid means whoever's finger moved
 // first — and made the lights on the gantry a decoration.
-const GRID_HOLD = 3.2;
+// 3.0, not 3.2 — the light shows ceil(countdown), so 3.2 flashed a "4" for a
+// fifth of a second before the real sequence started.
+const GRID_HOLD = 3.0;
 let countdown = GRID_HOLD;
 
 // Are we in a championship, and is THIS its current round?
@@ -272,24 +361,96 @@ const inGP = !!gp && GP.roundTrack(gp) === track.id;
 let lapTime = 0, lap = 0, running = false, done = false;
 let s = 80, prevS = 80, crashes = 0, wasDown = false, downAt = 0;
 let struck = 0, msgUntil = 0, wasBoosting = false, lastLight = 99;
-let best = +(localStorage.getItem('dynamo.lap') || 0) || null;
+// The race clock — the same clock the rivals keep, so finish ORDER can be
+// ranked by when everybody actually crossed the line (see field.standings).
+let raceClock = 0;
+// off-the-map grace and the stuck-against-a-wall hint timer
+let offCourse = 0, pinned = 0;
+
+// ----------------------------------------------------- ghost, delta, sectors
+// THE GHOST is the best lap, embodied: position samples at 10Hz, saved with
+// the save, replayed as a see-through car. It is also the timing reference —
+// the live delta and the sector splits are all "where was the ghost when it
+// was here", which is why one recording serves all three.
+let ghostData = (savefile.ghosts && savefile.ghosts[track.id]) || null;
+let rec = [], recTimer = 0, gPtr = 0;
+function ghostTimeAt(atS) {
+  if (!ghostData) return null;
+  const f = ghostData.f, n = (f.length / 5) | 0;
+  if (gPtr >= n) gPtr = 0;
+  if (gPtr > 0 && f[gPtr * 5 + 4] > atS + 400) gPtr = 0;      // new lap
+  while (gPtr < n - 1 && f[gPtr * 5 + 4] < atS) gPtr++;
+  return gPtr * ghostData.dt;
+}
+let ghost = null;
+function buildGhost() {
+  if (ghost) { scene.remove(ghost.root); }
+  const g = buildCar(savefile.paint);
+  g.beam.visible = false;
+  g.root.traverse((o) => {
+    if (o.isMesh) {
+      o.castShadow = o.receiveShadow = false;
+      o.material = o.material.clone();
+      o.material.transparent = true;
+      o.material.opacity = 0.28;
+      o.material.depthWrite = false;
+    }
+  });
+  g.root.name = 'ghost';
+  g.root.visible = false;
+  scene.add(g.root);
+  ghost = g;
+}
+if (ghostData) buildGhost();
+
+// sector gates at thirds, timed against the ghost
+const SEC_AT = [track.path.total / 3, (track.path.total * 2) / 3];
+// racing furniture state
+let lastPlace = null, wrongWay = 0;
+// the pre-race ceremony: a slow reveal of the circuit, any key skips it
+let intro = 0;
+const introCard = document.getElementById('introcard');
+const resultsEl = document.getElementById('results');
+if (introCard) {
+  const bst = savefile.bests && savefile.bests[track.id];
+  introCard.innerHTML = `<h1>${track.name}</h1><p>${track.spec.blurb}</p>`
+    + `<div class="facts">${LAPS} laps &middot; ${Math.round(track.lapLength * 0.08)} m`
+    + ` &middot; ${track.spec.wet ? 'rain' : 'clear'}`
+    + ` &middot; field of ${track.spec.field || 6}`
+    + (bst ? ` &middot; best ${bst.toFixed(2)}s` : '') + `</div>`;
+}
+// One score per round per page life. finish() used to award GP points every
+// time it ran, so R + a re-race after a round scored the season twice and
+// logged the result against the wrong track.
+let scored = false;
+// Best laps are PER CIRCUIT, out of the versioned save. The old global
+// dynamo.lap key meant an Old Town time was the Parade's target.
+let best = savefile.bests[track.id] || null;
 const splits = [];
 
-function reset() {
+function reset(ceremony = false) {
+  // The first arrival gets the flyover; R gets straight back on the grid.
+  intro = ceremony ? 6.0 : 0;
+  if (introCard) introCard.classList.toggle('hidden', !ceremony);
+  if (resultsEl) resultsEl.classList.add('hidden');
+  lastPlace = null; wrongWay = 0; rec = []; recTimer = 0; gPtr = 0;
+  if (ghost) ghost.root.visible = false;
   track.path.place(START.s, START.u, gridFrame);
   car.respawn(gridFrame.x, gridFrame.z, Math.atan2(gridFrame.tx, gridFrame.tz),
     track.elev(START.s) - 1);
   field.reset();
   car.state.crash = 0; car.state.dist = 0;
-  lapTime = 0; lap = 0; running = false; done = false;
+  lapTime = 0; lap = 0; running = false; done = false; raceClock = 0;
   countdown = GRID_HOLD; lastLight = 99;
   s = prevS = START.s; crashes = 0; wasDown = false; struck = 0; msgUntil = 0;
+  offCourse = 0; pinned = 0;
   splits.length = 0;
+  lampsRed();
   hud.msg.innerHTML = inGP
     ? `<b>round ${gp.round + 1} of ${GP.ROUNDS.length}</b><span class="dim">${track.name}</span>`
     : '';
 }
-reset();
+reset(true);
 
 // What happened, who scored, and whether the championship is over.
 //
@@ -298,46 +459,73 @@ reset();
 // them inline inside an `if` nested in the lap check was where a bug would live.
 function finish() {
   const mine = lap * track.path.total + s;
-  const table = field.standings(mine);
+  const table = field.standings(mine, raceClock);
   const place = table.findIndex(r => r.you);
   const order = table.map(r => r.name);
 
   const paid = Garage.purse({
     won: place === 0, laps: LAPS, seconds: splits.reduce((a, b) => a + b, 0), crashes, struck,
+    refLap: track.spec.refLap,
   });
   savefile.money += paid;
   savefile.races++;
 
-  const ORD = ['1st', '2nd', '3rd', '4th', '5th', '6th'];
-  let head = `<b>${ORD[place] || (place + 1)} &middot; ${paid} earned</b>`;
-  let body = `<span class="dim">${splits.map(x => x.toFixed(2)).join(' &middot; ')}</span><br>`
-    + `${crashes} crash${crashes === 1 ? '' : 'es'}`
-    + (struck ? ` &nbsp; ${struck} pedestrian${struck === 1 ? '' : 's'}` : '');
+  // the tally the pit wall shows: races, wins, clean runs, per circuit
+  savefile.stats = savefile.stats || {};
+  const st = savefile.stats[track.id] = savefile.stats[track.id] || { races: 0, wins: 0, clean: 0 };
+  st.races++; if (place === 0) st.wins++; if (crashes === 0) st.clean++;
 
-  if (inGP) {
+  // A RESULTS BOARD, not a text blob: the classification with real times for
+  // everyone who crossed the line, the purse, the season if there is one.
+  const ORD = ['1st', '2nd', '3rd', '4th', '5th', '6th'];
+  const fmt = (sec) => { const m = Math.floor(sec / 60); return m + ':' + (sec - m * 60).toFixed(2).padStart(5, '0'); };
+  const rows = table.map((r, i) => {
+    const tStr = r.you ? fmt(raceClock)
+      : (r.fin !== null ? fmt(r.fin) : `+${Math.max(1, Math.round((mine - r.progress) * 0.08))}m`);
+    return `<div class="rrow${r.you ? ' you' : ''}"><i>${i + 1}</i><span>${r.name}</span><b>${tStr}</b></div>`;
+  }).join('');
+
+  let headline = `${ORD[place] || (place + 1)}`;
+  let payline = `${paid} earned`;
+  let gpHtml = '', hint = '<b>R</b> race again &nbsp; <b>G</b> garage';
+
+  if (inGP && !scored) {
+    scored = true;
     const r = GP.score(savefile, order);
     const pts = r.awarded.you || 0;
-    head = `<b>${ORD[place] || (place + 1)} &middot; ${pts} point${pts === 1 ? '' : 's'} `
-      + `&middot; ${paid} earned</b>`;
-    body += `<div class="table">` + r.standings.map(x =>
+    payline = `${pts} point${pts === 1 ? '' : 's'} &middot; ${paid} earned`;
+    gpHtml = `<div class="rtable">` + r.standings.map(x =>
       `<span class="${x.you ? 'you' : ''}">${x.name}<b>${x.points}</b></span>`).join('') + `</div>`;
     if (r.finished) {
       const prize = GP.prize(savefile.gp);
       savefile.money += prize;
-      const won = r.standings[0].you;
-      head = `<b>${won ? 'CHAMPION' : 'season over'} &middot; ${prize + paid} earned</b>`;
-      body += `<span class="dim">the season is done — G for a new one</span>`;
+      headline = r.standings[0].you ? 'CHAMPION' : 'season over';
+      payline = `${prize + paid} earned`;
+      hint = '<b>G</b> start a new season &nbsp; <b>R</b> race again';
     } else {
       const next = GP.roundTrack(savefile.gp);
       const nt = TRACKS.find(t => t.id === next);
-      body += `<span class="dim">next round: ${nt.name} — N to go</span>`;
+      gpHtml += `<div class="rnext">next round: ${nt.name}</div>`;
+      hint = '<b>N</b> next round &nbsp; <b>R</b> race again';
       nextRound = next;
     }
   }
 
   Garage.save(savefile);
   paintGarage();
-  hud.msg.innerHTML = head + body + ` &nbsp; <span class="dim">R to reset</span>`;
+  hud.msg.innerHTML = '';
+  if (resultsEl) {
+    resultsEl.innerHTML = `<div class="rcard"><h2>${track.name}</h2>`
+      + `<div class="rhead">${headline}<b>${payline}</b></div>`
+      + rows
+      + `<div class="rmeta">${splits.map(x => x.toFixed(2)).join(' &middot; ')}`
+      + ` &nbsp;&mdash;&nbsp; ${crashes} crash${crashes === 1 ? '' : 'es'}`
+      + (struck ? ` &middot; ${struck} pedestrian${struck === 1 ? '' : 's'}` : '')
+      + (best ? ` &middot; best ${best.toFixed(2)}s` : '') + `</div>`
+      + gpHtml
+      + `<div class="rhint">${hint}</div></div>`;
+    resultsEl.classList.remove('hidden');
+  }
 }
 let nextRound = null;
 
@@ -369,6 +557,15 @@ function tick() {
     if (keys.has('a') || keys.has('arrowleft')) steer = -1;
     if (keys.has('d') || keys.has('arrowright')) steer = 1;
   } else throttle = -0.6;
+  // THE CEREMONY, then the lights. First arrival gets six seconds of the
+  // circuit — a high reveal swooping down to the grid while the card says
+  // where you are and what it asks. Any key skips straight to the countdown.
+  if (intro > 0) {
+    intro -= dt;
+    if (keys.size) intro = 0;
+    if (intro <= 0 && introCard) introCard.classList.add('hidden');
+    throttle = 0; steer = 0; drift = false;
+  } else
   // THE LIGHTS. Nobody moves until they go out — including you, which is why
   // the throttle is held at zero rather than merely ignored. A countdown you can
   // creep through is not a countdown.
@@ -383,6 +580,7 @@ function tick() {
       running = true;
       field.start();
       audio.beep();
+      lampsGo(time);
       hud.msg.innerHTML = '<b class="light go">go</b>';
       msgUntil = time + 1.0;
     } else {
@@ -391,13 +589,53 @@ function tick() {
   }
 
   car.step(dt, throttle, steer, ground, drift);
-  if (running && !done) lapTime += dt;
+  if (running && !done) { lapTime += dt; raceClock += dt; }
 
   const loc = track.path.locate(car.state.x, car.state.z, s);
+
+  // The lap, recorded as it happens: 10Hz samples of where the car is. If the
+  // lap turns out to be the best, the recording IS the new ghost.
+  if (running && !done) {
+    recTimer += dt;
+    if (recTimer >= 0.1) {
+      recTimer -= 0.1;
+      rec.push(+car.state.x.toFixed(1), +car.state.z.toFixed(1),
+        +car.state.heading.toFixed(3), +car.state.yView.toFixed(1), +loc.s.toFixed(1));
+    }
+    // sector gates at thirds, read against the ghost's clock
+    for (const gate of SEC_AT) {
+      if (prevS < gate && loc.s >= gate && ghostData) {
+        const gt = ghostTimeAt(gate);
+        if (gt !== null) {
+          const diff = lapTime - gt;
+          hud.msg.innerHTML = `<b style="color:${diff <= 0 ? '#7fe08a' : '#ff8a6a'}">`
+            + `${diff >= 0 ? '+' : ''}${diff.toFixed(2)}</b>`;
+          msgUntil = time + 1.4;
+        }
+      }
+    }
+    // the wrong way, said plainly — a corrected player stops seeing it at once
+    const ds = loc.s - prevS;
+    if (Math.abs(ds) < track.path.total / 2) {
+      wrongWay = ds < -0.4 ? wrongWay + dt : 0;
+      if (wrongWay > 1.2) { hud.msg.innerHTML = '<b style="color:#ff8a6a">wrong way</b>'; msgUntil = time + 0.4; }
+    }
+  }
+
   if (running && !done && prevS > track.path.total * 0.8 && loc.s < track.path.total * 0.2) {
     const t = +lapTime.toFixed(2);
     splits.push(t);
-    if (!best || t < best) { best = t; localStorage.setItem('dynamo.lap', String(t)); }
+    if (Garage.recordLap(savefile, track.id, t)) {
+      best = t;
+      // the lap that just ended is the new reference: save it, embody it
+      savefile.ghosts = savefile.ghosts || {};
+      savefile.ghosts[track.id] = { dt: 0.1, lap: t, f: rec };
+      Garage.save(savefile);
+      ghostData = savefile.ghosts[track.id];
+      gPtr = 0;
+      if (!ghost) buildGhost();
+    }
+    rec = []; recTimer = 0; gPtr = 0;
     lap++;
     audio.beep();
     lapTime = 0;
@@ -411,6 +649,35 @@ function tick() {
   // Only the track knows where the tarmac ends, so it is the track that tells
   // the car. |u| is exact and free — we already have it from locate().
   car.state.offRoad = Math.abs(loc.u) > ROAD_HALF - 4;
+
+  // OFF THE MAP. The playtest wandered clean off the built world — the drag
+  // lets you crawl anywhere now, so far off the course the game has to bring
+  // you back the way every racing game does: a short grace, then a recovery.
+  if (running && !done && Math.abs(loc.u) > ROAD_HALF + 160) {
+    offCourse += dt;
+    if (offCourse > 1.2 && offCourse < 3) {
+      hud.msg.textContent = 'return to the road';
+      msgUntil = time + 0.4;
+    }
+    if (offCourse >= 3) {
+      offCourse = 0;
+      const spot = safeSpot(track.path, ground, s);
+      if (spot) {
+        car.respawn(spot.x, spot.z, spot.heading, track.elev(spot.s) - 1);
+        s = prevS = spot.s;
+        hud.msg.textContent = 'back to the road';
+        msgUntil = time + 1.4;
+      }
+    }
+  } else offCourse = 0;
+
+  // STUCK AGAINST SOMETHING. Reverse frees you everywhere on tarmac, but the
+  // playtest did not reach for it — so the game says so, once the car has
+  // been pinned under throttle for a moment.
+  if (running && !done && throttle > 0 && Math.abs(car.state.speed) < 6) {
+    pinned += dt;
+    if (pinned > 0.8 && !msgUntil) { hud.msg.textContent = 'hold S — reverse out'; msgUntil = time + 1.2; }
+  } else pinned = 0;
 
   // Somebody else's car. Solid, heavy, and the hardest thing on the circuit to
   // hit -- but still a slowdown you drive out of, not a spin.
@@ -460,16 +727,28 @@ function tick() {
 
   car.setWet(wet);
   field.setWet(wet);
-  post.params.wet = wet * 0.85;
-  post.params.rain = wet * 0.9;
-  scene.fog.density = SKY.fogD + wet * 0.00055;
+  // Cut again after the second playtest round — the rain is set dressing on
+  // top of a grip mechanic now, not a veil. The wet costs you in the TYRES.
+  post.params.wet = wet * 0.5;
+  post.params.rain = wet * 0.35;
+  scene.fog.density = SKY.fogD + wet * 0.00016;
 
   audio.update(car.state.speed, V_MAX, throttle, car.state.slip, car.state.offRoad);
   if (car.state.boost > 0 && !wasBoosting) audio.kerb();
   wasBoosting = car.state.boost > 0;
   car.present(dt);
-  field.update(dt, LAPS);
+  field.update(dt, LAPS, car.state);
   traffic.update(dt, track.path.total);
+  // Rivals meet the traffic the way you do. They collide with every wall,
+  // cone and skip through the same ground field as the player — but they were
+  // driving clean through somebody else's evening, which read as ghosts the
+  // moment anybody noticed.
+  for (const rv of field.cars) {
+    const st = rv.car.state;
+    if (st.crash > 0 || st.speed <= 40) continue;
+    const hit = traffic.hits(st.x, st.z, st.heading);
+    if (hit) { rv.car.impact(0.6, true); traffic.shove(hit, st.x, st.z); }
+  }
   life.update(time, dt, car.state.x, car.state.z);
   smoke.update(time, dt);
   for (let i = 0; i < tvs.length; i++) {
@@ -482,10 +761,33 @@ function tick() {
     m.material.opacity = 0.55 * neonFlicker(time * 0.7 + i * 3.1);
   }
 
+  // the ghost drives its saved lap against your lap clock
+  if (ghost) {
+    if (ghostData && running && !done && lapTime < ghostData.lap) {
+      const n = (ghostData.f.length / 5) | 0;
+      const gi = Math.min(Math.floor(lapTime / ghostData.dt), n - 2);
+      const fr = ghostData.f, a = gi * 5, b = a + 5;
+      const mix = Math.min(1, lapTime / ghostData.dt - gi);
+      let gdh = fr[b + 2] - fr[a + 2];
+      while (gdh > Math.PI) gdh -= Math.PI * 2;
+      while (gdh < -Math.PI) gdh += Math.PI * 2;
+      ghost.root.visible = true;
+      ghost.root.position.set(
+        fr[a] + (fr[b] - fr[a]) * mix,
+        fr[a + 3] + (fr[b + 3] - fr[a + 3]) * mix,
+        fr[a + 1] + (fr[b + 1] - fr[a + 1]) * mix);
+      ghost.root.rotation.y = fr[a + 2] + gdh * mix;
+    } else ghost.root.visible = false;
+  }
+
   const near = LAMPS
     .map(l => ({ l, d: (l.x - car.state.x) ** 2 + (l.z - car.state.z) ** 2 }))
     .sort((a, b) => a.d - b.d);
   for (let i = 0; i < near.length; i++) near[i].l.light.visible = i < LIVE_LAMPS;
+
+  // start lights: face the camera while they are up, and go out after the go
+  if (lampsOffAt && time > lampsOffAt) { lampsOffAt = 0; for (const m of startLamps) m.visible = false; }
+  for (const m of startLamps) if (m.visible) m.lookAt(camera.position);
 
   // camera: trail the heading and look well up the road — at 80 km/h you are
   // reading the corner, not the bonnet
@@ -494,7 +796,15 @@ function tick() {
   const want = shift ? Math.sign(shift) * 1.15 : camYawWant;
   camYaw += (want - camYaw) * Math.min(1, dt * 7);
   const hc = h + camYaw;
-  const back = CAM.back * zoom, up = CAM.up * zoom;
+  // The gatehouse's low vault is the set piece, so the CAMERA dips under it
+  // rather than the vault being raised to clear the camera — at 84 up the
+  // whole leg was watched through the portcullis grate. Eased, so entering
+  // the leg reads as ducking under the arch rather than a cut.
+  const sec = sectionAt(s);
+  const wantUp = CAM.up * zoom;
+  const lowCap = sec.district === 'gatehouse' ? 46 : null;
+  camDrop += (((lowCap !== null && lowCap < wantUp) ? wantUp - lowCap : 0) - camDrop) * Math.min(1, dt * 4);
+  const back = CAM.back * zoom, up = wantUp - camDrop;
   // Height is relative to the CAR, not to zero — on a 4-metre profile a fixed
   // camera height is underground at the top of the crescent.
   camPos.set(car.state.x - Math.sin(hc) * back, car.state.yView + up, car.state.z - Math.cos(hc) * back);
@@ -504,12 +814,14 @@ function tick() {
   // up a tremble past halfway -- both small enough that you feel them rather
   // than see them, which is the point.
   const fSpd = Math.min(1, Math.abs(car.state.speed) / V_MAX);
-  const wantFov = 34 + fSpd * fSpd * 8;
+  // 13 degrees across the range, was 8 — the widening moved the road edges
+  // away and took the speed read with them; the lens gives some of it back.
+  const wantFov = 34 + fSpd * fSpd * 13;
   if (Math.abs(camera.fov - wantFov) > 0.02) {
     camera.fov += (wantFov - camera.fov) * Math.min(1, dt * 3);
     camera.updateProjectionMatrix();
   }
-  const rattle = Math.max(0, fSpd - 0.5) * (car.state.offRoad ? 5.2 : 1.7);
+  const rattle = Math.max(0, fSpd - 0.5) * (car.state.offRoad ? 5.2 : 2.3);
   if (rattle > 0.01) {
     camera.position.x += Math.sin(time * 47.3) * rattle;
     camera.position.y += Math.sin(time * 61.7) * rattle * 0.8;
@@ -519,6 +831,27 @@ function tick() {
   const reach = CAM.ahead * Math.max(0, 1 - Math.abs(camYaw) / 1.2);
   camAim.set(car.state.x + Math.sin(h) * reach, car.state.yView + 16, car.state.z + Math.cos(h) * reach);
   camera.lookAt(camAim);
+  // the ceremony camera: a high reveal drifting over the circuit, then a dive
+  // to the grid that hands over exactly where the chase camera will be
+  if (intro > 0) {
+    const t6 = 6 - intro;
+    const fI = pathFrame();
+    if (t6 < 3.2) {
+      const rs = track.path.total * 0.22 + t6 * 90;
+      track.path.at(rs, fI);
+      camera.position.set(fI.x - fI.nx * 260, track.elev(rs) + 300, fI.z - fI.nz * 260);
+      track.path.at(rs + 420, fI);
+      camera.lookAt(fI.x, track.elev(rs + 420) + 20, fI.z);
+    } else {
+      const k = Math.min(1, (t6 - 3.2) / 2.6);
+      const e = k * k * (3 - 2 * k);
+      track.path.at(START.s - 320, fI);
+      const hy = track.elev(START.s - 320) + 210;
+      camera.position.set(
+        fI.x + (camPos.x - fI.x) * e, hy + (camPos.y - hy) * e, fI.z + (camPos.z - fI.z) * e);
+      camera.lookAt(car.state.x, car.state.yView + 12, car.state.z);
+    }
+  }
   sky.position.copy(camera.position);
   post.params.focus = camera.position.distanceTo(camAim);
   moon.target.position.set(car.state.x, car.state.yView, car.state.z);
@@ -548,6 +881,21 @@ function tick() {
     const gap = rel ? (mine - rel.progress) * 0.08 : 0;
     hud.pos.textContent = `P${at + 1}/${table.length}  ${gap >= 0 ? '+' : ''}${gap.toFixed(0)}m`;
     hud.pos.classList.toggle('behind', at > 0);
+    // the overtake, announced the moment it happens
+    if (lastPlace !== null && at !== lastPlace && !msgUntil) {
+      hud.msg.innerHTML = `<b style="color:${at < lastPlace ? '#7fe08a' : '#ff8a6a'}">P${at + 1}</b>`;
+      msgUntil = time + 1.1;
+    }
+    lastPlace = at;
+    // the live delta against the ghost, green when you are up on yourself
+    if (ghostData && hud.delta) {
+      const gt = ghostTimeAt(s);
+      if (gt !== null) {
+        const dl = lapTime - gt;
+        hud.delta.textContent = `${dl >= 0 ? '+' : ''}${dl.toFixed(2)}`;
+        hud.delta.className = dl <= 0 ? 'up' : 'down';
+      }
+    } else if (hud.delta) hud.delta.textContent = '';
     // The order board. Five other cars in the dark is a set of headlights; a
     // list of names is a field you are working through.
     hud.board.innerHTML = table.map((r, i) =>
@@ -555,11 +903,12 @@ function tick() {
   } else {
     hud.pos.textContent = '';
     hud.board.innerHTML = '';
+    if (hud.delta) hud.delta.textContent = '';
   }
 
-  const sec = sectionAt(s);
   hud.sect.textContent = sec.name;
   hud.sect.classList.toggle('dark', !sec.lit);
+  drawMap();
 
   post.render(scene, camera, time);
 }

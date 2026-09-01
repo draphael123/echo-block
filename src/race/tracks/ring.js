@@ -10,7 +10,8 @@
 // 140. It is the bypass; it should be the widest thing in the city and it
 // was only sixteen voxels wider than the town road.
 // the bypass, and it should feel like one
-const HALF = 196;
+// 360, roughly doubled from 196 (playtest, 2026-09-01).
+const HALF = 360;
 const H = (f) => Math.round(HALF * f);
 
 export default {
@@ -63,11 +64,22 @@ export default {
     [7900, 12], [8400, 4],
   ],
 
+  // Half of these sit JUST PAST a brow, inside the measured blind zones
+  // (348-600, 1824-2088, 4908-5196, 6432-6684 — where stopping distance
+  // exceeds sight over the crest). The first set all sat on open road, so the
+  // crests hid nothing that mattered and the sim called committing blind free:
+  // RACING WON by 11 seconds. A crest is only a question if the answer can be
+  // behind it. Same-side neighbours may sit close; opposite-side pairs keep
+  // 420+ so the S-flick stays drivable (the Parade's lesson).
   hazards: [
+    { s: 520, u: H(0.45), r: 34, kind: 'works' },
     { s: 1200, u: H(0.5), r: 34, kind: 'works' },
+    { s: 2000, u: H(-0.46), r: 34, kind: 'spill' },
     { s: 2600, u: H(-0.46), r: 36, kind: 'broken' },
-    { s: 4200, u: H(0.44), r: 34, kind: 'skip' },
+    { s: 4200, u: H(0.44), r: 34, kind: 'spill' },
+    { s: 5060, u: H(-0.44), r: 36, kind: 'broken' },
     { s: 5400, u: H(-0.5), r: 36, kind: 'works' },
+    { s: 6550, u: H(0.44), r: 34, kind: 'spill' },
     { s: 6900, u: H(0.42), r: 36, kind: 'broken' },
   ],
 
@@ -86,14 +98,14 @@ export default {
   ],
 
   traffic: [
-    { s: 500, u: 74, speed: 120, dir: 1 },
-    { s: 1600, u: -74, speed: 104, dir: -1 },
-    { s: 2800, u: 70, speed: 132, dir: 1 },
-    { s: 3900, u: -70, speed: 96, dir: -1 },
-    { s: 5000, u: 76, speed: 126, dir: 1 },
-    { s: 6100, u: -76, speed: 110, dir: -1 },
-    { s: 7200, u: 72, speed: 138, dir: 1 },
-    { s: 8100, u: -72, speed: 100, dir: -1 },
+    { s: 500, u: 136, speed: 120, dir: 1 },
+    { s: 1600, u: -136, speed: 104, dir: -1 },
+    { s: 2800, u: 129, speed: 132, dir: 1 },
+    { s: 3900, u: -129, speed: 96, dir: -1 },
+    { s: 5000, u: 140, speed: 126, dir: 1 },
+    { s: 6100, u: -140, speed: 110, dir: -1 },
+    { s: 7200, u: 132, speed: 138, dir: 1 },
+    { s: 8100, u: -132, speed: 100, dir: -1 },
   ],
 
   furniture: {
@@ -108,8 +120,15 @@ export default {
   // thickest fog in the city -- which does the same job as the crests do:
   // it takes the distance away from you.
   sky: 'sodium',
-  // The longest lap in the city at 698 metres. Three of these is a slog; two
-  // is a race with a shape.
-  laps: 2,
+  // The longest lap in the city at 698 metres — but also the fastest: two laps
+  // was over in 68 seconds, half the length of any other race. "Three is a
+  // slog" was written before there was a field to work through; with five cars
+  // to pass, three is a race.
+  laps: 3,
+  // the measured clean racing-policy lap, which the purse pays pace against
+  // the road's own face and the streetlight's own colour -- see ribbon()
+  surface: 'motorway',
+  lampColor: '#ff9226',
+  refLap: 36,
   wet: 0,
 };

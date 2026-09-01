@@ -16,6 +16,7 @@ import { Post } from './post.js';
 import { createUI, createIntro, createDialogue } from './ui.js';
 import { buildLeaves, buildSmoke, buildCat, neonFlicker } from './fx.js';
 import { createRound } from './round.js';
+import { createMusic } from './music.js';
 
 const canvas = document.getElementById('view');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
@@ -38,8 +39,24 @@ const sky = buildSky();
 scene.add(sky);
 
 const t0 = performance.now();
-const block = buildBlock();
+// The save loads before the block is built: the player's PARKED CAR is voxels
+// in the block (its paint comes out of here), and their clothes come out of
+// here too when the cast is built further down.
+const savefile = Garage.load();
+const block = buildBlock(savefile);
 scene.add(block.group);
+
+// The hub's side of the radio: the mellow half of the same synth machine
+// (src/music.js), started on the first gesture the browser will allow audio
+// for — which is the WALK THE BLOCK click at the latest.
+const music = createMusic();
+const startMusic = () => {
+  music.start('menu');
+  removeEventListener('pointerdown', startMusic);
+  removeEventListener('keydown', startMusic);
+};
+addEventListener('pointerdown', startMusic);
+addEventListener('keydown', startMusic);
 const rig = buildLights(scene, block.anchors);
 const ground = new Ground(block.field);
 const traffic = buildTraffic(scene);
@@ -54,9 +71,6 @@ const cat = buildCat([28, -28], [28, 20], 2);
 weather.add(leaves.points, smoke.points, cat.root);
 const round = createRound(block.anchors, scene);
 
-// The save, loaded before anything that reads it: the player's clothes come out
-// of here, so it has to exist before the cast is built.
-const savefile = Garage.load();
 
 // ---------------------------------------------------------------- people
 const peopleGroup = new THREE.Group();

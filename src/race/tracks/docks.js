@@ -12,7 +12,8 @@
 // Parade, which made 'open' a word in the blurb rather than something you
 // could see out of the windscreen.
 // the widest open road in the city, as a dock should be
-const HALF = 164;
+// 300, roughly doubled from 164 (playtest, 2026-09-01).
+const HALF = 300;
 const H = (f) => Math.round(HALF * f);
 
 export default {
@@ -62,13 +63,13 @@ export default {
   ],
 
   hazards: [
-    { s: 620, u: H(0.5), r: 30, kind: 'skip' },
+    { s: 620, u: H(0.5), r: 30, kind: 'crate' },
     { s: 1500, u: H(-0.42), r: 30, kind: 'works' },
     { s: 2300, u: H(0.44), r: 34, kind: 'broken' },
     { s: 3050, u: H(-0.48), r: 30, kind: 'works' },
-    { s: 4100, u: H(0.4), r: 32, kind: 'skip' },
+    { s: 4100, u: H(0.4), r: 32, kind: 'crate' },
     { s: 4900, u: H(-0.44), r: 34, kind: 'broken' },
-    { s: 5700, u: H(0.46), r: 30, kind: 'works' },
+    { s: 5700, u: H(0.46), r: 30, kind: 'crate' },
   ],
 
   crossings: [1100, 3000, 4400, 6200, 7700],
@@ -97,12 +98,12 @@ export default {
   ],
 
   traffic: [
-    { s: 900, u: 62, speed: 84, dir: 1 },
-    { s: 2100, u: -62, speed: 72, dir: -1 },
-    { s: 3300, u: 58, speed: 96, dir: 1 },
-    { s: 4600, u: -58, speed: 66, dir: -1 },
-    { s: 5900, u: 64, speed: 88, dir: 1 },
-    { s: 7200, u: -64, speed: 78, dir: -1 },
+    { s: 900, u: 113, speed: 84, dir: 1 },
+    { s: 2100, u: -113, speed: 72, dir: -1 },
+    { s: 3300, u: 106, speed: 96, dir: 1 },
+    { s: 4600, u: -106, speed: 66, dir: -1 },
+    { s: 5900, u: 117, speed: 88, dir: 1 },
+    { s: 7200, u: -117, speed: 78, dir: -1 },
   ],
 
   furniture: {
@@ -119,5 +120,10 @@ export default {
   // a wet surface needs a BRIGHT sky to be worth having.
   sky: 'dawn',
   laps: 3,
+  // the measured clean racing-policy lap, which the purse pays pace against
+  // the road's own face and the streetlight's own colour -- see ribbon()
+  surface: 'concrete',
+  lampColor: '#cfe2ff',
+  refLap: 41,
   wet: 0.85,
 };

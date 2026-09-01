@@ -156,8 +156,20 @@ export function shed(w, x, y, z, wid, dep) {
   for (let i = 14; i < wid - 14; i += 34) {
     w.box(x + i, y + 4, z - 2, 24, 26, 2, 'metalDark');       // roller doors
     w.box(x + i + 3, y + 6, z - 3, 18, 3, 1, 'winWarmDim');
+    w.box(x + i + 9, y + 34, z - 3, 6, 2, 1, 'sodium');       // wall pack over the door
   }
   w.box(x + 6, y + WALL - 12, z - 2, wid - 12, 8, 1, 'winWarmDim');
+  // Glazing on the FLANKS too. The front had a clerestory and the sides had
+  // nothing, and from the road you mostly see a shed's side — an unlit metal
+  // box at night reads as a hole in the fog, not a sleeping building. Mostly
+  // dark panes, a few dim-warm, no grid: broken symmetry is what makes a flat
+  // box read as built rather than generated.
+  for (const fx of [x - 1, x + wid]) {
+    for (let k = 8; k < dep - 10; k += 14) {
+      const r = hash3(fx, k, z);
+      w.box(fx, y + WALL - 13, z + k, 1, 9, 8, r > 0.68 ? 'winWarmDim' : (r > 0.3 ? 'glassDark' : 'metalDark'));
+    }
+  }
 }
 
 export function bollards(w, x, y, z, len, dir) {

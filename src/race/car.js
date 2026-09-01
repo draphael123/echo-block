@@ -78,7 +78,13 @@ const OFF_DRAG = 95, OFF_ACCEL = 0.55, OFF_TURN = 0.78;
 // is that a wet lap asks the same questions as a dry one and gives you less to
 // answer them with -- and it lands squarely on the mechanic the circuit is
 // built around, because you also cannot see as far.
-const WET_GRIP = 0.80, WET_BRAKE = 0.72, WET_BEAM = 0.82;
+// Rebalanced with the readability pass (playtest, 2026-09-01): the rain was
+// carrying too much of its cost in the SCREEN — fog, spray, a short beam —
+// and the playtest called it unreadable. The beam penalty eases (0.82→0.90)
+// and the surface gets meaner instead (grip 0.80→0.72, brakes 0.72→0.64):
+// you can SEE the wet lap fine, you just cannot hold it. Same questions,
+// less to answer them with — where "less" is now tyre, not eyesight.
+const WET_GRIP = 0.72, WET_BRAKE = 0.64, WET_BEAM = 0.90;
 
 // REVERSE.
 //
@@ -91,7 +97,10 @@ const WET_GRIP = 0.80, WET_BRAKE = 0.72, WET_BEAM = 0.82;
 // which is both what selecting a gear feels like and what stops the harness --
 // whose braking policy holds throttle at -1 through every corner -- from
 // quietly driving the lap backwards.
-const V_REV = 78, REV_ACCEL = 96, REV_ENGAGE = 0.35;
+// REV_ENGAGE 0.22, was 0.35: the playtest read a pinned car as STUCK before
+// reverse arrived. Still a deliberate hold — the harness's brake-held-through-
+// corners policy runs with allowReverse false and never sees this.
+const V_REV = 78, REV_ACCEL = 96, REV_ENGAGE = 0.22;
 
 // ------------------------------------------------------- DRIFT INTO BOOST
 //
@@ -349,7 +358,7 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
 
   // one shadowless spot for the beam, plus a pool light so the road right in
   // front of the car is never black
-  const beam = new THREE.SpotLight(0xfff4d6, 240000 * (0.75 + T.beam * 0.25), BEAM, 0.42, 0.55, 1.5);
+  const beam = new THREE.SpotLight(0xfff4d6, 300000 * (0.75 + T.beam * 0.25), BEAM, 0.42, 0.55, 1.5);
   beam.position.set(0, 11, L / 2 - 2);
   const tgt = new THREE.Object3D();
   tgt.position.set(0, -10, BEAM * 0.8);
@@ -411,7 +420,14 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     } else {
       state.speed = bleed(spd, DRAG * dt);
     }
-    if (off) state.speed = bleed(state.speed, OFF_DRAG * dt);
+    // Speed-proportional, with a small constant floor. A flat OFF_DRAG of 95
+    // against 74*0.55 = 40.7 of off-road engine meant a STOPPED car on grass
+    // could never move again — throttle produced exactly nothing, reverse
+    // gained 1 v/s^2, and the stuck watchdog teleported you at 2.5s. Cutting a
+    // corner at speed still costs plenty (full drag from ~120 up); below that
+    // the drag eases off so the car can crawl back to the tarmac at ~40 v/s.
+    if (off) state.speed = bleed(state.speed,
+      (OFF_DRAG * Math.min(1, Math.abs(state.speed) / 120) + 8) * dt);
     // The boost pushes, and lifts the ceiling while it lasts. Once it expires
     // the cap drops back and drag walks you down to it, so the speed you were
     // given is spent rather than kept.
@@ -562,6 +578,12 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
   return {
     root, state, step, crash, impact, respawn, present, beam, length: L, width: W, vmax: VMAX,
     sightRange: () => BEAM * (1 - wet * (1 - WET_BEAM)),
+    // How much cornering the surface will actually sell you, 1 dry. The
+    // driver reads this to slow its corner targets in the rain — the sim's
+    // head is target-limited, not grip-limited, so without being TOLD about
+    // the surface a bot lapped the wet Docks at dry pace and the grip assay
+    // measured the rain as a filter.
+    gripFactor: () => 1 - wet * (1 - WET_GRIP),
     // How wet the road is, 0 to 1. Set by whoever owns the weather.
     setWet(v) {
       wet = Math.max(0, Math.min(1, v));

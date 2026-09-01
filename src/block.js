@@ -21,6 +21,7 @@ import { FLOOR_MAX, HEAD } from './walk.js';
 import * as P from './props.js';
 import * as S from './street.js';
 import { shopParade } from './shops.js';
+import { BODIES } from './race/car.js';
 
 export const GROUND = 2;
 export const ROAD = { z0: 46, z1: 118 };
@@ -153,8 +154,12 @@ function gableEnds(w, x, y, z, wid, dep, c) {
   for (let k = 0; k < dep; k++) {
     const rise = Math.min(half, Math.min(k, dep - 1 - k));
     for (let j = 0; j < rise; j++) for (let t = 0; t < 2; t++) {
-      w.set(x + t, y + j, z + k, c);
-      w.set(x + wid - 1 - t, y + j, z + k, c);
+      // `c` may be a banding function, like everywhere else — set() stores it
+      // raw, which is how every gable end shipped as invisible collision.
+      const nA = typeof c === 'function' ? c(x + t, y + j, z + k) : c;
+      const nB = typeof c === 'function' ? c(x + wid - 1 - t, y + j, z + k) : c;
+      w.set(x + t, y + j, z + k, nA);
+      w.set(x + wid - 1 - t, y + j, z + k, nB);
     }
   }
 }
@@ -496,7 +501,7 @@ function dressing(w, anchors) {
 }
 
 // --------------------------------------------------------------- assemble
-export function buildBlock() {
+export function buildBlock(save) {
   const w = new VoxWorld();
   const anchors = { porches: [], spills: [], lamps: [], poles: [], mailboxes: [], chimneys: [] };
   ground(w);
@@ -528,6 +533,20 @@ export function buildBlock() {
   for (const h of ROSTER)
     house(w, anchors, { ...h, z: h.dir > 0 ? FAR_Z : NEAR_Z, dep: HOUSE_DEP });
   dressing(w, anchors);
+
+  // The player's car sleeps at the kerb outside the hero house — the racing
+  // campaign made visible on the street you walk. The same wagon shell as
+  // every parked car, wearing the paint from the save, and solid the same way
+  // everything here is solid: it is voxels, so the walk field gets it free.
+  // BEFORE the mesh is built, or it would be the classic invisible collider.
+  if (save) {
+    const b = BODIES[save.paint || 0] || BODIES[0];
+    const tmp = new VoxWorld();
+    P.wagon(P.transposeXZ(tmp), 0, 0, 0);
+    for (const [k, name] of tmp.v)
+      tmp.v.set(k, name === 'carBody' ? b.body : name === 'carTrim' ? b.trim : name);
+    w.merge(tmp, { ox: -90, oy: GROUND - 2, oz: ROAD.z0 + 5 });
+  }
 
   const group = new THREE.Group();
   group.name = 'block';

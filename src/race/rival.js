@@ -24,15 +24,36 @@ export function buildRival(track, ground, buildCar, opts = {}) {
   car.respawn(f.x, f.z, Math.atan2(f.tx, f.tz), track.elev(startS) - 1);
 
   let running = false, finished = null, dist = 0;
+  // The race clock, and the moment this car crossed the line. Ranking finished
+  // cars by frozen PROGRESS was epsilon noise — every finisher freezes a voxel
+  // or two past the wrap, so the table came out in roster order. The clock all
+  // cars share (they start together and tick together) is the honest key.
+  let t = 0, finishedT = null;
 
-  function update(dt, laps) {
+  function update(dt, laps, player) {
     if (!running || finished !== null) {
       // sit on the line with the engine running
       car.step(dt, 0, 0, ground, false, false);
       car.present(dt);
       return;
     }
+    t += dt;
     const d = driver.drive(car, dt);
+    // THE PLAYER EXISTS. The driver plans its own race and is blind to cars —
+    // which read as ghosts the moment you were alongside one. The plan stands;
+    // this is reflex on top of it: a car close ahead gets a steer away and a
+    // lift, scaled by how close, the way you give anybody a car's width.
+    if (player) {
+      const st = car.state;
+      const dx = player.x - st.x, dz = player.z - st.z;
+      const ahead = dx * Math.sin(st.heading) + dz * Math.cos(st.heading);
+      const side = dx * Math.cos(st.heading) - dz * Math.sin(st.heading);
+      if (ahead > 0 && ahead < 130 && Math.abs(side) < 46) {
+        const press = 1 - ahead / 130;
+        d.steer = Math.max(-1, Math.min(1, d.steer + (side > 0 ? -0.55 : 0.55) * press));
+        if (ahead < 75 && d.throttle > 0.25) d.throttle = 0.25;
+      }
+    }
     // allowReverse false: a racing driver does not select reverse, and the
     // braking policy holds throttle at -1 through every corner.
     car.step(dt, d.throttle, d.steer, ground, false, false);
@@ -43,7 +64,7 @@ export function buildRival(track, ground, buildCar, opts = {}) {
       const spot = safeSpot(track.path, ground, d.s);
       if (spot) car.respawn(spot.x, spot.z, spot.heading, track.elev(spot.s) - 1);
     }
-    if (laps && driver.lap >= laps && finished === null) finished = dist;
+    if (laps && driver.lap >= laps && finished === null) { finished = dist; finishedT = t; }
   }
 
   // Solid, like the traffic. Same oriented box.
@@ -74,7 +95,7 @@ export function buildRival(track, ground, buildCar, opts = {}) {
     root: car.root, car, driver, update, hits, shunt,
     start() { running = true; },
     reset() {
-      running = false; finished = null; dist = 0;
+      running = false; finished = null; dist = 0; t = 0; finishedT = null;
       driver.reset(startS);
       track.path.place(startS, startU, f);
       car.respawn(f.x, f.z, Math.atan2(f.tx, f.tz), track.elev(startS) - 1);
@@ -82,5 +103,6 @@ export function buildRival(track, ground, buildCar, opts = {}) {
     get progress() { return dist; },
     get lap() { return driver.lap; },
     get done() { return finished !== null; },
+    get finishedT() { return finishedT; },
   };
 }

@@ -22,7 +22,7 @@ function noiseBuffer(ctx, seconds = 2) {
 }
 
 export function createAudio() {
-  let ctx = null, ready = false, muted = false;
+  let ctx = null, ready = false, muted = false, lastGear = 0;
   let master, engineGain, engineFilter, oscA, oscB, sub;
   let tyreGain, tyreFilter, windGain, windFilter, noise;
 
@@ -123,16 +123,26 @@ export function createAudio() {
       const f = clamp(Math.abs(speed) / vmax, 0, 1);
       // A gearbox, faked: the note climbs, snaps back and climbs again, which
       // is most of what makes an engine sound like it is accelerating rather
-      // than like a siren.
+      // than like a siren. The SNAP is the whole effect: the old smoothing
+      // constant smeared a gear change into a glide, which is a siren again.
       const gear = Math.min(4, Math.floor(f * 5));
       const withinGear = f * 5 - gear;
-      const note = 42 + withinGear * 96 + gear * 7;
-      const now = ctx.currentTime, k = 0.08;
+      const note = 40 + withinGear * 128 + gear * 8;
+      const now = ctx.currentTime;
+      const shifted = gear !== lastGear;
+      const k = shifted ? 0.015 : 0.08;
+      if (shifted && ready) {
+        // a breath off the throttle and a mechanical tick, like a real change
+        engineGain.gain.cancelScheduledValues(now);
+        engineGain.gain.setValueAtTime(0.02, now);
+        if (gear > lastGear && f > 0.2) hit(210, 0.5, 0.05, 0.07);
+        lastGear = gear;
+      }
       oscA.frequency.setTargetAtTime(note, now, k);
       oscB.frequency.setTargetAtTime(note * 1.005, now, k);
       sub.frequency.setTargetAtTime(note * 0.5, now, k);
       engineFilter.frequency.setTargetAtTime(320 + f * 2600 + (throttle > 0 ? 500 : 0), now, k);
-      engineGain.gain.setTargetAtTime(0.035 + f * 0.075 + (throttle > 0 ? 0.02 : 0), now, k);
+      engineGain.gain.setTargetAtTime(0.035 + f * 0.075 + (throttle > 0 ? 0.02 : 0), now, 0.08);
 
       // tyres: scrubbing under slip, rumbling off the tarmac
       const scrub = clamp(Math.abs(slip) * 1.7, 0, 1) * f;
