@@ -24,12 +24,15 @@ const CSS = `
 }
 #pick .sub { color: #4f5a6d; font-size: 11px; margin-bottom: 20px; letter-spacing: .04em; }
 #pick .t {
-  display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center;
+  display: grid; grid-template-columns: 1fr auto auto; gap: 16px; align-items: center;
   padding: 15px 18px; margin-bottom: 8px; cursor: pointer;
   border: 1px solid #232d3f; border-radius: 6px; background: rgba(12, 17, 28, .72);
-  transition: border-color .12s, background .12s;
+  transition: border-color .12s, background .12s, transform .14s ease;
 }
-#pick .t:hover { border-color: #ffd9a0; background: rgba(20, 27, 42, .85); }
+#pick .t:hover {
+  border-color: #ffd9a0; background: rgba(20, 27, 42, .85);
+  transform: translateX(6px);
+}
 #pick .t.on { border-color: #4a5a78; }
 #pick .nm { color: #f6ecda; font-size: 17px; font-weight: 400; letter-spacing: .01em; }
 #pick .q { color: #8d97ab; font-size: 12px; margin-top: 3px; }

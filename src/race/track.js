@@ -570,9 +570,11 @@ const DISTRICT = {
     c.blit(mid, SET + 6, c.pr.chapel);
     c.put(mid - 150, SET + 76, (x, z, ff, gy) => D.gravestones(c.w, x - 60, gy, z - 60, 120, 120, 5));
     c.put(mid + 160, SET + 66, (x, z, ff, gy) => D.gravestones(c.w, x - 50, gy, z - 50, 100, 100, 9));
-    c.run(sec.from, sec.to, SET, 46, (x, z, ff, gy) =>
-      P.hedge(c.w, x - (c.along(ff) === 'x' ? 24 : 5), gy,
-        z - (c.along(ff) === 'x' ? 5 : 24), 48, 10, 20, c.along(ff)));
+    // 24-voxel pieces, was 48: on the chapel's knoll a 48-long hedge
+    // anchored at one height floated 4+ voxels at its downhill end
+    c.run(sec.from, sec.to, SET, 24, (x, z, ff, gy) =>
+      P.hedge(c.w, x - (c.along(ff) === 'x' ? 12 : 5), gy,
+        z - (c.along(ff) === 'x' ? 5 : 12), 24, 10, 20, c.along(ff)));
     // the opposite side stays open, so the spire has sky behind it
     c.run(sec.from, sec.to, -(SET + 40), 150, (x, z, ff, gy) => P.tree(c.w, x, gy, z, 44, 15));
   },
@@ -616,9 +618,9 @@ const DISTRICT = {
       // scatter plus a canopy radius.
       c.run(sec.from, sec.to, side * (SET + 62), 124, (x, z, ff, gy, s) =>
         D.copse(c.w, x, gy, z, 88, Math.round(s)));
-      c.run(sec.from, sec.to, side * (PAVE_BACK + 8), 54, (x, z, ff, gy) =>
-        P.hedge(c.w, x - (c.along(ff) === 'x' ? 28 : 5), gy,
-          z - (c.along(ff) === 'x' ? 5 : 28), 56, 9, 14, c.along(ff)));
+      c.run(sec.from, sec.to, side * (PAVE_BACK + 8), 28, (x, z, ff, gy) =>
+        P.hedge(c.w, x - (c.along(ff) === 'x' ? 14 : 5), gy,
+          z - (c.along(ff) === 'x' ? 5 : 14), 28, 9, 14, c.along(ff)));
     }
   },
 
@@ -636,9 +638,10 @@ const DISTRICT = {
             ox: Math.round(c.f.x), oz: Math.round(c.f.z), oy: elev(s),
             rotY: facingRot(c.f.nx, c.f.nz, side),
           });
-          c.put(s, side * (PAVE_BACK + 6), (x, z, ff, gy) =>
-            P.hedge(c.w, x - (c.along(ff) === 'x' ? 26 : 4), gy,
-              z - (c.along(ff) === 'x' ? 4 : 26), 52, 8, 9 + Math.round(r * 3), c.along(ff)));
+          for (const hh of [-13, 13])
+            c.put(s + hh, side * (PAVE_BACK + 6), (x, z, ff, gy) =>
+              P.hedge(c.w, x - (c.along(ff) === 'x' ? 13 : 4), gy,
+                z - (c.along(ff) === 'x' ? 4 : 13), 26, 8, 9 + Math.round(r * 3), c.along(ff)));
           if (r > 0.6) c.put(s + 44, side * PAVE_BACK,
             (x, z, ff, gy) => c.w.stamp(P.MAILBOX, x, gy, z));
           // one house in three has its fire lit and its television on
@@ -663,9 +666,11 @@ const DISTRICT = {
     c.blit(mid + 180, SET + 8, c.pr.glass);
     c.put(mid - 190, -(SET + 34), (x, z, ff, gy) => D.allotment(c.w, x - 70, gy, z - 50, 140, 100, 4));
     c.put(mid + 110, -(SET + 34), (x, z, ff, gy) => D.allotment(c.w, x - 70, gy, z - 50, 140, 100, 12));
-    c.run(sec.from, sec.to, SET, 52, (x, z, ff, gy) =>
-      P.picketFence(c.w, x - (c.along(ff) === 'x' ? 26 : 0), gy,
-        z - (c.along(ff) === 'x' ? 0 : 26), 52, c.along(ff)));
+    // 26-voxel pieces, was 52: the park sits on THE TOP's climb now and a
+    // 52-long fence at one anchor height staircased into the air
+    c.run(sec.from, sec.to, SET, 26, (x, z, ff, gy) =>
+      P.picketFence(c.w, x - (c.along(ff) === 'x' ? 13 : 0), gy,
+        z - (c.along(ff) === 'x' ? 0 : 13), 26, c.along(ff)));
     c.run(sec.from + 60, sec.to, -(SET + 14), 130, (x, z, ff, gy) => P.tree(c.w, x, gy, z, 46, 16));
     // a lit hoarding behind the tree line, so the park's dark edge has a far
     // wall the eye can rest on
@@ -677,9 +682,12 @@ const DISTRICT = {
   // has no streetlights — there is nowhere on it for a lamp to stand.
   yard(c, sec) {
     const ax = legAxis(c.path, sec, c.f);
+    // 20-voxel wall pieces, was 42: the cut's walls are the closest prop to
+    // the kerb on the whole circuit and the relief made their long pieces
+    // float at the downhill end — the audit's biggest HARD offender
     for (const side of [-1, 1])
-      c.run(sec.from, sec.to, side * (PAVE_BACK + 8), 40, (x, z, ff, gy) =>
-        D.retainingWall(c.w, ax === 'x' ? x - 20 : x, gy, ax === 'x' ? z : z - 20, 42, ax, 38));
+      c.run(sec.from, sec.to, side * (PAVE_BACK + 8), 20, (x, z, ff, gy) =>
+        D.retainingWall(c.w, ax === 'x' ? x - 10 : x, gy, ax === 'x' ? z : z - 10, 21, ax, 38));
     gantryOver(c, sec.from + 250, PAVE_BACK + 8, 38, true);
     c.put(sec.from + 120, SET + 34, (x, z, ff, gy) => D.pallets(c.w, x, gy, z, 5));
     c.put(sec.from + 410, -(SET + 38), (x, z, ff, gy) => D.oilDrums(c.w, x, gy, z, 9));
@@ -2078,6 +2086,44 @@ export async function buildTrack(trackSpec, onPhase) {
       // as a wall — the car climbed the ramp and stopped dead at the top.
       // The lip's own stripLight rows are the warning.
     }
+  }
+
+  // THE GROUNDING AUDIT. The relief pass made every circuit hillier, and a
+  // prop anchored at one height on sloping ground floats at its far end.
+  // Sample the prop band beside the road; any column whose LOWEST voxel
+  // hangs 4–20 above the local surface is a floating prop (higher is a
+  // legitimate overhead — bunting, gantries, canopies). Counted per
+  // district, because the count tells you which BUILDER to fix.
+  {
+    const gf = frame();
+    let floats = 0, softFloats = 0;
+    const byDist = {}, byMat = {};
+    // ground-cover carpets (an allotment's dirt, a copse's litter) float
+    // SOFTLY on slopes — a few voxels, far from the kerb, invisible at
+    // night. They are counted apart so the hard count stays actionable.
+    const SOFT = new Set(['dirt', 'grass', 'grassDry', 'leafLitter', 'gravel']);
+    for (let s = 0; s < path.total; s += 6) {
+      const gy = GROUND_Y + elev(s);
+      for (const side of [-1, 1]) for (let u = ROAD_HALF + 6; u <= SET + 60; u += 6) {
+        path.place(s, side * u, gf);
+        const x = Math.round(gf.x), z = Math.round(gf.z);
+        let lowest = null, mat = null;
+        for (let k = 1; k <= 20; k++) { const v = w.get(x, gy + k, z); if (v) { lowest = k; mat = v; break; } }
+        // tree canopies HANG — that is what a canopy is. Everything else
+        // hanging is a prop that lost its ground.
+        if (lowest !== null && lowest >= 4 && mat !== 'leafDark' && mat !== 'leafMid'
+            && !w.get(x, gy, z) && !w.get(x, gy - 1, z)) {
+          if (SOFT.has(mat)) { softFloats++; continue; }
+          floats++;
+          const d2 = sectionAt(s).district;
+          byDist[d2] = (byDist[d2] || 0) + 1;
+          byMat[mat] = (byMat[mat] || 0) + 1;
+        }
+      }
+    }
+    if (floats > 20) console.warn('track: grounding audit — ' + floats
+      + ' floating prop columns beside the road (' + softFloats + ' soft ground patches, judged tolerable): '
+      + JSON.stringify(byDist) + ' materials: ' + JSON.stringify(byMat));
   }
 
 

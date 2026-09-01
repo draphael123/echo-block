@@ -219,6 +219,20 @@ scene.add(streakMesh);
 const streakA = new Float32Array(STREAK_N * 3);
 let streaksLive = false;
 
+// TYRE SMOKE: a pooled train of fading puffs off the rear wheels while the
+// slip angle is live — the drift reads from the car, not just the HUD.
+const PUFF_N = 16;
+const puffs = [];
+for (let i = 0; i < PUFF_N; i++) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(9, 9),
+    new THREE.MeshBasicMaterial({ color: 0x9aa4b0, transparent: true, opacity: 0, depthWrite: false }));
+  m.visible = false;
+  m.renderOrder = 4;
+  scene.add(m);
+  puffs.push({ m, life: 0 });
+}
+let puffTimer = 0, puffIdx = 0;
+
 let lastW = 0, lastH = 0;
 function resize() {
   const w = canvas.clientWidth || innerWidth, h = canvas.clientHeight || innerHeight;
@@ -274,7 +288,14 @@ addEventListener('keydown', (e) => {
     if (k === 't') { setPaused(false); pickerShow(); }
     return;
   }
-  if (k === 'm') { const m = audio.mute(); music.mute(m); hud.msg.textContent = m ? 'sound off' : 'sound on'; msgUntil = time + 1.2; }
+  if (k === 'm') {
+    const on = !(settings.music || settings.sfx);
+    settings.music = settings.sfx = on;
+    Garage.save(savefile);
+    applySettings();
+    hud.msg.textContent = on ? 'sound on' : 'sound off';
+    msgUntil = time + 1.2;
+  }
   if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
   keys.add(k);
   if (k === 'r') reset();
@@ -440,6 +461,16 @@ let lapTime = 0, lap = 0, running = false, done = false;
 let s = 80, prevS = 80, crashes = 0, wasDown = false, downAt = 0;
 let struck = 0, msgUntil = 0, wasBoosting = false, wasAir = false, lastLight = 99;
 let dynTipAt = 0;                    // the one-time dynamo tutorial toast
+// JUICE state: a hit freezes the sim for a few hundredths, punches the
+// camera away from the contact, and kicks the post chain's aberration; a
+// boost kicks the aberration too; GO shoves the camera in. All decay fast —
+// juice is a reflex, not a state.
+let hitStop = 0, camPunch = 0, punchDir = 0, aberKick = 0, goPush = 0;
+// player settings, persisted on the save
+const settings = Object.assign(
+  { music: true, sfx: true, shake: true, streaks: true },
+  savefile.settings || {});
+savefile.settings = settings;
 // The race clock — the same clock the rivals keep, so finish ORDER can be
 // ranked by when everybody actually crossed the line (see field.standings).
 let raceClock = 0;
@@ -1460,6 +1491,14 @@ function tick() {
     post.render(scene, camera, time);
     return;
   }
+  // HIT-STOP: a hard impact freezes the sim for a few hundredths. Long
+  // enough that the hit has WEIGHT, short enough that nobody ever calls it
+  // lag — the oldest trick in action games, because it works.
+  if (hitStop > 0) {
+    hitStop -= clock.getDelta();
+    post.render(scene, camera, time);
+    return;
+  }
   const dt = Math.min(clock.getDelta(), 0.05);
   time += dt;
   renderer.shadowMap.needsUpdate = (frames++ % 3) === 0;
@@ -1489,14 +1528,17 @@ function tick() {
     const light = Math.max(0, Math.ceil(countdown));
     if (light !== lastLight) {
       lastLight = light;
-      if (light > 0) { audio.beep(); hud.msg.innerHTML = `<b class="light">${light}</b>`; }
+      // the beeps RISE toward the start — a countdown has a direction
+      if (light > 0) { audio.beep(380 + (3 - light) * 70); hud.msg.innerHTML = `<b class="light">${light}</b>`; }
     }
     if (countdown <= 0) {
       running = true;
       field.start();
       // the worker starts on the NEXT round while you race this one
       if (inGP && gp && gp.round + 1 < GP.ROUNDS.length) prefetchNext(GP.ROUNDS[gp.round + 1]);
-      audio.beep();
+      audio.beep(720);
+      audio.impact(0.3);                       // the gun
+      goPush = 1;                              // and the lens lunges
       lampsGo(time);
       hud.msg.innerHTML = '<b class="light go">go</b>';
       msgUntil = time + 1.0;
@@ -1696,7 +1738,16 @@ function tick() {
     msgUntil = time + 6;
   }
   if (msgUntil && time > msgUntil && !done) { hud.msg.textContent = ''; msgUntil = 0; }
-  if (car.state.crash > 0 && !wasDown) { crashes++; downAt = s; audio.impact(car.state.shake || 0.5); }
+  if (car.state.crash > 0 && !wasDown) {
+    crashes++; downAt = s;
+    audio.impact(car.state.shake || 0.5);
+    // the juice: freeze, punch, fringe — all scaled by how hard it was
+    const sev = car.state.shake || 0.4;
+    if (sev > 0.35) hitStop = 0.028 + sev * 0.05;
+    camPunch = sev;
+    punchDir = Math.sign(Math.sin(time * 13) || 1);   // varied, feels less canned
+    aberKick = Math.max(aberKick, sev * 1.1);
+  }
   wasDown = car.state.crash > 0;
   // Only a car that cannot get itself out gets put back on the road.
   if (car.state.wedged) {
@@ -1716,7 +1767,11 @@ function tick() {
   scene.fog.density = SKY.fogD + wet * 0.00008;
 
   audio.update(car.state.speed, V_MAX, throttle, car.state.slip, car.state.offRoad);
-  if (car.state.boost > 0 && !wasBoosting) { audio.kerb(); stats.driftBanks++; }
+  if (car.state.boost > 0 && !wasBoosting) {
+    audio.kerb();
+    stats.driftBanks++;
+    aberKick = Math.max(aberKick, 0.55);       // the boost fringes the frame
+  }
   wasBoosting = car.state.boost > 0;
   car.present(dt);
   field.update(dt, LAPS, car.state);
@@ -1834,17 +1889,60 @@ function tick() {
   }
   const rattle = Math.max(0, fSpd - 0.5) * (car.state.offRoad ? 5.2 : 2.3)
     + (car.state.boost > 0 ? 1.9 : 0);
-  if (rattle > 0.01 && car.state.air === 0) {
+  if (rattle > 0.01 && car.state.air === 0 && settings.shake) {
     camera.position.x += Math.sin(time * 47.3) * rattle;
     camera.position.y += Math.sin(time * 61.7) * rattle * 0.8;
   }
   // the landing, felt: one downward camera thump scaled by the fall
-  if (car.state.landed > 0.22) {
+  if (car.state.landed > 0.22 && settings.shake) {
     camera.position.y -= (car.state.landed - 0.22) * 40 * (0.5 + car.state.shake);
   }
+  // the impact punch: the camera shoved sideways off the contact, decaying
+  if (camPunch > 0.01) {
+    if (settings.shake) {
+      camera.position.x += Math.cos(hc) * punchDir * camPunch * 14;
+      camera.position.z += -Math.sin(hc) * punchDir * camPunch * 14;
+    }
+    camPunch *= Math.max(0, 1 - dt * 7);
+  }
+  // GO shoves the lens in and lets it ease back out
+  if (goPush > 0.01) {
+    camera.position.x += Math.sin(hc) * goPush * 26;
+    camera.position.z += Math.cos(hc) * goPush * 26;
+    goPush *= Math.max(0, 1 - dt * 3.2);
+  }
+  // the aberration kick: boosts and hits fringe the frame for a beat
+  if (aberKick > 0.01) {
+    aberKick *= Math.max(0, 1 - dt * 4.5);
+  }
+  post.params.aberration = 0.9 + aberKick * 3.4;
+  // tyre smoke while the slip angle is live
+  puffTimer -= dt;
+  if (Math.abs(car.state.slip) > 0.15 && car.state.air === 0 && puffTimer <= 0) {
+    puffTimer = 0.045;
+    const p2 = puffs[puffIdx++ % PUFF_N];
+    const side2 = (puffIdx % 2 ? 9 : -9);
+    p2.m.position.set(
+      car.state.x - Math.sin(h) * 24 + Math.cos(h) * side2,
+      car.state.yView + 4,
+      car.state.z - Math.cos(h) * 24 - Math.sin(h) * side2);
+    p2.life = 0.5;
+    p2.m.visible = true;
+  }
+  for (const p2 of puffs) {
+    if (p2.life <= 0) { p2.m.visible = false; continue; }
+    p2.life -= dt;
+    p2.m.position.y += dt * 14;
+    const k2 = Math.max(0, p2.life / 0.5);
+    p2.m.material.opacity = k2 * 0.38;
+    const sc = 1 + (1 - k2) * 1.6;
+    p2.m.scale.set(sc, sc, 1);
+    p2.m.lookAt(camera.position);
+  }
+
   // wind streaks: alive from ~60% speed, doubled by a boost
   {
-    const on = fSpd > 0.55 || car.state.boost > 0;
+    const on = settings.streaks && (fSpd > 0.55 || car.state.boost > 0);
     const wantOp = on ? 0.34 + (car.state.boost > 0 ? 0.3 : 0) + fSpd * 0.2 : 0;
     streakMat.opacity += (wantOp - streakMat.opacity) * Math.min(1, dt * 6);
     if (streakMat.opacity > 0.02) {
@@ -1939,10 +2037,11 @@ function tick() {
     const gap = rel ? (mine - rel.progress) * 0.08 : 0;
     hud.pos.textContent = `P${at + 1}/${table.length}  ${gap >= 0 ? '+' : ''}${gap.toFixed(0)}m`;
     hud.pos.classList.toggle('behind', at > 0);
-    // the overtake, announced the moment it happens
+    // the overtake, announced the moment it happens — with a voice
     if (lastPlace !== null && at !== lastPlace && !msgUntil) {
       hud.msg.innerHTML = `<b style="color:${at < lastPlace ? '#7fe08a' : '#ff8a6a'}">P${at + 1}</b>`;
       msgUntil = time + 1.1;
+      audio.beep(at < lastPlace ? 780 : 320);
     }
     lastPlace = at;
     // the live delta against the ghost, green when you are up on yourself
@@ -2005,6 +2104,22 @@ const toggleGarage = () => garage.toggle();
 document.getElementById('p-resume')?.addEventListener('click', () => setPaused(false));
 document.getElementById('p-restart')?.addEventListener('click', () => { setPaused(false); reset(); });
 document.getElementById('p-circuits')?.addEventListener('click', () => { setPaused(false); picker.show(); });
+// SETTINGS, persisted on the save: music, sfx, camera shake, wind streaks.
+// The shake toggle is not polish — a player the shake makes seasick
+// currently has no recourse at all.
+function applySettings() {
+  audio.mute(!settings.sfx);
+  music.mute(!settings.music);
+  for (const b of document.querySelectorAll('#pause .ptoggles button'))
+    b.classList.toggle('on', !!settings[b.dataset.set]);
+}
+for (const b of document.querySelectorAll('#pause .ptoggles button'))
+  b.addEventListener('click', () => {
+    settings[b.dataset.set] = !settings[b.dataset.set];
+    Garage.save(savefile);
+    applySettings();
+  });
+applySettings();
 
 window.DYNAMO = {
   scene, camera, renderer, post, track, car, ground, life, traffic, field, gp: GP,

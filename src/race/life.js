@@ -129,6 +129,21 @@ export function buildLife(path, spots, ground, elev) {
   }
 
   const tmp = frame();
+  // THE GIVE-UP RULE. A walker blocked at both ends, blocked crossing,
+  // penned by parked cars — after five baulks in a beat they stop trying
+  // and GO HOME: back to their spawn, limits forgotten, dignity intact.
+  // A person who cannot get where they were going gives up; only a bug
+  // keeps walking into the same wall for the rest of the race.
+  function goHome(w) {
+    w.s = w.home;
+    w.u = w.u0;
+    w.side = Math.sign(w.u0) || 1;
+    w.cross = w.zebra;                 // zebras go back to crossing; walkers walk
+    w.lim = [null, null];
+    w.baulked = 0;
+    w.since = 0;
+    w.fy = null;
+  }
   function update(t, dt, carX, carZ) {
     for (const w of folk) {
       if (w.cross) {
@@ -191,6 +206,8 @@ export function buildLife(path, spots, ground, elev) {
           // something is parked across the crossing: back off the way we came
           w.u -= w.dir * w.pace * dt;
           w.dir = -w.dir;
+          w.baulked++;
+          if (w.baulked >= 5) { goHome(w); continue; }
           path.place(w.s, w.u, tmp);
         } else w.fy = cy;
         w.p.root.position.set(tmp.x, w.fy === null ? groundAt(tmp.x, tmp.z) : w.fy, tmp.z);
@@ -237,6 +254,7 @@ export function buildLife(path, spots, ground, elev) {
         w.dir = -w.dir;
         w.baulked++;
         w.since = 0;
+        if (w.baulked >= 5) { goHome(w); continue; }
         // Penned in at BOTH ends with nowhere to pace: cross the road instead.
         if (w.lim[0] !== null && w.lim[1] !== null && w.lim[1] - w.lim[0] < 60) {
           w.cross = true; w.reach = Math.abs(w.u);

@@ -159,6 +159,6 @@ export function createAudio() {
     impact(severity) { hit(90 + severity * 40, 0.9, 0.32 + severity * 0.3, clamp(0.12 + severity * 0.5, 0, 0.7)); },
     thud() { hit(70, 0.45, 0.3, 0.4); },          // somebody on the bonnet
     kerb() { hit(150, 0.7, 0.11, 0.16); },        // riding over something
-    beep() { hit(520, 0.05, 0.09, 0.12); },       // lap / countdown
+    beep(f) { hit(f || 520, 0.05, 0.09, 0.12); }, // lap / countdown / chirps
   };
 }

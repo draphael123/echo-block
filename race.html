@@ -195,6 +195,11 @@
   }
   #pause button:hover, #pause a:hover { border-color: #ffd9a0; color: #ffd9a0; }
   #pause i { font-style: normal; color: #6d7688; font-size: 11px; margin-left: 8px; }
+  #pause .ptoggles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+  #pause .ptoggles button { font-size: 11px; padding: 9px 10px; color: #5d6678; }
+  #pause .ptoggles button.on { color: #7fe08a; border-color: #2e4a38; }
+  #pause .ptoggles button.on::after { content: ' ·on'; color: #4a6a52; }
+  #pause .ptoggles button:not(.on)::after { content: ' ·off'; color: #4d566a; }
 
   /* THE PODIUM — a championship should END somewhere. Three plinths, the
      season table, the money. Shown once, when the last round is scored. */
@@ -286,6 +291,12 @@
     <button id="p-restart">restart the race <i>r</i></button>
     <button id="p-circuits">change circuit <i>t</i></button>
     <a href="./index.html">back to the menu</a>
+    <div class="ptoggles">
+      <button data-set="music">music</button>
+      <button data-set="sfx">sound fx</button>
+      <button data-set="shake">cam shake</button>
+      <button data-set="streaks">streaks</button>
+    </div>
   </div></div>
 </div>
 <div id="boot"><div>building the circuit…</div><small id="bootmsg"></small><div id="boottrack"><div id="bootbar"></div></div></div>

@@ -41,7 +41,18 @@
   #title h1 {
     margin: 0; font-size: 64px; font-weight: 700; letter-spacing: .32em; color: #f6ecda;
     text-shadow: 0 0 22px rgba(255, 201, 138, .5);
+    animation: breathe 3.4s ease-in-out infinite;
   }
+  @keyframes breathe {
+    0%, 100% { text-shadow: 0 0 22px rgba(255, 201, 138, .45); }
+    50% { text-shadow: 0 0 34px rgba(255, 201, 138, .75), 0 0 70px rgba(255, 201, 138, .25); }
+  }
+  /* the fade into a race: the menu dips to black instead of cutting */
+  #fade {
+    position: fixed; inset: 0; background: #05070c; opacity: 0; pointer-events: none;
+    transition: opacity .28s ease; z-index: 200;
+  }
+  #fade.on { opacity: 1; pointer-events: all; }
   #title p { margin: 8px 0 0; font-size: 12px; letter-spacing: .3em; text-transform: uppercase; color: #6d7688; }
   #garagebtn {
     position: fixed; left: 22px; bottom: 20px; z-index: 80;
@@ -61,6 +72,7 @@
 <body>
 <div id="bg"></div>
 <div id="road"></div>
+<div id="fade"></div>
 <div id="title"><h1>DYNAMO</h1><p>night racing &middot; the town of echo block</p></div>
 <button id="garagebtn">garage</button>
 
@@ -74,11 +86,13 @@ import * as Garage from './src/race/garage.js';
 import { createMusic } from './src/music.js';
 
 const save = Garage.load();
+const fade = document.getElementById('fade');
+const go = (url) => { fade.classList.add('on'); setTimeout(() => { location.href = url; }, 300); };
 const picker = mountTrackSelect({
   save,
-  onGo: (t, m) => { location.href = './race.html?track=' + t.id + (m === 'tt' ? '&mode=tt' : ''); },
+  onGo: (t, m) => go('./race.html?track=' + t.id + (m === 'tt' ? '&mode=tt' : '')),
   closeLabel: 'walk the block instead →',
-  onClose: () => { location.href = './block.html'; },
+  onClose: () => go('./block.html'),
 });
 picker.show();
 
