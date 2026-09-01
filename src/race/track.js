@@ -2056,6 +2056,58 @@ function hazards(w, path) {
   }
 }
 
+// THE NARROWS AND THE SLICKS — per-world hazard MECHANICS, spec-driven.
+//
+// A narrows squeezes the carriageway between two moored hulls: real walls
+// INSIDE the painted road, which only works because the scrub and the
+// drivability audit are both told about it. The playtest asked for exactly
+// this — "going in between two ships makes the level more narrow".
+//
+// A slick is painted INTO the surface, flush, and the car reads it at run
+// time (main.js): grip drops and the wheel goes light for a beat. The
+// glisten is glassDark with moonGlass glints — you can see it coming.
+function narrowsAndSlicks(w, path) {
+  const f = frame();
+  for (const nr of SPEC.narrows || []) {
+    for (const side of [-1, 1])
+      for (let s = nr.from; s <= nr.to; s += 0.4) {
+        path.place(s, side * nr.width, f);
+        const x = Math.round(f.x), z = Math.round(f.z), gy = GROUND_Y + elev(s);
+        const dEnd = Math.min(s - nr.from, nr.to - s);
+        const bow = Math.max(0, 1 - dEnd / 90);
+        const h = 38 + Math.round(bow * bow * 10);
+        for (let k = 0; k < h; k++) {
+          const m = k < 3 ? 'rust' : k === h - 5 ? 'paper'
+            : ((k >> 3) % 2 ? 'skipSteel' : 'skipRust');
+          w.set(x, gy + k, z, m);
+        }
+        w.set(x, gy + h, z, 'metal');
+        if (Math.round(s) % 22 < 2)
+          w.set(x, gy + 20, z, hash3(x, 1, z) > 0.4 ? 'winWarm' : 'winWarmDim');
+        if (dEnd < 3) w.box(x, gy + h + 1, z, 1, 3, 1, side < 0 ? 'tailLight' : 'chillGlow');
+      }
+  }
+  for (const sl of SPEC.slicks || []) {
+    for (let ds = -sl.r; ds <= sl.r; ds += 1)
+      for (let du = -sl.r; du <= sl.r; du += 1) {
+        if (ds * ds + du * du > sl.r * sl.r) continue;
+        if (hash3(ds, du, sl.s) < 0.25) continue;
+        path.place(sl.s + ds, sl.u + du, f);
+        w.set(Math.round(f.x), elev(sl.s + ds) - 1, Math.round(f.z),
+          hash3(du, ds, sl.s) > 0.93 ? 'moonGlass' : 'glassDark');
+      }
+  }
+  // steam vents: a flush grate in the road; the steam itself is run-time
+  for (const vt of SPEC.vents || []) {
+    for (let ds = -5; ds <= 5; ds++) for (let du = -5; du <= 5; du++) {
+      path.place(vt.s + ds, vt.u + du, f);
+      const slit = (ds + 5) % 3 === 0;
+      w.set(Math.round(f.x), elev(vt.s + ds) - 1, Math.round(f.z),
+        Math.abs(ds) === 5 || Math.abs(du) === 5 ? 'rust' : (slit ? 'metalDark' : 'metal'));
+    }
+  }
+}
+
 // Where to put someone back after they have come off. Assuming "a bit further
 // back on the centreline" is clear is exactly how a crash becomes a permanent
 // stop: the thing you hit is still there. So ASK the collision field — and
@@ -2270,6 +2322,7 @@ export async function buildTrack(trackSpec, onPhase) {
   await breathe('dressing the street', 0.34);
   parked(w, path);
   hazards(w, path);
+  narrowsAndSlicks(w, path);
   landmarks(w, path);
   mark('props');
 
@@ -2297,6 +2350,9 @@ export async function buildTrack(trackSpec, onPhase) {
       const road = elev(s);
       for (let u = -ROAD_HALF; u <= ROAD_HALF; u += 3) {
         if (HAZARDS.some(h => Math.abs(h.s - s) < h.r + 170 && Math.abs(h.u - u) < h.r + 170)) continue;
+        // the narrows' hulls stand inside the carriageway ON PURPOSE
+        if ((SPEC.narrows || []).some(nr => s >= nr.from - 4 && s <= nr.to + 4
+          && Math.abs(u) >= nr.width - 8)) continue;
         path.place(s, u, sf);
         const x = Math.round(sf.x), z = Math.round(sf.z);
         // every k, no stride: a one-voxel-thick plate at exactly the skipped
@@ -2366,15 +2422,29 @@ export async function buildTrack(trackSpec, onPhase) {
       'stripLight', 'sodium', 'tailLight', 'chillGlow', 'phoneGlow', 'headLight']);
     for (let s = 0; s < path.total; s += 2) {
       const gy = GROUND_Y + elev(s);
-      for (const side of [-1, 1]) for (let u = ROAD_HALF + 4; u <= SET + 70; u += 2) {
+      // the band runs to SET+200 now — the first pass stopped at SET+70 and
+      // every silo, hut and building line beyond it kept floating
+      for (const side of [-1, 1]) for (let u = ROAD_HALF + 4; u <= SET + 200; u += 3) {
         path.place(s, side * u, gf);
         const x = Math.round(gf.x), z = Math.round(gf.z);
         if (w.get(x, gy, z) || w.get(x, gy - 1, z)) continue;
         let lowest = null, mat = null;
-        for (let k = 1; k <= 20; k++) { const v = w.get(x, gy + k, z); if (v) { lowest = k; mat = v; break; } }
+        for (let k = 1; k <= 24; k++) { const v = w.get(x, gy + k, z); if (v) { lowest = k; mat = v; break; } }
         if (lowest === null || SKIP.has(mat)) continue;
+        // how much MASS sits on this hang: a pipe run is 3 thick, a building
+        // corner is a storey — the fix differs
+        let thick = 0;
+        for (let k = lowest; k <= lowest + 12 && w.get(x, gy + k, z); k++) thick++;
         if (lowest >= 2 && lowest <= 12) {
+          // thin HIGH runs are pipework and rails riding their own posts —
+          // legs under every sample would turn a pipe rack into a fence
+          if (thick <= 3 && lowest >= 9) continue;
           const fill = GLOW.has(mat) ? 'metalDark' : mat;
+          for (let k = lowest - 1; k >= 0; k--) w.set(x, gy + k, z, fill);
+          grounded++;
+        } else if (lowest >= 13 && lowest <= 22 && thick >= 8) {
+          // a building's corner hanging over a knoll: foundation it
+          const fill = GLOW.has(mat) ? 'concreteOld' : mat;
           for (let k = lowest - 1; k >= 0; k--) w.set(x, gy + k, z, fill);
           grounded++;
         } else if (lowest > 12) {
@@ -2464,7 +2534,8 @@ export async function buildTrack(trackSpec, onPhase) {
     // report the one thing that is supposed to be there
     const rampsAt = (SPEC.ramps || []).map(r => r.s);
     const rogue = blockers.filter(([s]) => ![...hz].some(h => Math.abs(h - s) < win)
-      && !rampsAt.some(rs => s >= rs - 24 && s <= rs + 90));
+      && !rampsAt.some(rs => s >= rs - 24 && s <= rs + 90)
+      && !(SPEC.narrows || []).some(nr => s >= nr.from - 12 && s <= nr.to + 12));
     if (rogue.length) {
       console.error('track: ' + rogue.length + ' points of the carriageway are not drivable, '
         + 'starting at s=' + rogue[0][0] + ' u=' + rogue[0][1]

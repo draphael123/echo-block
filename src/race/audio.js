@@ -118,7 +118,7 @@ export function createAudio() {
     },
 
     // pushed once a frame
-    update(speed, vmax, throttle, slip, offRoad) {
+    update(speed, vmax, throttle, slip, offRoad, nos = false) {
       if (!ready || muted) return;
       const f = clamp(Math.abs(speed) / vmax, 0, 1);
       // A gearbox, faked: the note climbs, snaps back and climbs again, which
@@ -151,12 +151,15 @@ export function createAudio() {
 
       // the wind carries the speed now: nearly triple at the top end, and it
       // keeps rising past where the engine flattens out — the last 20% of
-      // speed is mostly SOUND, which is what a fast road car feels like
-      windGain.gain.setTargetAtTime(f * f * 0.28, now, 0.12);
-      windFilter.frequency.setTargetAtTime(400 + f * 1800, now, 0.12);
+      // speed is mostly SOUND, which is what a fast road car feels like.
+      // A NOS burn doubles the wind and shoves the filter open: the burn
+      // should be HEARD before the speedo confirms it.
+      windGain.gain.setTargetAtTime(f * f * 0.28 * (nos ? 2.1 : 1), now, nos ? 0.04 : 0.12);
+      windFilter.frequency.setTargetAtTime(400 + f * 1800 + (nos ? 900 : 0), now, 0.08);
     },
 
     impact(severity) { hit(90 + severity * 40, 0.9, 0.32 + severity * 0.3, clamp(0.12 + severity * 0.5, 0, 0.7)); },
+    horn() { hit(330, 0.12, 0.16, 0.22); hit(415, 0.12, 0.22, 0.22); },   // the two-note menace
     thud() { hit(70, 0.45, 0.3, 0.4); },          // somebody on the bonnet
     kerb() { hit(150, 0.7, 0.11, 0.16); },        // riding over something
     beep(f) { hit(f || 520, 0.05, 0.09, 0.12); }, // lap / countdown / chirps

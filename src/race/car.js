@@ -136,9 +136,11 @@ const BOOST_CAP = [1.10, 1.16, 1.24];         // how far over V_MAX it will pull
 // air fill the tank — but the spend is one button and one idea: hold
 // SHIFT, burn tank, go violently faster. A full tank is about 3.2 seconds
 // of burn, spent in whatever sips or gulps you like. Player only.
-const NOS_DRAIN = 0.31;                // tank per second of burn
-const NOS_PUSH = 520;                  // v/s^2 while burning
-const NOS_CAP = 1.22;                  // ceiling multiplier while burning
+// Punchier (playtest: "should be a little faster, more impactful"): more
+// shove, higher ceiling, and the tank spends faster so a burn is an EVENT.
+const NOS_DRAIN = 0.34;                // tank per second of burn
+const NOS_PUSH = 640;                  // v/s^2 while burning
+const NOS_CAP = 1.3;                   // ceiling multiplier while burning
 const NOS_DRIFT = 0.11;               // tank per second of genuine slide
 const NOS_FLATOUT = 0.02;             // trickle above 92% speed
 
@@ -446,6 +448,8 @@ export function buildCar(paint = 0, tune = {}, parts = null, chassisId = 'brindl
     vy: 0, air: 0, landed: 0, lastFl: 0, bigAir: 0,
     // the NOS: tank 0..1 and whether it is burning this frame
     dyn: 0, nos: false,
+    // a slick underfoot: while this timer runs the wheel is light
+    slickT: 0,
   };
 
   function step(dt, throttle, steer, ground, drift = false, allowReverse = true, nos = false) {
@@ -530,12 +534,20 @@ export function buildCar(paint = 0, tune = {}, parts = null, chassisId = 'brindl
     const way = state.speed < 0 ? -1 : 1;
     // A car cannot pivot on the spot, but it must keep SOME authority at a
     // crawl or a nudge into a kerb is permanent — the bike taught me that.
+    // A SLICK: for a beat the wheel is light and the car wanders — grip
+    // halves and the nose hunts. You can see slicks coming; driving round
+    // them is the answer, and this is the cost of not.
+    if (state.slickT > 0) state.slickT = Math.max(0, state.slickT - dt);
+    const onSlick = state.slickT > 0;
     state.turnRate = steer * (T_SLOW + (T_FAST - T_SLOW) * f)
       * (0.22 + 0.78 * Math.min(1, Math.abs(state.speed) / 30)) * way
       * (1 - wet * (1 - WET_GRIP))
       * (sliding ? DRIFT_TURN : 1) * (state.offRoad ? OFF_TURN : 1)
-      * (state.air > 0 ? AIR_STEER : 1);    // in the air the wheels do nothing
+      * (state.air > 0 ? AIR_STEER : 1)     // in the air the wheels do nothing
+      * (onSlick ? 0.45 : 1);
     state.heading += state.turnRate * dt;
+    if (onSlick && Math.abs(state.speed) > 40)
+      state.heading += Math.sin(state.dist * 0.11) * 0.55 * dt;
 
     // The slip angle: how far the nose leads the direction of travel. It builds
     // while the handbrake is in and washes off when it is not, so letting go is

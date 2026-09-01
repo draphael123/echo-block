@@ -129,8 +129,18 @@ export default {
   // THE LEVEL CROSSING on the flats: barriers cycle on the race clock, red
   // lamps blinking while they are down. Read the lamps from distance and
   // lift, or arrive on the wrong beat and wear the arm.
+  // STEAM VENTS — the Works' own hazard mechanic: grates that blow on a
+  // cycle. Drive through the plume and it shoves the car and whites the
+  // screen for a beat; read the hiss and the rhythm, or wear it.
+  vents: [
+    { s: 700, u: -120 },
+    { s: 2450, u: 100 },
+    { s: 5250, u: -140 },
+    { s: 7900, u: 120 },
+  ],
+
   // — and A WIDE LOAD with escorts and amber beacons crawling the whole
-  // bypass: you catch it every lap somewhere new. The Ring's parade.
+  // bypass: you catch it every lap somewhere new. The Works' parade.
   moving: [{ kind: 'crossing', s: 5900 }, { kind: 'convoy', s: 0, u: 150 }],
   // Sodium, in the small hours. Everything orange except the sky, and the
   // thickest fog in the city -- which does the same job as the crests do:

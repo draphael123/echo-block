@@ -120,6 +120,20 @@ export default {
 
   landmarks: { gasholder: [-40, 90, 52, 150], waterTower: [-220, -140], pylons: 5 },
 
+  // THE NARROWS: the harbour squeezes the road between two moored hulls —
+  // half the carriageway, nav lights on the bows, and a slick dead centre.
+  // The playtest asked for exactly this.
+  narrows: [{ from: 4900, to: 5160, width: 150 }],
+
+  // SLICKS — the Seafront's own hazard mechanic: seaweed and spray on the
+  // surface. Hit one and the wheel goes light: grip drops for a beat.
+  slicks: [
+    { s: 950, u: -60, r: 34 },
+    { s: 2050, u: 40, r: 30 },     // wet planks on the pier
+    { s: 3620, u: 80, r: 34 },     // spray on the cliff road
+    { s: 5100, u: 0, r: 26 },      // dead centre of the narrows
+  ],
+
   // THE FERRIS WHEEL turns all night beside the pier, a sailboat works the
   // bay, and the harbour keeps one crane load swinging over the road.
   moving: [

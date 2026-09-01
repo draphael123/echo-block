@@ -146,8 +146,10 @@ export function buildLife(path, spots, ground, elev) {
   }
   function update(t, dt, carX, carZ) {
     for (const w of folk) {
+      if (w.scared > 0) w.scared -= dt;
+      const hurry = w.scared > 0 ? 2.4 : 1;
       if (w.cross) {
-        w.u += w.dir * w.pace * dt;
+        w.u += w.dir * w.pace * hurry * dt;
         // A jaywalk ENDS. The first version left `cross` set, so a walker
         // who had jaywalked once paced between the pavements for the rest of
         // the race — which is what the playtest saw as people wandering the
@@ -167,7 +169,7 @@ export function buildLife(path, spots, ground, elev) {
         }
       } else {
         // pace up and down a stretch of pavement
-        w.s += w.dir * w.pace * dt;
+        w.s += w.dir * w.pace * hurry * dt;
         if (w.s > w.home + w.span) { w.s = w.home + w.span; w.dir = -1; }
         if (w.s < w.home - w.span) { w.s = w.home - w.span; w.dir = 1; }
       }
@@ -217,8 +219,9 @@ export function buildLife(path, spots, ground, elev) {
         continue;
       }
 
-      // step away from the kerb when something is coming
-      const flinch = d < FLINCH ? (1 - d / FLINCH) * 12 : 0;
+      // step away from the kerb when something is coming — further and
+      // faster if they have just been honked at
+      const flinch = (d < FLINCH ? (1 - d / FLINCH) * 12 : 0) + (w.scared > 0 ? 9 : 0);
       path.place(w.s, w.u + w.side * flinch, tmp);
 
       // Is there actually pavement there? A bench, a phone box, a bin, a lamp
@@ -323,7 +326,16 @@ export function buildLife(path, spots, ground, elev) {
     return w.p.knock(dx / len, dz / len, 0.5 + Math.min(1.4, speed / 190));
   }
 
-  return { group, folk, update, hits, strike };
+  // THE HORN reaches everyone within earshot: walkers hop back from the
+  // kerb and hurry for a second, dogs presumably bark off-camera.
+  function scare(x, z) {
+    for (const w of folk) {
+      const dx = w.p.root.position.x - x, dz = w.p.root.position.z - z;
+      if (Math.hypot(dx, dz) < 300) w.scared = 1.2;
+    }
+  }
+
+  return { group, folk, update, hits, strike, scare };
 }
 
 // ------------------------------------------------------------------ traffic

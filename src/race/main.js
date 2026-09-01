@@ -342,6 +342,17 @@ addEventListener('keydown', (e) => {
   keys.add(k);
   if (k === 'r') reset();
   if (k === 'v') camYawWant = camYawWant ? 0 : Math.PI;   // latched look-back
+  // THE HORN. Pedestrians scatter, traffic flinches aside, and nothing
+  // about the race changes — it is purely for being a menace, as requested.
+  if (k === 'b' && track) {
+    audio.horn();
+    life.scare(car.state.x, car.state.z);
+    for (const t2 of traffic.cars) {
+      const dx = t2.c.root.position.x - car.state.x, dz = t2.c.root.position.z - car.state.z;
+      const ahead = dx * Math.sin(car.state.heading) + dz * Math.cos(car.state.heading);
+      if (ahead > 0 && ahead < 320 && Math.hypot(dx, dz) < 340) traffic.shove(t2);
+    }
+  }
   // the NOS teaches itself the first time it is burned
   if (k === 'shift' && car.state.dyn > 0 && !savefile.dynTaught) {
     savefile.dynTaughtN = (savefile.dynTaughtN || 0) + 1;
@@ -520,6 +531,9 @@ let PADS = [], padCool = [];
 // the moving set pieces — a crane load, a level crossing — spec-declared,
 // animated on the RACE clock so R resets their pattern with the race
 let movers = [];
+// per-world hazard mechanics: slick zones (grip drops for a beat) and
+// steam vents (a plume on a cycle that shoves the car)
+let slickZones = [], ventZones = [];
 // near-miss cooldowns (per hazard / per traffic car) and the race's stats —
 // the results board reads these, and so will anyone bragging
 let hazCool = [], trafCool = [];
@@ -858,6 +872,17 @@ function applyTrack(spec, trk) {
   trafCool = (track.traffic || []).map(() => 0);
   movers = (spec.moving || []).map(buildMover);
   for (const mv of movers) scene.add(mv.g);
+  {
+    const zf = pathFrame();
+    slickZones = (spec.slicks || []).map(sl => {
+      track.path.place(sl.s, sl.u, zf);
+      return { x: zf.x, z: zf.z, r: sl.r, cool: 0 };
+    });
+    ventZones = (spec.vents || []).map((vt, i) => {
+      track.path.place(vt.s, vt.u, zf);
+      return { x: zf.x, z: zf.z, y: track.elev(vt.s) + 1, phase: i * 1.9, cool: 0 };
+    });
+  }
   ghostData = (savefile.ghosts && savefile.ghosts[track.id]) || null;
   gPtr = 0;
   if (ghostData) buildGhost();
@@ -1483,6 +1508,7 @@ function teardownTrack() {
   if (ghost) { scene.remove(ghost.root); disposeDeep(ghost.root, true); ghost = null; }
   for (const mv of movers) { scene.remove(mv.g); disposeDeep(mv.g, true); }
   movers = [];
+  slickZones = []; ventZones = [];
   track = null; ground = null; field = null; START = null;
   smoke = null; life = null; traffic = null;
   // and the last places a dead circuit's arrays can hide: the console API's
@@ -1739,6 +1765,20 @@ function tick() {
     if (lap >= LAPS) {
       done = true;
       finish();
+    } else if (mode !== 'tt' && field.cars.length && !msgUntil) {
+      // THE PIT BOARD: crossing the line tells you where the race is —
+      // the gap to the car that matters, in metres, while it still can
+      // be done something about.
+      const mineNow = lap * track.path.total + loc.s;
+      const tableNow = field.standings(mineNow);
+      const atNow = tableNow.findIndex(r2 => r2.you);
+      const rel = atNow > 0 ? tableNow[atNow - 1] : tableNow[1];
+      if (rel) {
+        const gapM = Math.round(Math.abs(mineNow - rel.progress) * 0.08);
+        hud.msg.innerHTML = `<b>lap ${lap + 1}</b><span class="dim">`
+          + (atNow > 0 ? `${gapM}m to ${rel.name}` : `${gapM}m over ${rel.name}`) + '</span>';
+        msgUntil = time + 2.2;
+      }
     }
   }
   prevS = loc.s;
@@ -1883,6 +1923,52 @@ function tick() {
       msgUntil = time + 1.8;
     }
   }
+  // SLICKS: cross one at speed and the wheel goes light (see car.js). The
+  // message and the little screech fire once per pass, not per frame.
+  if (running && !done && Math.abs(car.state.speed) > 40) {
+    for (const sl of slickZones) {
+      const dd = Math.hypot(sl.x - car.state.x, sl.z - car.state.z);
+      if (dd < sl.r + 8) {
+        car.state.slickT = 0.35;
+        if (time > sl.cool) {
+          sl.cool = time + 3;
+          audio.kerb();
+          if (!msgUntil) { hud.msg.innerHTML = '<b style="color:#7fd4ff">slick!</b>'; msgUntil = time + 0.8; }
+        }
+      }
+    }
+  }
+  // STEAM VENTS blow on a cycle: a white plume, a real shove, a whited
+  // frame. The rhythm is readable — the grate hisses before it blows.
+  for (const vt of ventZones) {
+    const active = ((raceClock + vt.phase) % 7) < 2.2;
+    if (!active) continue;
+    const ddC = Math.hypot(vt.x - car.state.x, vt.z - car.state.z);
+    if (ddC < 900) {
+      // the plume, from the tyre-smoke pool, blown white and tall
+      if (Math.random() < 0.5) {
+        const p2 = puffs[puffIdx++ % PUFF_N];
+        p2.m.position.set(vt.x + (Math.random() - 0.5) * 10, vt.y + Math.random() * 8, vt.z + (Math.random() - 0.5) * 10);
+        p2.m.material.color.setHex(0xdde4ee);
+        p2.life = 0.6;
+        p2.m.visible = true;
+      }
+    }
+    if (running && !done && ddC < 55) {
+      const push = 46 * dt;
+      const len = ddC || 1;
+      car.state.x += ((car.state.x - vt.x) / len) * push;
+      car.state.z += ((car.state.z - vt.z) / len) * push;
+      aberKick = Math.max(aberKick, 0.5);
+      if (settings.shake) camPunch = Math.max(camPunch, 0.35);
+      if (time > vt.cool) {
+        vt.cool = time + 3;
+        audio.impact(0.25);
+        if (!msgUntil) { hud.msg.textContent = 'steam!'; msgUntil = time + 0.8; }
+      }
+    }
+  }
+
   // NEAR MISSES feed the dynamo. Passing close to what could have ended the
   // lap is the excitement, and the meter says so: hazards and live traffic
   // both count, on a per-object cooldown so a slow crawl past earns nothing.
@@ -1954,7 +2040,7 @@ function tick() {
   post.params.rain = wet * 0.22;
   scene.fog.density = SKY.fogD + wet * 0.00008;
 
-  audio.update(car.state.speed, V_MAX, throttle, car.state.slip, car.state.offRoad);
+  audio.update(car.state.speed, V_MAX, throttle, car.state.slip, car.state.offRoad, car.state.nos);
   if (car.state.boost > 0 && !wasBoosting) {
     audio.kerb();
     stats.driftBanks++;
@@ -2116,6 +2202,7 @@ function tick() {
       car.state.x - Math.sin(h) * 24 + Math.cos(h) * side2,
       car.state.yView + 4,
       car.state.z - Math.cos(h) * 24 - Math.sin(h) * side2);
+    p2.m.material.color.setHex(0x9aa4b0);      // the pool is shared with steam
     p2.life = 0.5;
     p2.m.visible = true;
   }
