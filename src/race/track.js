@@ -1574,21 +1574,22 @@ function hazards(w, path) {
       }
       for (let i = 1; i <= 4; i++) cone(h.s - 44 - i * 24, h.u - i * 6);
     } else if (h.kind === 'chicane') {
-      // STONE BOLLARDS in a stagger: two clusters on opposite sides ninety
-      // apart, so the line through them is an S you have to read from
-      // distance rather than a wall you brake for.
-      for (const [ds, flip] of [[0, 1], [90, -1]]) {
-        for (let i = -2; i <= 2; i++) {
-          path.place(h.s + ds, h.u * flip + i * 14, cf);
-          const bx = Math.round(cf.x), bz = Math.round(cf.z), by = elev(h.s + ds);
-          // 6 wide with a GLOWING cap — the audit found the first version
-          // invisible on dark tarmac at night, which for a hazard is a trap
-          w.box(bx - 3, by, bz - 3, 6, 10, 6, 'concreteOld');
-          w.box(bx - 2, by + 10, bz - 2, 4, 1, 4, 'metalDark');
-          w.box(bx - 1, by + 10, bz - 1, 2, 2, 2, 'porchBulb');
-        }
-        for (let i = 1; i <= 3; i++) cone(h.s + ds - 26 - i * 20, h.u * flip + (i % 2 ? 14 : -14));
+      // ONE stone bollard gate. The chicane is a PAIR of these in the spec,
+      // opposite sides, 360 apart — because a single hazard entry hiding a
+      // second cluster is invisible to the drivers: the dodge away from the
+      // first gate aimed dead at the hidden second one and the whole field
+      // hit it every lap at the same spot. Two entries, and the proven
+      // per-hazard see-brake-dodge machinery handles the weave.
+      for (let i = -1; i <= 1; i++) {
+        path.place(h.s, h.u + i * 14, cf);
+        const bx = Math.round(cf.x), bz = Math.round(cf.z), by = elev(h.s);
+        // 6 wide with a GLOWING cap — the audit found thin dark posts
+        // invisible on dark tarmac at night, which for a hazard is a trap
+        w.box(bx - 3, by, bz - 3, 6, 10, 6, 'concreteOld');
+        w.box(bx - 2, by + 10, bz - 2, 4, 1, 4, 'metalDark');
+        w.box(bx - 1, by + 10, bz - 1, 2, 2, 2, 'porchBulb');
       }
+      for (let i = 1; i <= 3; i++) cone(h.s - 26 - i * 20, h.u + (i % 2 ? 14 : -14));
     } else {
       // broken down, so it is pointing where it was going, not at the kerb
       w.merge(wagon, { ox: x, oz: z, oy: gy, rotY: alongRot(f.tx, f.tz) });

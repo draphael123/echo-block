@@ -8,15 +8,19 @@
 //   the old town  can you place the car?       width, and what a kerb costs
 //   the docks     can you trust the surface?   grip, permanently wet
 //   the ring road will you commit blind?       crests and tunnel mouths
+//   the grand     can you hold a plan?         a kilometre of changing road
 //
 // A track that is only a different skin is a different loading screen. These
-// each lean on a different one of the systems underneath.
+// each lean on a different one of the systems underneath. The Grand Circuit
+// is registered LAST on purpose: GP.ROUNDS maps this array, so it is the
+// season finale by construction.
 import parade from './parade.js';
 import oldtown from './oldtown.js';
 import docks from './docks.js';
 import ring from './ring.js';
+import grand from './grand.js';
 
-export const TRACKS = [parade, oldtown, docks, ring];
+export const TRACKS = [parade, oldtown, docks, ring, grand];
 export const byId = (id) => TRACKS.find(t => t.id === id) || TRACKS[0];
 
 // Which one to build. The hub writes the choice here before sending you out;

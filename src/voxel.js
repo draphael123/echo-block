@@ -11,9 +11,10 @@ import * as THREE from '../vendor/three/three.module.js';
 // fine for one street, and it SILENTLY CORRUPTED the moment a race track ran
 // past it: a coordinate outside the range makes the packed key borrow from the
 // next field, so voxels land on top of each other in a completely different
-// part of the world and nothing anywhere throws. 4096 is +/-327m, and the
-// bounds check below means the next time it is not enough, it says so.
-const OFF = 4096, SPAN = 8192;
+// part of the world and nothing anywhere throws. 4096 was +/-327m and the
+// Grand Circuit's kilometre lap ran past it (the bounds check said so, as
+// designed). 8192 is +/-655m; keys stay exact integers well under 2^53.
+const OFF = 8192, SPAN = 16384;
 let warned = false;
 const key = (x, y, z) => {
   if (!warned && (x < -OFF || x >= OFF || y < -OFF || y >= OFF || z < -OFF || z >= OFF)) {

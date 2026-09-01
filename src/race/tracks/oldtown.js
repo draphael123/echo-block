@@ -87,7 +87,10 @@ export default {
     { s: 520, u: H(0.6), r: 26, kind: 'works' },
     { s: 1180, u: H(-0.58), r: 28, kind: 'broken' },
     { s: 1900, u: H(0.56), r: 26, kind: 'stall' },
-    { s: 2600, u: H(-0.6), r: 26, kind: 'chicane' },
+    // no chicane here, deliberately: on a 130-half road the dodge line a
+    // bollard gate demands IS the wall, and the walls are already this
+    // circuit's hazard. The chicane lives on the wide roads instead.
+    { s: 2600, u: H(-0.6), r: 26, kind: 'works' },
     { s: 3320, u: H(0.58), r: 28, kind: 'broken' },
     { s: 4050, u: H(-0.56), r: 26, kind: 'stall' },
   ],

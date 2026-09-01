@@ -72,6 +72,20 @@ export const SKIES = {
     exposure: 1.30, threshold: 0.94,
   },
 
+  // A high full moon over the whole town — the Grand Circuit's hour. The
+  // clearest air in the city, because the flagship lap is a kilometre long
+  // and its whole point is reading the road a long way ahead: the crest, the
+  // drop to the harbour, the tunnel mouth. Cold silver key from nearly
+  // overhead, thin fog, the most stars anywhere.
+  moonhigh: {
+    top: '#0d1526', horizon: '#40538a', haze: '#5a6a9a', below: '#1a2233', ridge: '#121a2a',
+    fog: '#1c2740', fogD: 0.00038, clear: '#0d1526',
+    hemiSky: '#4a5f8f', hemiGround: '#2a231c', hemi: 1.30,
+    key: '#dfe8ff', keyI: 2.2, sun: [60, 700, -180],
+    disc: [0.92, 0.95, 1.00], stars: 1.2,
+    exposure: 1.85, threshold: 0.72,
+  },
+
   // The small hours on the bypass, under sodium. Everything is orange except
   // the sky, the fog is thicker than anywhere else in the city, and that thick
   // warm murk is doing the same job as the crests: it takes the distance away.

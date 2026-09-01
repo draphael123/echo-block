@@ -23,17 +23,24 @@ export default {
   heading: 180,
 
   asks: 'sight',
-  lapMetres: 522,
+  lapMetres: 515,
   road: { half: HALF, kerb: 5, pave: 52, verge: 14, apron: 6 },
 
   // Two straights left free; shape.js solves them so the loop closes exactly.
+  // THE HOOK (2026-09-01): the unlit sweeper used to be one constant-radius
+  // ninety — a corner you learn once and never think about again. It is now a
+  // 50-degree r560 entry that TIGHTENS into a 45-degree r300 exit, all of it
+  // in the dark, all of it in a hollow: the one corner on the circuit that
+  // keeps coming after you have committed. Every circuit needs a corner with
+  // a name; this is the Parade's.
   shape: {
-    free: [4, 6],
+    free: [5, 7],
     ops: [
       { straight: 1500 }, { arc: -90, r: 260 },
-      { straight: 620 }, { arc: -90, r: 520 },
+      { straight: 620 }, { arc: -50, r: 560 },
+      { arc: -45, r: 300 },
       { straight: 0 }, { arc: -90, r: 340 },
-      { straight: 0 }, { arc: -90, r: 440 },
+      { straight: 0 }, { arc: -85, r: 440 },
     ],
   },
 
@@ -43,6 +50,7 @@ export default {
     { lit: true, name: 'chapel corner', district: 'chapel' },
     { lit: false, name: 'mill lane', district: 'millyard' },
     { lit: false, name: 'the long dark', district: 'wood' },
+    { lit: false, name: 'the hook', district: 'wood' },
     { lit: true, name: 'the crescent', district: 'crescent' },
     { lit: true, name: 'the top', district: 'park' },
     { lit: false, name: 'the cut', district: 'yard' },
@@ -51,20 +59,33 @@ export default {
 
   // (s, voxels). A cosine between knots, so every knot is a crest or a dip
   // rather than a corner you can feel through the wheel. About 4.3 metres.
+  // RELIEF PASS (2026-09-01): eight metres top to bottom, up from four, and
+  // gathered into brows the way the Ring's lesson demands — rise 40-over-400
+  // hides a road; rise 80-over-1000 is a hill you can see over the whole way
+  // up. The long dark and the hook sit in a HOLLOW (the dark corner is also
+  // the low corner), THE TOP is now literally that — a 74-voxel crest with
+  // the park arc blind over its brow — and the cut plunges below grade the
+  // way a cutting should.
   profile: [
-    [0, 0], [760, 12],
-    [1500, 30], [1910, 34],     // the parade climbs to the chapel
-    [2530, 4], [2950, -20],     // and drops away into a hollow on the sweeper
-    [3350, -2], [4020, 26],     // a crest you cannot see the exit over
-    [4690, 10], [5220, 22],
-    [5700, -14], [5980, -8],    // the cut is a cutting, so it is below everything
-    [6250, 8],
+    [0, 0], [700, 10], [1240, 22],
+    [1700, 40],                  // the chapel on its knoll
+    [2200, 8], [2520, -6],       // mill lane runs down off it
+    [2850, -26],                 // the long dark, in the hollow
+    [3150, -10],                 // the hook climbs as it tightens
+    [3600, 18], [4100, 2], [4500, 20],   // the crescent rolls
+    [4900, 64], [5170, 66],      // THE TOP — the big blind crest
+    [5480, 30], [5790, -8],      // the cut falls away in two pitches, each
+                                 // under the 22% grade audit (cosine peaks
+                                 // at pi/2 times the average — knot maths)
+    [5990, -8], [6250, 4], [6420, 0],
   ],
 
   // Six of nine on unlit legs, one of those mid-corner on the long dark.
   hazards: [
     { s: 700, u: H(HALF, 0.62), r: 30, kind: 'works' },
-    { s: 1560, u: H(HALF, 0.42), r: 30, kind: 'chicane' },
+    // the chicane: two gates, a weave — see hazards() on why it is two entries
+    { s: 1080, u: H(HALF, 0.42), r: 30, kind: 'chicane' },
+    { s: 1440, u: H(HALF, -0.42), r: 30, kind: 'chicane' },
     { s: 2060, u: H(HALF, -0.30), r: 32, kind: 'skip' },
     { s: 2480, u: H(HALF, 0.34), r: 30, kind: 'works' },
     { s: 2900, u: H(HALF, -0.34), r: 34, kind: 'broken' },
@@ -72,7 +93,10 @@ export default {
     { s: 4300, u: H(HALF, -0.55), r: 32, kind: 'skip' },
     { s: 5430, u: H(HALF, 0.34), r: 30, kind: 'works' },
     { s: 5850, u: H(HALF, -0.34), r: 34, kind: 'broken' },
-    { s: 6250, u: H(HALF, 0.28), r: 30, kind: 'works' },
+    // 6180, not 6250: the new lap is 6435 long and a works barrier runs
+    // span/2 past its anchor — at 6250 the tail wrapped the seam and lay
+    // across the start straight
+    { s: 6180, u: H(HALF, 0.28), r: 30, kind: 'works' },
   ],
 
   // Kept clear of the parking bays, or a crosser baulks mid-road.
