@@ -2,34 +2,53 @@
 //
 // There is not one audio asset anywhere in this project — the engine note, the
 // skids, the struck bins are all synthesised in race/audio.js — and the music
-// keeps the rule: a sixteen-step sequencer, a handful of oscillators, and a
-// tape-ish delay. Night-drive synthwave, because that is what 1986 sounds
-// like from a car. Two moods from one machine: 'race' runs the full kit at
-// 118, 'menu' drops the drums and lets the pads carry the hub at 88.
+// keeps the rule: a sequencer, a handful of oscillators, and a tape-ish delay.
+// Night-drive synthwave, because that is what 1986 sounds like from a car.
 //
-// If real produced tracks ever arrive (the ElevenLabs music API needs a paid
-// plan), this file is the seam: keep the interface, swap the insides for an
-// <audio> element.
+// REWRITTEN for the polish pass: a real 32-bar FORM instead of a loop. Two
+// eight-bar sections — A rides Am9/Fmaj7/Cmaj7/G6, B lifts through Dm9 and
+// leans on an E major that pulls the loop home — with the drums dropping out
+// at the top of B and rebuilding, a snare fill at every section turn, an
+// arpeggio that lives in B, and a detuned two-saw lead that speaks in
+// call-and-response phrases instead of noodling. The pads DUCK on every kick
+// (the sidechain pump that makes synthwave breathe), and the whole kit obeys
+// a volume knob and an INTENSITY line — the final lap turns the heat up.
+//
+// If real produced tracks ever arrive, this file is the seam: keep the
+// interface, swap the insides for an <audio> element.
 const N = (m) => 440 * Math.pow(2, (m - 69) / 12);
 
-// Am — F — C — G, the honest workhorse. Bass roots low, pads in the middle,
-// the lead an octave up and mostly silent.
-const PROG = [
-  { root: 33, pad: [57, 60, 64] },      // Am
-  { root: 29, pad: [57, 60, 65] },      // F
-  { root: 36, pad: [55, 60, 64] },      // C
-  { root: 31, pad: [55, 59, 62] },      // G
+// A: the honest workhorse, voiced with 7ths and 9ths so it shimmers.
+// B: the lift — Dm9 up to an E MAJOR (V of Am) that yanks the loop home.
+const PROG_A = [
+  { root: 33, pad: [57, 60, 64, 71] },      // Am9
+  { root: 29, pad: [57, 60, 64, 65] },      // Fmaj7
+  { root: 36, pad: [55, 60, 64, 71] },      // Cmaj7
+  { root: 31, pad: [55, 59, 62, 64] },      // G6
+];
+const PROG_B = [
+  { root: 26, pad: [57, 60, 62, 64] },      // Dm9
+  { root: 29, pad: [57, 60, 64, 65] },      // Fmaj7
+  { root: 31, pad: [55, 59, 62, 64] },      // G6
+  { root: 28, pad: [56, 59, 64, 68] },      // E — the pull home
 ];
 // one bar of bass rhythm (16ths): octave bounce with a push before the bar
 const BASS_PAT = [0, 12, 0, 0, 12, 0, 7, 12, 0, 12, 0, 0, 12, 0, 12, 7];
-// a sparse lead phrase over two bars; 0 = rest
-const LEAD = [76, 0, 0, 74, 72, 0, 74, 0, 69, 0, 0, 0, 72, 0, 74, 76,
-              77, 0, 76, 0, 74, 0, 72, 0, 71, 0, 74, 0, 72, 0, 0, 0];
+// two-bar call, two-bar response — each 32 steps, rests carry the phrasing
+const LEAD_CALL = [
+  76, 0, 0, 74, 76, 0, 79, 0, 76, 0, 74, 0, 72, 0, 0, 0,
+  74, 0, 0, 72, 74, 0, 76, 0, 72, 0, 71, 0, 69, 0, 0, 0];
+const LEAD_ANSWER = [
+  77, 0, 0, 76, 77, 0, 81, 0, 79, 0, 76, 0, 74, 0, 0, 0,
+  76, 0, 74, 0, 72, 0, 74, 0, 71, 0, 72, 0, 69, 0, 0, 0];
 
 export function createMusic() {
-  let ctx = null, master = null, delay = null, wet = null;
+  let ctx = null, master = null, delay = null, wet = null, padBus = null;
   let mode = 'race', muted = false, running = false;
   let timer = null, nextT = 0, step = 0;
+  let vol = 0.8, heat = 0;
+
+  const baseGain = () => (muted ? 0.0001 : 0.5 * vol + 0.0001);
 
   function boot() {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -38,9 +57,12 @@ export function createMusic() {
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -18; comp.ratio.value = 4;
     delay = ctx.createDelay(1.0);
-    const fb = ctx.createGain(); fb.gain.value = 0.32;
-    const damp = ctx.createBiquadFilter(); damp.type = 'lowpass'; damp.frequency.value = 3200;
-    wet = ctx.createGain(); wet.gain.value = 0.18;
+    const fb = ctx.createGain(); fb.gain.value = 0.34;
+    const damp = ctx.createBiquadFilter(); damp.type = 'lowpass'; damp.frequency.value = 3000;
+    wet = ctx.createGain(); wet.gain.value = 0.2;
+    // the pad bus, so the kick can duck every sustained voice at once
+    padBus = ctx.createGain(); padBus.gain.value = 1;
+    padBus.connect(master);
     master.connect(comp); comp.connect(ctx.destination);
     master.connect(delay); delay.connect(damp); damp.connect(fb); fb.connect(delay);
     delay.connect(wet); wet.connect(comp);
@@ -73,54 +95,89 @@ export function createMusic() {
   }
   function kick(t) {
     const o = ctx.createOscillator(); o.type = 'sine';
-    o.frequency.setValueAtTime(130, t);
-    o.frequency.exponentialRampToValueAtTime(42, t + 0.11);
-    const g = ctx.createGain(); env(g, t, 0.002, 0.85, 0.16);
+    o.frequency.setValueAtTime(140, t);
+    o.frequency.exponentialRampToValueAtTime(40, t + 0.12);
+    const g = ctx.createGain(); env(g, t, 0.002, 0.9, 0.17);
     o.connect(g); g.connect(master);
     o.start(t); o.stop(t + 0.3);
+    // THE PUMP: every kick ducks the pad bus and lets it swell back —
+    // this one gesture is most of what makes synthwave feel like driving
+    padBus.gain.cancelScheduledValues(t);
+    padBus.gain.setValueAtTime(1, t);
+    padBus.gain.linearRampToValueAtTime(0.5, t + 0.02);
+    padBus.gain.linearRampToValueAtTime(1, t + 0.24);
+  }
+  // the lead voice: two saws detuned either side, through a lowpass, into
+  // the delay — it answers itself a bar later off the tape
+  function leadNote(m, t, dur, peak) {
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400; lp.Q.value = 0.8;
+    const g = ctx.createGain(); env(g, t, 0.008, peak, dur);
+    for (const dt of [-6, 6]) {
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = N(m); o.detune.value = dt;
+      o.connect(lp);
+      o.start(t); o.stop(t + dur + 0.1);
+    }
+    lp.connect(g); g.connect(master); g.connect(wet);
   }
 
   function schedule(t, st) {
-    const bar = Math.floor(st / 16) % 4, sixteenth = st % 16;
-    const ch = PROG[bar];
+    // the 32-bar form: bars 0-15 are A (the prog twice over), 16-31 are B
+    const barIdx = Math.floor(st / 16) % 32;
+    const inB = barIdx >= 16;
+    const ch = (inB ? PROG_B : PROG_A)[Math.floor((barIdx % 16) / 4) % 4];
+    const sixteenth = st % 16;
     const drums = mode === 'race';
-    if (drums) {
+    // the BREATH: the first two bars of B drop the kit and let the pads
+    // carry it, then everything piles back in
+    const breath = inB && barIdx < 18 && heat < 0.5;
+    // the FILL: the last bar before each section turn rolls the snare in
+    const fill = (barIdx === 15 || barIdx === 31) && sixteenth >= 12;
+
+    if (drums && !breath) {
       if (sixteenth % 4 === 0) kick(t);
       if (sixteenth === 4 || sixteenth === 12) noise(t, 0.14, 0.5, 1400);
-      if (sixteenth % 2 === 0) noise(t, 0.03, sixteenth % 4 === 2 ? 0.22 : 0.1, 6800);
+      if (fill) noise(t, 0.09, 0.3 + (sixteenth - 12) * 0.08, 1600);
+      const hatStep = heat > 0.5 ? 1 : 2;
+      if (sixteenth % hatStep === 0)
+        noise(t, 0.03, (sixteenth % 4 === 2 ? 0.22 : 0.1) * (0.8 + Math.random() * 0.4), 6800);
     }
     // bass: 16ths in race, half-time pulses in the menu
-    if (drums) {
-      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 640;
+    if (drums && !breath) {
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 640 + heat * 260;
       osc('sawtooth', N(ch.root + BASS_PAT[sixteenth]), t, 0.11, 0.5, master, 0, lp);
     } else if (sixteenth % 8 === 0) {
       const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420;
       osc('sawtooth', N(ch.root + 12), t, spb() * 1.8, 0.3, master, 0, lp);
     }
-    // pads: one swell per bar, two detuned saws per note
+    // pads: one swell per bar, two detuned saws per note, on the DUCKED bus
     if (sixteenth === 0) {
       for (const m of ch.pad) {
-        const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = mode === 'race' ? 1150 : 900;
+        const lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
+        lp.frequency.value = (mode === 'race' ? 1150 : 900) + heat * 500;
         const dur = spb() * 4;
-        const o1 = ctx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = N(m); o1.detune.value = -7;
-        const o2 = ctx.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = N(m); o2.detune.value = 7;
         const g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, t);
-        g.gain.linearRampToValueAtTime(mode === 'race' ? 0.055 : 0.085, t + dur * 0.35);
+        g.gain.linearRampToValueAtTime((mode === 'race' ? 0.05 : 0.08) / Math.sqrt(ch.pad.length / 3), t + dur * 0.35);
         g.gain.linearRampToValueAtTime(0.0001, t + dur * 1.05);
-        o1.connect(lp); o2.connect(lp); lp.connect(g); g.connect(master); g.connect(wet);
-        o1.start(t); o2.start(t); o1.stop(t + dur * 1.1); o2.stop(t + dur * 1.1);
+        for (const dt of [-7, 7]) {
+          const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = N(m); o.detune.value = dt;
+          o.connect(lp);
+          o.start(t); o.stop(t + dur * 1.1);
+        }
+        lp.connect(g); g.connect(padBus); g.connect(wet);
       }
     }
-    // the lead, every other pass round the progression
-    const phrase = Math.floor(st / 64) % 2 === 1;
-    if (phrase) {
-      const m = LEAD[st % 32];
-      if (m) {
-        const g2 = ctx.createGain(); g2.gain.value = 1;
-        osc('triangle', N(m), t, 0.22, mode === 'race' ? 0.16 : 0.2, wet);
-        osc('triangle', N(m), t, 0.22, mode === 'race' ? 0.1 : 0.12, master);
-      }
+    // the ARP: sixteenth plucks up the chord — B's signature, and the heat's
+    if ((inB || heat > 0.5) && (drums || sixteenth % 2 === 0)) {
+      const m = ch.pad[sixteenth % ch.pad.length] + 12;
+      osc('square', N(m), t, 0.07, 0.045 + heat * 0.03, wet);
+    }
+    // the LEAD: call in the back half of A, answer in the back half of B
+    const phraseBar = barIdx % 16;
+    if (phraseBar >= 8) {
+      const line = inB ? LEAD_ANSWER : LEAD_CALL;
+      const m = line[st % 32];
+      if (m) leadNote(m, t, 0.24, (mode === 'race' ? 0.13 : 0.16) + heat * 0.05);
     }
   }
 
@@ -142,7 +199,7 @@ export function createMusic() {
       running = true;
       nextT = ctx.currentTime + 0.1; step = 0;
       delay.delayTime.value = spb() * 0.75;
-      master.gain.setTargetAtTime(muted ? 0.0001 : 0.5, ctx.currentTime, 0.5);
+      master.gain.setTargetAtTime(baseGain(), ctx.currentTime, 0.5);
       timer = setInterval(pump, 40);
     },
     stop() {
@@ -153,7 +210,15 @@ export function createMusic() {
     },
     mute(v) {
       muted = !!v;
-      if (master && ctx) master.gain.setTargetAtTime(muted ? 0.0001 : 0.5, ctx.currentTime, 0.15);
+      if (master && ctx) master.gain.setTargetAtTime(baseGain(), ctx.currentTime, 0.15);
     },
+    // the volume knob, 0..1 — the settings slider drives this
+    setVolume(v) {
+      vol = Math.max(0, Math.min(1, v));
+      if (master && ctx && running) master.gain.setTargetAtTime(baseGain(), ctx.currentTime, 0.15);
+    },
+    // the heat, 0..1 — the final lap turns it up: denser hats, open filters,
+    // the arp everywhere, the lead louder
+    intensity(v) { heat = Math.max(0, Math.min(1, v)); },
   };
 }

@@ -101,8 +101,11 @@ picker.show();
 const garage = mountGarage({ save, closeHint: 'ESC to close' });
 document.getElementById('garagebtn').addEventListener('click', () => garage.open());
 
-// the mellow half of the radio, once the browser allows it
+// the mellow half of the radio, once the browser allows it — obeying the
+// same saved volume and mute the race page uses
 const music = createMusic();
+music.setVolume(save.settings?.musicVol ?? 0.8);
+if (save.settings && save.settings.music === false) music.mute(true);
 const startMusic = () => {
   music.start('menu');
   removeEventListener('pointerdown', startMusic);

@@ -122,12 +122,18 @@ export function mountTrackSelect({ save, onGo, onDuel, closeLabel, onClose }) {
   const NUM = ['&mdash;', 'I', 'II', 'III'];
   function paintWall() {
     const p = save.parts || {};
+    // the record book, one line: money, the car's fit, and the career so far
+    const st = Object.values(save.stats || {});
+    const wins = st.reduce((a, x) => a + (x.wins || 0), 0);
+    const clean = st.reduce((a, x) => a + (x.clean || 0), 0);
     wall.innerHTML = `<span><b>${save.money || 0}</b> in the tin</span>`
       + `<span class="fit">engine<i>${NUM[p.engine || 0]}</i></span>`
       + `<span class="fit">brakes<i>${NUM[p.brakes || 0]}</i></span>`
       + `<span class="fit">tyres<i>${NUM[p.tyres || 0]}</i></span>`
       + `<span class="fit">lamps<i>${NUM[p.lamps || 0]}</i></span>`
-      + `<span>${save.races || 0} race${save.races === 1 ? '' : 's'} run</span>`;
+      + `<span>${save.races || 0} race${save.races === 1 ? '' : 's'} run</span>`
+      + `<span><b>${wins}</b> won${clean ? ` &middot; ${clean} clean` : ''}</span>`
+      + `<span class="fit">tier<i>${Garage.TIER_NAMES[save.career?.tier || 0]}</i></span>`;
   }
 
   function paint() {
@@ -197,7 +203,14 @@ export function mountTrackSelect({ save, onGo, onDuel, closeLabel, onClose }) {
       const drop = document.createElement('button');
       drop.className = 'drop';
       drop.textContent = 'abandon the season';
-      drop.onclick = (e) => { e.stopPropagation(); GP.abandon(save); paint(); };
+      // two clicks — a season is hours of racing and one slip should not
+      // be able to end it
+      let armed = 0;
+      drop.onclick = (e) => {
+        e.stopPropagation();
+        if (Date.now() - armed < 2600) { GP.abandon(save); paint(); }
+        else { armed = Date.now(); drop.textContent = 'sure? click again to abandon'; setTimeout(() => { drop.textContent = 'abandon the season'; }, 2700); }
+      };
       season.appendChild(drop);
     } else {
       const tier = save.career?.tier || 0;

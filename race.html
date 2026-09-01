@@ -200,6 +200,13 @@
   #pause .ptoggles button.on { color: #7fe08a; border-color: #2e4a38; }
   #pause .ptoggles button.on::after { content: ' ·on'; color: #4a6a52; }
   #pause .ptoggles button:not(.on)::after { content: ' ·off'; color: #4d566a; }
+  #pause .pvol {
+    display: flex; align-items: center; gap: 12px; margin-top: 10px;
+    color: #6d7688; font-size: 11px; letter-spacing: .14em;
+  }
+  #pause .pvol input { flex: 1; accent-color: #ffd9a0; }
+  #pause .pdanger { margin-top: 14px; color: #7a4a44 !important; border-color: #3a2a2a !important; font-size: 11px; }
+  #pause .pdanger:hover { color: #ff8a6a !important; border-color: #6a3a34 !important; }
 
   /* THE PODIUM — a championship should END somewhere. Three plinths, the
      season table, the money. Shown once, when the last round is scored. */
@@ -297,7 +304,11 @@
       <button data-set="sfx">sound fx</button>
       <button data-set="shake">cam shake</button>
       <button data-set="streaks">streaks</button>
+      <button data-set="fx" style="grid-column: 1 / -1">impact effects &mdash; hit-stop &amp; fringe</button>
     </div>
+    <label class="pvol">music <input id="vol-music" type="range" min="0" max="100" value="80"></label>
+    <label class="pvol">sound <input id="vol-sfx" type="range" min="0" max="100" value="90"></label>
+    <button id="p-reset" class="pdanger">reset the save <i>everything</i></button>
   </div></div>
 </div>
 <div id="boot"><div>building the circuit…</div><small id="bootmsg"></small><div id="boottrack"><div id="bootbar"></div></div></div>

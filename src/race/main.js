@@ -518,7 +518,8 @@ let dynTipAt = 0;                    // the one-time dynamo tutorial toast
 let hitStop = 0, camPunch = 0, punchDir = 0, aberKick = 0, goPush = 0;
 // player settings, persisted on the save
 const settings = Object.assign(
-  { music: true, sfx: true, shake: true, streaks: true },
+  { music: true, sfx: true, shake: true, streaks: true, fx: true,
+    musicVol: 0.8, sfxVol: 0.9 },
   savefile.settings || {});
 savefile.settings = settings;
 // The race clock — the same clock the rivals keep, so finish ORDER can be
@@ -584,12 +585,22 @@ const resultsEl = document.getElementById('results');
 function fillIntroCard() {
   if (!introCard) return;
   const bst = savefile.bests && savefile.bests[track.id];
+  // FIRST NIGHT: a player with no races yet gets the controls on the
+  // ceremony card, once, where they will actually read them — not in a
+  // help panel they have to know exists.
+  const firstNight = !savefile.races
+    ? `<div class="facts" style="margin-top:10px;color:#8d97ab">`
+      + `<b>W</b> drive &middot; <b>S</b> brake &middot; <b>A/D</b> steer &middot; `
+      + `<b>SPACE</b> drift banks a boost &middot; <b>SHIFT</b> burns the NOS &middot; `
+      + `<b>ESC</b> pause</div>`
+    : '';
   introCard.innerHTML = `<h1>${track.name}</h1><p>${track.spec.blurb}</p>`
     + `<div class="facts">${mode === 'tt' ? 'time trial — you and the ghost' : `${LAPS} laps`}`
     + ` &middot; ${Math.round(track.lapLength * 0.08)} m`
     + ` &middot; ${track.spec.wet ? 'rain' : 'clear'}`
     + (mode === 'tt' ? '' : ` &middot; field of ${track.spec.field || 6}`)
-    + (bst ? ` &middot; best ${bst.toFixed(2)}s` : '') + `</div>`;
+    + (bst ? ` &middot; best ${bst.toFixed(2)}s` : '') + `</div>`
+    + firstNight;
 }
 // One score per round per page life. finish() used to award GP points every
 // time it ran, so R + a re-race after a round scored the season twice and
@@ -619,6 +630,7 @@ function reset(ceremony = false) {
   s = prevS = START.s; crashes = 0; wasDown = false; struck = 0; msgUntil = 0;
   offCourse = 0; pinned = 0; wasAir = false;
   rescue = null; heli.visible = false;
+  music.intensity(0);
   stats = { topSpeed: 0, nearMisses: 0, padsHit: 0, driftBanks: 0, bigAir: 0 };
   hazCool = hazCool.map(() => 0); trafCool = trafCool.map(() => 0);
   splits.length = 0;
@@ -1762,6 +1774,9 @@ function tick() {
     lap++;
     audio.beep();
     lapTime = 0;
+    // THE FINAL LAP turns the music's heat up: denser hats, open filters,
+    // the arp everywhere. The radio knows how the race is going.
+    if (mode !== 'tt' && lap === LAPS - 1) music.intensity(1);
     if (lap >= LAPS) {
       done = true;
       finish();
@@ -2017,7 +2032,7 @@ function tick() {
     audio.impact(car.state.shake || 0.5);
     // the juice: freeze, punch, fringe — all scaled by how hard it was
     const sev = car.state.shake || 0.4;
-    if (sev > 0.35) hitStop = 0.028 + sev * 0.05;
+    if (sev > 0.35 && settings.fx !== false) hitStop = 0.028 + sev * 0.05;
     camPunch = sev;
     punchDir = Math.sign(Math.sin(time * 13) || 1);   // varied, feels less canned
     aberKick = Math.max(aberKick, sev * 1.1);
@@ -2191,7 +2206,7 @@ function tick() {
   if (aberKick > 0.01) {
     aberKick *= Math.max(0, 1 - dt * 4.5);
   }
-  post.params.aberration = 0.9 + aberKick * 3.4;
+  post.params.aberration = 0.9 + (settings.fx !== false ? aberKick * 3.4 : 0);
   // tyre smoke while the slip angle is live
   puffTimer -= dt;
   if (Math.abs(car.state.slip) > 0.15 && car.state.air === 0 && puffTimer <= 0) {
@@ -2388,9 +2403,14 @@ document.getElementById('p-circuits')?.addEventListener('click', () => { setPaus
 // currently has no recourse at all.
 function applySettings() {
   audio.mute(!settings.sfx);
+  audio.setVolume(settings.sfxVol);
   music.mute(!settings.music);
+  music.setVolume(settings.musicVol);
   for (const b of document.querySelectorAll('#pause .ptoggles button'))
     b.classList.toggle('on', !!settings[b.dataset.set]);
+  const mv = document.getElementById('vol-music'), sv = document.getElementById('vol-sfx');
+  if (mv) mv.value = Math.round(settings.musicVol * 100);
+  if (sv) sv.value = Math.round(settings.sfxVol * 100);
 }
 for (const b of document.querySelectorAll('#pause .ptoggles button'))
   b.addEventListener('click', () => {
@@ -2398,6 +2418,31 @@ for (const b of document.querySelectorAll('#pause .ptoggles button'))
     Garage.save(savefile);
     applySettings();
   });
+document.getElementById('vol-music')?.addEventListener('input', (e) => {
+  settings.musicVol = (+e.target.value) / 100;
+  Garage.save(savefile);
+  music.setVolume(settings.musicVol);
+});
+document.getElementById('vol-sfx')?.addEventListener('input', (e) => {
+  settings.sfxVol = (+e.target.value) / 100;
+  Garage.save(savefile);
+  audio.setVolume(settings.sfxVol);
+});
+// RESET SAVE: two clicks, because one click is how careers end by accident
+{
+  const rb = document.getElementById('p-reset');
+  let armed = 0;
+  rb?.addEventListener('click', () => {
+    if (Date.now() - armed < 2600) {
+      Garage.wipe();
+      location.href = './index.html';
+    } else {
+      armed = Date.now();
+      rb.textContent = 'sure? click again to wipe everything';
+      setTimeout(() => { rb.innerHTML = 'reset the save <i>everything</i>'; }, 2700);
+    }
+  });
+}
 applySettings();
 
 window.DYNAMO = {

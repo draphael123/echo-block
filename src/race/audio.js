@@ -107,15 +107,20 @@ export function createAudio() {
     }
   }
 
+  let vol = 0.9, prevThrottle = 0;
+  const applyGain = () => { if (master) master.gain.value = muted ? 0 : 0.5 * vol; };
+
   return {
     start,
     get on() { return ready && !muted; },
     get started() { return !!ctx; },
     mute(v) {
       muted = v === undefined ? !muted : !!v;
-      if (master) master.gain.value = muted ? 0 : 0.5;
+      applyGain();
       return muted;
     },
+    // the volume knob, 0..1 — the settings slider drives this
+    setVolume(v) { vol = Math.max(0, Math.min(1, v)); applyGain(); },
 
     // pushed once a frame
     update(speed, vmax, throttle, slip, offRoad, nos = false) {
@@ -143,6 +148,15 @@ export function createAudio() {
       sub.frequency.setTargetAtTime(note * 0.5, now, k);
       engineFilter.frequency.setTargetAtTime(320 + f * 2600 + (throttle > 0 ? 500 : 0), now, k);
       engineGain.gain.setTargetAtTime(0.035 + f * 0.075 + (throttle > 0 ? 0.02 : 0), now, 0.08);
+
+      // LIFT-OFF CRACKLE: come off a wide-open throttle at speed and the
+      // exhaust spits a couple of pops — the cheapest, most 1986 sound
+      // this engine makes, and it only fires on the transition
+      if (prevThrottle > 0.6 && throttle <= 0 && f > 0.5) {
+        hit(90 + Math.random() * 30, 0.85, 0.06, 0.12);
+        hit(64 + Math.random() * 20, 0.9, 0.1, 0.09);
+      }
+      prevThrottle = throttle;
 
       // tyres: scrubbing under slip, rumbling off the tarmac
       const scrub = clamp(Math.abs(slip) * 1.7, 0, 1) * f;
