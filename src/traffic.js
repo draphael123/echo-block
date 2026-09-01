@@ -7,7 +7,7 @@
 //
 // Each car is one voxel model meshed once and shared — the matte/glow split
 // means the tail lights and headlight lenses come out emissive for free.
-import * as THREE from 'three';
+import * as THREE from '../vendor/three/three.module.js';
 import { VoxWorld, meshWorld } from './voxel.js';
 import { PALETTE } from './palette.js';
 import { ROAD, GROUND } from './block.js';

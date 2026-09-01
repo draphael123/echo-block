@@ -5,7 +5,7 @@
 //   jitter — per-voxel value noise, keeps big flats from reading as polygons
 //   gain   — albedo multiplier, lets one hex serve as a family of tones
 //   emit   — >0 routes the voxel into the unlit glow mesh (feeds bloom)
-import * as THREE from 'three';
+import * as THREE from '../vendor/three/three.module.js';
 
 const RAW = {
   // --- ground ------------------------------------------------------------

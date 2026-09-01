@@ -12,7 +12,7 @@
 // previous track grew its own roadside geometry and it came out as nine-voxel
 // slabs painted in the backdrop colour — walls with a window, which is exactly
 // what they looked like.
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three/three.module.js';
 import { VoxWorld, meshWorld, meshChunks, meshChunksAsync, hash3 } from '../voxel.js';
 import { PALETTE } from '../palette.js';
 import { FLOOR_MAX, HEAD, STEP_UP, Ground } from '../walk.js';
@@ -706,6 +706,30 @@ const DISTRICT = {
   },
 
   containers(c, sec) {
+    // THE REACH IS A CANYON BETWEEN GROUNDED SHIPS. Two beached hulls close in
+    // on the road from both sides — rust waterline, plated steel, a white
+    // boot stripe, a gunwale rail, the odd lit porthole — marched in (s, u)
+    // one column at a time so they follow the quay's curve. Nothing else on
+    // the lap sounds like this leg looks. The coal wharf beyond keeps its
+    // container stacks, so the two container legs stop being twins.
+    if (sec.name === 'the reach') {
+      for (const side of [-1, 1])
+        c.run(sec.from + 60, sec.to - 60, side * (ROAD_HALF + 44), 1, (x, z, ff, gy, s) => {
+          const i = Math.round(s);
+          const h = 50 + ((i >> 6) % 2) * 5;
+          for (let k = 0; k < h; k++) {
+            const m = k < 4 ? 'rust'
+              : k === h - 6 ? 'paper'
+              : ((k >> 3) % 2 ? 'skipSteel' : 'skipRust');
+            c.w.set(x, gy + k, z, m);
+          }
+          c.w.set(x, gy + h, z, 'metal');
+          if (i % 64 < 2) for (let k = 26; k < 36; k += 4) c.w.set(x, gy + k, z, 'winWarmDim');
+          if (i % 180 < 2)                       // a derrick over the rail
+            for (let k = 0; k < 34; k++) c.w.set(x, gy + h + k, z, 'metalDark');
+        });
+      return;
+    }
     for (const side of [-1, 1])
       c.run(sec.from, sec.to, side * (SET + 100), 200, (x, z, ff, gy, s) => {
         const [bx, bz] = c.back(ff, x, z, 60);
@@ -1296,6 +1320,18 @@ function dress(w, path, anchors, houses) {
   for (const [s, side, kind] of F.signs || [])
     put(s, side * KERBSIDE, (x, z, ff, gy) => S.signPost(w, x, gy, z, kind));
 
+  // BOOST PADS: three neon chevrons flush with the road. Emissive, so they
+  // read from three hundred voxels out at night — a pad you cannot see coming
+  // is a trap, not a reward. Flush, so they are paint to the collision field.
+  for (const pd of SPEC.pads || []) {
+    const pu = pd.u || 0;
+    for (let a2 = 0; a2 < 3; a2++)
+      for (let du = -26; du <= 26; du++)
+        for (let t2 = 0; t2 < 3; t2++)
+          put(pd.s + a2 * 16 + Math.abs(du) * 0.45 + t2, pu + du,
+            (x, z, ff, gy) => w.set(x, gy - 1, z, 'neonSign'));
+  }
+
   // zebra crossings, with a belisha beacon each side
   for (const sc of CROSSINGS) {
     for (let ds = -13; ds <= 13; ds++)
@@ -1611,12 +1647,12 @@ export const spec = () => SPEC;
 // for all of it — indistinguishable from a hang. `onPhase(label, frac)` feeds
 // the boot screen; the yields between phases (and inside the mesher) let it
 // actually paint.
-export async function buildTrack(trackSpec, onPhase) {
-  const breathe = (label, frac) => {
-    if (onPhase) onPhase(label, frac);
-    // MessageChannel, not setTimeout — hidden tabs clamp timers to a second
-    return new Promise(r => { const mc = new MessageChannel(); mc.port1.onmessage = r; mc.port2.postMessage(0); });
-  };
+// Everything about a circuit that is CODE rather than voxels: the module
+// globals every helper reads (sections, elevation, road metrics, hazards) and
+// the path itself. The builder starts here — and so does the HYDRATOR, which
+// receives finished geometry from the build worker and needs the same state
+// on the main thread for sectionAt/elev/safeSpot/lifeSpots to mean anything.
+export function initTrackState(trackSpec) {
   SPEC = trackSpec;
   setRoad(trackSpec.road);
   setProfile(trackSpec.profile);
@@ -1630,6 +1666,16 @@ export async function buildTrack(trackSpec, onPhase) {
     // the ones who step out in front of you, at the marked crossings
     s: cs, u: i % 2 ? PAVE_MID : -PAVE_MID, cross: true, pace: 30 + i * 4,
   })));
+  return buildPath(trackSpec);
+}
+
+export async function buildTrack(trackSpec, onPhase) {
+  const breathe = (label, frac) => {
+    if (onPhase) onPhase(label, frac);
+    // MessageChannel, not setTimeout — hidden tabs clamp timers to a second
+    return new Promise(r => { const mc = new MessageChannel(); mc.port1.onmessage = r; mc.port2.postMessage(0); });
+  };
+  const path = initTrackState(trackSpec);
 
   const t0 = performance.now();
   // Phase timings, because "the build takes twenty seconds" is not actionable
@@ -1638,7 +1684,6 @@ export async function buildTrack(trackSpec, onPhase) {
   let last = t0;
   const mark = (name) => { const n = performance.now(); marks.push([name, Math.round(n - last)]); last = n; };
 
-  const path = buildPath(trackSpec);
   const w = new VoxWorld();
   const anchors = { lamps: [], stacks: [], tvs: [] };
   await breathe('surveying the route', 0.02);
@@ -1678,14 +1723,18 @@ export async function buildTrack(trackSpec, onPhase) {
     const sf = frame();
     for (let s = 0; s < path.total; s += 3) {
       const road = elev(s);
-      for (let u = -(ROAD_HALF - 6); u <= ROAD_HALF - 6; u += 3) {
+      for (let u = -ROAD_HALF; u <= ROAD_HALF; u += 3) {
         if (HAZARDS.some(h => Math.abs(h.s - s) < h.r + 170 && Math.abs(h.u - u) < h.r + 170)) continue;
         path.place(s, u, sf);
         const x = Math.round(sf.x), z = Math.round(sf.z);
         // every k, no stride: a one-voxel-thick plate at exactly the skipped
-        // height defeated two strided versions of this probe in a row
-        for (let k = 3; k < 28; k++) {
-          if (w.get(x, road + k, z)) { w.cut(x - 2, road + 3, z - 2, 5, 25, 5); scrubbed++; break; }
+        // height defeated two strided versions of this probe in a row. The
+        // outer rim probes HIGHER too — a garden wall with a hedge on top
+        // straddled the edge with its greenery above the normal band, and a
+        // legitimate canopy never hangs this close to the kerb.
+        const top = Math.abs(u) > ROAD_HALF - 22 ? 44 : 28;
+        for (let k = 3; k < top; k++) {
+          if (w.get(x, road + k, z)) { w.cut(x - 2, road + 3, z - 2, 5, top - 3, 5); scrubbed++; break; }
         }
       }
     }
@@ -1807,5 +1856,92 @@ export async function buildTrack(trackSpec, onPhase) {
     buildMs: Math.round(performance.now() - t0),
     phases: marks,
     lapLength: path.total,
+  };
+}
+
+
+// ------------------------------------------------- the worker's two halves
+// serializeTrack runs IN THE WORKER: it strips a built track down to what
+// cannot be recomputed — the geometry buffers, the walk field, the anchors —
+// as transferable typed arrays, so the payload crosses threads without a
+// copy. hydrateTrack runs on the MAIN THREAD: it re-establishes the module
+// state from the spec (cheap) and rebuilds THREE meshes around the
+// transferred buffers (also cheap — the expensive part already happened).
+export function serializeTrack(track) {
+  const meshes = [];
+  const transfer = new Set();
+  track.group.traverse((o) => {
+    if (!o.isMesh) return;
+    const g = o.geometry;
+    const kind = o.name === 'surround' ? 'surround' : (o.name.endsWith(':glow') ? 'glow' : 'matte');
+    const pos = g.getAttribute('position').array;
+    const nrm = g.getAttribute('normal') ? g.getAttribute('normal').array : null;
+    const col = g.getAttribute('color') ? g.getAttribute('color').array : null;
+    const idx = g.getIndex();
+    let ind = idx ? idx.array : null;
+    // surround's index comes from setIndex(plainArray) — normalise to typed
+    if (ind && !(ind instanceof Uint32Array || ind instanceof Uint16Array)) ind = new Uint32Array(ind);
+    meshes.push({ kind, pos, nrm, col, ind });
+    transfer.add(pos.buffer);
+    if (nrm) transfer.add(nrm.buffer);
+    if (col) transfer.add(col.buffer);
+    if (ind) transfer.add(ind.buffer);
+  });
+  const f = track.field;
+  transfer.add(f.floor.buffer);
+  transfer.add(f.blocked.buffer);
+  const payload = {
+    meshes,
+    field: { x0: f.x0, z0: f.z0, w: f.w, d: f.d, floor: f.floor, blocked: f.blocked },
+    anchors: track.anchors,
+    hazards: track.hazards,
+    voxels: track.voxels,
+    buildMs: track.buildMs,
+    grade: track.grade,
+    phases: track.phases,
+  };
+  return { payload, transfer: [...transfer] };
+}
+
+export function hydrateTrack(trackSpec, p) {
+  const path = initTrackState(trackSpec);
+  // keep the worker's annotated hazards (x, z filled in by hazards())
+  HAZARDS = p.hazards;
+  const group = new THREE.Group();
+  group.name = 'track';
+  for (const m of p.meshes) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(m.pos, 3));
+    if (m.nrm) g.setAttribute('normal', new THREE.BufferAttribute(m.nrm, 3));
+    else g.computeVertexNormals();
+    if (m.col) g.setAttribute('color', new THREE.BufferAttribute(m.col, 3));
+    if (m.ind) g.setIndex(new THREE.BufferAttribute(m.ind, 1));
+    let mesh;
+    if (m.kind === 'surround') {
+      mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({
+        color: 0x232a20, roughness: 1, metalness: 0, side: THREE.DoubleSide, flatShading: true,
+      }));
+      mesh.name = 'surround';
+    } else if (m.kind === 'glow') {
+      mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }));
+      mesh.name = 'track:glow';
+    } else {
+      mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: 0.94, metalness: 0.0,
+      }));
+      mesh.castShadow = mesh.receiveShadow = true;
+      mesh.name = 'track:matte';
+    }
+    group.add(mesh);
+  }
+  const start = frame();
+  path.at(80, start);
+  return {
+    group, path, field: p.field, anchors: p.anchors, hazards: HAZARDS, elev,
+    grade: p.grade, spec: trackSpec, id: trackSpec.id, name: trackSpec.name,
+    roadHalf: ROAD_HALF, sections: SECTIONS, traffic: trackSpec.traffic || [],
+    start: { x: start.x, z: start.z, heading: Math.atan2(start.tx, start.tz) },
+    voxels: p.voxels, buildMs: p.buildMs, phases: p.phases,
+    chunks: p.meshes.length, lapLength: path.total,
   };
 }

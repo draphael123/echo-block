@@ -11,7 +11,7 @@
 //
 // The DOF is what does the heavy lifting: the miniature/diorama read comes
 // from the lens, not from the voxels.
-import * as THREE from 'three';
+import * as THREE from '../vendor/three/three.module.js';
 
 const VERT = /* glsl */`
 varying vec2 vUv;

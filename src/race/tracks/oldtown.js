@@ -153,6 +153,8 @@ export default {
   // the road's own face and the streetlight's own colour -- see ribbon()
   surface: 'cobble',
   lampColor: '#ffc776',
+  // boost pads
+  pads: [{ s: 980 }, { s: 2950 }],
   refLap: 34,
   wet: 0,
 };

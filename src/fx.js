@@ -5,7 +5,7 @@
 // wind, smoke off two chimneys, a cat with somewhere to be, and a sign with a
 // bad tube in it. Between them they are most of the difference between a set
 // and a place.
-import * as THREE from 'three';
+import * as THREE from '../vendor/three/three.module.js';
 import { VoxWorld, meshWorld } from './voxel.js';
 import { PALETTE } from './palette.js';
 

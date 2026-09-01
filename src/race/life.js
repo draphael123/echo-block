@@ -9,7 +9,7 @@
 // Everything is placed in track coordinates (s, u) and culled by distance,
 // because a dozen people is a hundred and forty draw calls and most of them are
 // half a kilometre behind you.
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three/three.module.js';
 import { buildPerson, buildDog } from '../people.js';
 import { frame } from './path.js';
 import { STEP_UP } from '../walk.js';

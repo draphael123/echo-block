@@ -129,6 +129,8 @@ export default {
   // the road's own face and the streetlight's own colour -- see ribbon()
   surface: 'motorway',
   lampColor: '#ff9226',
+  // boost pads
+  pads: [{ s: 1500 }, { s: 3650 }, { s: 7550 }],
   refLap: 36,
   wet: 0,
 };

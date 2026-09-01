@@ -5,7 +5,7 @@
 // size. There is no finer resolution for small props. A mailbox latch and a
 // roof gable are built out of the same cube. Break this and the diorama read
 // collapses into "generic voxel game".
-import * as THREE from 'three';
+import * as THREE from '../vendor/three/three.module.js';
 
 // The addressable world, in voxels either side of the origin. This was 512 —
 // fine for one street, and it SILENTLY CORRUPTED the moment a race track ran

@@ -14,7 +14,7 @@
 // camera above it, so the mesher drops those faces (`noFloorBelow`) rather
 // than the plate being four courses deep — at this street's size that is the
 // difference between a one-million-voxel scene and a three-million one.
-import * as THREE from 'three';
+import * as THREE from '../vendor/three/three.module.js';
 import { VoxWorld, meshWorld, hash3 } from './voxel.js';
 import { PALETTE, tint } from './palette.js';
 import { FLOOR_MAX, HEAD } from './walk.js';

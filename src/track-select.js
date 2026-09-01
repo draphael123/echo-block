@@ -87,7 +87,7 @@ const CSS = `
 #pick .medal.bronze { background: #c98d54; }
 `;
 
-export function mountTrackSelect({ save, onGo }) {
+export function mountTrackSelect({ save, onGo, closeLabel, onClose }) {
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -192,8 +192,12 @@ export function mountTrackSelect({ save, onGo }) {
     }
   }
 
-  el.querySelector('.close').onclick = () => hide();
-  el.onclick = (e) => { if (e.target === el) hide(); };
+  const closeBtn = el.querySelector('.close');
+  if (closeLabel) closeBtn.innerHTML = closeLabel;
+  closeBtn.onclick = () => (onClose ? onClose() : hide());
+  // when the picker IS the page (the menu), a stray backdrop click must not
+  // walk you out of it
+  el.onclick = (e) => { if (e.target === el && !onClose) hide(); };
   function show() { paint(); el.classList.add('up'); }
   function hide() { el.classList.remove('up'); }
 

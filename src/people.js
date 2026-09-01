@@ -7,7 +7,7 @@
 //
 // Everything is the same voxel size as the houses. A kid is 20 voxels tall
 // (~1.6m), an adult 23 (~1.85m). Heads are deliberately oversized.
-import * as THREE from 'three';
+import * as THREE from '../vendor/three/three.module.js';
 import { VoxWorld, meshWorld } from './voxel.js';
 import { PALETTE } from './palette.js';
 

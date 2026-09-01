@@ -9,7 +9,7 @@
 // It is deliberately not a quest system. One flag, a count, and a list of
 // positions — anything more would be building a game on top of a look study
 // before anyone has decided that is what this is.
-import * as THREE from 'three';
+import * as THREE from '../vendor/three/three.module.js';
 import { VoxWorld, meshWorld } from './voxel.js';
 import { PALETTE } from './palette.js';
 

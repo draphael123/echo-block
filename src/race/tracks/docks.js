@@ -124,6 +124,8 @@ export default {
   // the road's own face and the streetlight's own colour -- see ribbon()
   surface: 'concrete',
   lampColor: '#cfe2ff',
+  // boost pads — one of them on the ship's deck, because of course it is
+  pads: [{ s: 1850 }, { s: 4400 }, { s: 6350 }],
   refLap: 41,
   wet: 0.85,
 };

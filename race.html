@@ -104,8 +104,9 @@
   #bootbar { width: 0; height: 100%; background: #ffc98a; transition: width .2s; }
   /* the minimap: the circuit's true shape with everybody on it */
   #map {
-    position: fixed; right: 18px; bottom: 18px; width: 150px; height: 150px;
-    opacity: .85; pointer-events: none;
+    position: fixed; right: 16px; bottom: 16px; width: 190px; height: 190px;
+    opacity: .95; pointer-events: none;
+    filter: drop-shadow(0 0 6px rgba(0, 0, 0, .8));
   }
 
   /* The order board. Five other cars in the dark are a set of tail lights;
@@ -186,11 +187,11 @@
 <canvas id="view"></canvas>
 <div id="ui">
   <div id="where"><div id="circuit"></div><div id="sect"></div></div>
-  <a id="back" href="./index.html">&larr; back to the block</a>
+  <a id="back" href="./index.html">&larr; menu</a>
   <div id="dash"><div id="speed">0</div><div id="gear"></div><div id="drift">drift</div></div>
   <div id="clock"><div id="time">0.00</div><div id="delta"></div><div id="lap"></div><div id="best"></div><div id="pos"></div></div>
   <div id="board"></div>
-  <canvas id="map" width="150" height="150"></canvas>
+  <canvas id="map" width="190" height="190"></canvas>
   <div id="msg"></div>
   <div id="introcard" class="hidden"></div>
   <div id="results" class="hidden"></div>
@@ -206,7 +207,7 @@
     <b>space</b> drift &mdash; hold it to bank a boost<br>
     <b>s</b> at a stop &rarr; reverse<br>
     <b>q</b>/<b>e</b> look &nbsp; <b>v</b> behind &nbsp; <b>scroll</b> zoom<br>
-    <b>g</b> garage &nbsp; <b>m</b> sound &nbsp; <b>r</b> reset
+    <b>g</b> garage &nbsp; <b>t</b> circuits &nbsp; <b>m</b> sound &nbsp; <b>r</b> reset
   </div>
   <div id="hint"><b>h</b> &mdash; controls</div>
 </div>

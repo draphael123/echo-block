@@ -12,7 +12,7 @@
 // will not let you do is take a corner flat out — top speed needs a 505-voxel
 // radius and the track's corners are 380, so every corner is a braking
 // decision.
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three/three.module.js';
 import { VoxWorld, meshWorld } from '../voxel.js';
 import { PALETTE } from '../palette.js';
 

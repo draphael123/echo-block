@@ -32,7 +32,7 @@ export const SKIES = {
   // dark to be genuinely dark.
   midnight: {
     top: '#141d38', horizon: '#33456e', haze: '#7a4a1f', below: '#151d2e', ridge: '#0d1322',
-    fog: '#161f33', fogD: 0.00086, clear: '#141d38',
+    fog: '#161f33', fogD: 0.00058, clear: '#141d38',
     hemiSky: '#3b537f', hemiGround: '#2c2119', hemi: 1.22,
     key: '#bdd2f2', keyI: 1.9, sun: [-320, 470, -240],
     disc: [0.86, 0.90, 1.00], stars: 1,
@@ -65,7 +65,7 @@ export const SKIES = {
     // middle of the frame was not the sky at all -- it was the distant ground,
     // which is genuinely dark at dawn and had no fog to fade into. River mist
     // at first light is the honest fix and the pretty one.
-    fog: "#7d90a0", fogD: 0.00098, clear: "#2b4a70",
+    fog: "#7d90a0", fogD: 0.00064, clear: "#2b4a70",
     hemiSky: '#93aec6', hemiGround: '#4a4238', hemi: 0.88,
     key: '#e8d8c4', keyI: 0.80, sun: [-460, 130, 340],
     disc: [1.00, 0.93, 0.84], stars: 0.15,
@@ -77,7 +77,7 @@ export const SKIES = {
   // warm murk is doing the same job as the crests: it takes the distance away.
   sodium: {
     top: '#191a2c', horizon: '#4a3a3c', haze: '#9a5a1c', below: '#322a38', ridge: '#26212d',
-    fog: '#2b2430', fogD: 0.00110, clear: '#191a2c',
+    fog: '#2b2430', fogD: 0.00088, clear: '#191a2c',
     hemiSky: '#5a4660', hemiGround: '#33251a', hemi: 0.98,
     key: '#c9b9d8', keyI: 1.05, sun: [280, 520, 300],
     disc: [0.88, 0.84, 0.96], stars: 0.6,

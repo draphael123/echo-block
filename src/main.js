@@ -1,7 +1,7 @@
 // ECHO BLOCK — a voxel street at night, and a kid with a flashlight walking
 // down it. The look came first and still runs the place: everything that
 // decides it is a knob in the settings drawer.
-import * as THREE from 'three';
+import * as THREE from '../vendor/three/three.module.js';
 import { buildBlock, BOUNDS, ROAD } from './block.js';
 import { buildSky, buildLights, tvFlicker } from './lights.js';
 import { buildPerson, buildDog, CAST, INDOOR_CAST, MECHANIC, LOOKS } from './people.js';

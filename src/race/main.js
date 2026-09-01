@@ -4,12 +4,12 @@
 // solid mass with panels and glass and lights does not. The hub's renderer is
 // shared on purpose — testing the look on a different one would answer a
 // different question.
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three/three.module.js';
 import { buildSky } from '../lights.js';
 import { skyOf } from './skies.js';
 import { Post } from '../post.js';
 import { Ground } from '../walk.js';
-import { buildTrack, sectionAt, safeSpot, lifeSpots, ROAD_HALF } from './track.js';
+import { buildTrack, hydrateTrack, sectionAt, safeSpot, lifeSpots, ROAD_HALF } from './track.js';
 import { TRACKS, pickTrack, chooseTrack } from './tracks/index.js';
 import { buildCar, V_MAX, BODIES } from './car.js';
 import { buildLife, buildTraffic } from './life.js';
@@ -21,6 +21,7 @@ import { frame as pathFrame } from './path.js';
 import { buildSmoke, neonFlicker } from '../fx.js';
 import * as Garage from './garage.js';
 import { mountGarage } from '../garage-ui.js';
+import { mountTrackSelect } from '../track-select.js';
 import { compare, run } from './sim.js';
 import { assay, parts } from './assay.js';
 
@@ -53,11 +54,39 @@ scene.add(sky);
 // — a forty-second synchronous build looked identical to a crash.
 const bootMsg = document.getElementById('bootmsg');
 const bootBar = document.getElementById('bootbar');
-const track = await buildTrack(SPEC, (label, frac) => {
+const bootPhase = (label, frac) => {
   window.__BUILD_BEAT = Date.now();          // the boot watchdog's heartbeat
   if (bootMsg) bootMsg.textContent = label;
   if (bootBar) bootBar.style.width = Math.round((frac || 0) * 100) + '%';
-});
+};
+// THE BUILD RUNS IN A WORKER. The main thread stays perfectly responsive —
+// the boot screen animates, the tab never stutters — and the finished
+// geometry arrives as transferred buffers that hydrateTrack wraps in meshes
+// in well under a second. If the worker cannot start (an ancient browser, a
+// file:// mistake), the same build runs here with yields, exactly as before.
+async function buildSomewhere(spec, onPhase) {
+  if (window.Worker) {
+    try {
+      const w = new Worker(new URL('./build-worker.js', import.meta.url), { type: 'module' });
+      const payload = await new Promise((res, rej) => {
+        w.onerror = (ev) => rej(new Error(ev.message || 'worker error'));
+        w.onmessage = (m) => {
+          if (m.data.type === 'phase') onPhase(m.data.label, m.data.frac);
+          else if (m.data.type === 'done') res(m.data.payload);
+          else if (m.data.type === 'fail') rej(new Error(m.data.err));
+        };
+        w.postMessage({ trackId: spec.id });
+      });
+      w.terminate();
+      onPhase('opening the circuit', 0.99);
+      return hydrateTrack(spec, payload);
+    } catch (err) {
+      console.warn('worker build failed — building on the main thread instead:', err);
+    }
+  }
+  return buildTrack(spec, onPhase);
+}
+const track = await buildSomewhere(SPEC, bootPhase);
 scene.add(track.group);
 const ground = new Ground(track.field);
 
@@ -222,11 +251,12 @@ addEventListener('keydown', (e) => {
   if (k === 'r') reset();
   if (k === 'v') camYawWant = camYawWant ? 0 : Math.PI;   // latched look-back
   if (k === 'h') { hud.help.classList.toggle('hidden'); hud.hint.classList.toggle('hidden'); }
-  // The championship: N takes you to the next round, G starts a season. Both
-  // reload, because a circuit is meshed once at boot and rebuilding one in
-  // place would take longer than the page does.
-  if (k === 'n' && nextRound) { chooseTrack(nextRound); location.reload(); }
-  if (k === 'g' && done) { GP.begin(savefile); chooseTrack(GP.ROUNDS[0]); location.reload(); }
+  // The championship: N takes you to the next round, G starts a season, T
+  // opens the circuit picker mid-session. Navigation is EXPLICIT — the URL
+  // always names the destination, so a stale ?track= can never win.
+  if (k === 'n' && nextRound) { chooseTrack(nextRound); location.href = './race.html?track=' + nextRound; }
+  if (k === 't') pickerShow();
+  if (k === 'g' && done) { GP.begin(savefile); chooseTrack(GP.ROUNDS[0]); location.href = './race.html?track=' + GP.ROUNDS[0]; }
   if (k === 'g') toggleGarage();
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
@@ -294,8 +324,8 @@ const MAP = (() => {
   const line = document.createElement('canvas');
   line.width = line.height = W;
   const g = line.getContext('2d');
-  g.strokeStyle = 'rgba(222,228,246,0.45)';
-  g.lineWidth = 4; g.lineJoin = 'round';
+  g.strokeStyle = 'rgba(232,238,252,0.8)';
+  g.lineWidth = 5; g.lineJoin = 'round';
   g.beginPath();
   pts.forEach(([mx, mz], i) => { const [a, b] = px(mx, mz); if (i) g.lineTo(a, b); else g.moveTo(a, b); });
   g.closePath(); g.stroke();
@@ -313,6 +343,8 @@ function drawMap() {
     mapCtx.beginPath(); mapCtx.arc(a, b, 3, 0, 7); mapCtx.fill();
   }
   const [a, b] = MAP.px(car.state.x, car.state.z);
+  mapCtx.strokeStyle = 'rgba(255,255,255,0.9)'; mapCtx.lineWidth = 2;
+  mapCtx.beginPath(); mapCtx.arc(a, b, 6.5, 0, 7); mapCtx.stroke();
   mapCtx.fillStyle = '#ffffff';
   mapCtx.beginPath(); mapCtx.arc(a, b, 4.2, 0, 7); mapCtx.fill();
 }
@@ -366,6 +398,9 @@ let struck = 0, msgUntil = 0, wasBoosting = false, lastLight = 99;
 let raceClock = 0;
 // off-the-map grace and the stuck-against-a-wall hint timer
 let offCourse = 0, pinned = 0;
+// boost pads, with a per-pad cooldown so sitting on one is not an engine
+const PADS = SPEC.pads || [];
+const padCool = PADS.map(() => 0);
 
 // ----------------------------------------------------- ghost, delta, sectors
 // THE GHOST is the best lap, embodied: position samples at 10Hz, saved with
@@ -650,6 +685,21 @@ function tick() {
   // the car. |u| is exact and free — we already have it from locate().
   car.state.offRoad = Math.abs(loc.u) > ROAD_HALF - 4;
 
+  // BOOST PADS: drive the chevrons, take a tier-one boost — the same push,
+  // cap and spark the drift bank pays out, so the two systems read as one.
+  // Player only: the rivals race their own pace and owe you nothing.
+  if (running && !done && car.state.boost <= 0) {
+    for (let i = 0; i < PADS.length; i++) {
+      let ds = s - PADS[i].s;
+      if (ds < -track.path.total / 2) ds += track.path.total;
+      if (ds >= 0 && ds < 60 && Math.abs(loc.u - (PADS[i].u || 0)) < 32 && time > padCool[i]) {
+        padCool[i] = time + 4;
+        car.state.boost = 0.9;
+        car.state.boostTier = 1;
+      }
+    }
+  }
+
   // OFF THE MAP. The playtest wandered clean off the built world — the drag
   // lets you crawl anywhere now, so far off the course the game has to bring
   // you back the way every racing game does: a short grace, then a recovery.
@@ -729,9 +779,9 @@ function tick() {
   field.setWet(wet);
   // Cut again after the second playtest round — the rain is set dressing on
   // top of a grip mechanic now, not a veil. The wet costs you in the TYRES.
-  post.params.wet = wet * 0.5;
-  post.params.rain = wet * 0.35;
-  scene.fog.density = SKY.fogD + wet * 0.00016;
+  post.params.wet = wet * 0.45;
+  post.params.rain = wet * 0.22;
+  scene.fog.density = SKY.fogD + wet * 0.00008;
 
   audio.update(car.state.speed, V_MAX, throttle, car.state.slip, car.state.offRoad);
   if (car.state.boost > 0 && !wasBoosting) audio.kerb();
@@ -926,6 +976,13 @@ const garage = mountGarage({
   save: savefile,
   onChange: () => { rebuildCar(); hud.msg.textContent = 'fitted'; msgUntil = time + 1.6; },
 });
+// The circuit picker, one key away mid-session — changing tracks used to mean
+// walking back through the hub.
+const picker = mountTrackSelect({
+  save: savefile,
+  onGo: (t2) => { location.href = './race.html?track=' + t2.id; },
+});
+const pickerShow = () => picker.show();
 const paintGarage = () => garage.paint();
 const toggleGarage = () => garage.toggle();
 

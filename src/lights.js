@@ -4,7 +4,7 @@
 // handful of small, saturated, LOCAL sources — a sodium streetlight, two
 // porch bulbs, the spill out of lit windows, a television. The moon is only
 // there to keep the roofs and the road from going to pure black.
-import * as THREE from 'three';
+import * as THREE from '../vendor/three/three.module.js';
 import { GROUND } from './block.js';
 
 // The backdrop was very nearly black, and because the chase camera looks DOWN

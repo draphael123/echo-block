@@ -134,6 +134,8 @@ export default {
   // the road's own face and the streetlight's own colour -- see ribbon()
   surface: 'street',
   lampColor: '#ffa23c',
+  // boost pads: neon chevrons on the straights — a reward line, not a shortcut
+  pads: [{ s: 950 }, { s: 3550 }, { s: 4780 }],
   refLap: 40,
   wet: 0,
 };
