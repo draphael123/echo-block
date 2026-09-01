@@ -2422,32 +2422,62 @@ export async function buildTrack(trackSpec, onPhase) {
       'stripLight', 'sodium', 'tailLight', 'chillGlow', 'phoneGlow', 'headLight']);
     for (let s = 0; s < path.total; s += 2) {
       const gy = GROUND_Y + elev(s);
-      // the band runs to SET+200 now — the first pass stopped at SET+70 and
-      // every silo, hut and building line beyond it kept floating
-      for (const side of [-1, 1]) for (let u = ROAD_HALF + 4; u <= SET + 200; u += 3) {
+      // the band runs to SET+320 and samples every 2 voxels of u — the last
+      // pass stepped 3 and stopped at SET+200, so 1-wide posts slipped
+      // between probes and the far scenery line kept floating
+      for (const side of [-1, 1]) for (let u = ROAD_HALF + 4; u <= SET + 320; u += 2) {
         path.place(s, side * u, gf);
         const x = Math.round(gf.x), z = Math.round(gf.z);
-        if (w.get(x, gy, z) || w.get(x, gy - 1, z)) continue;
+        // Find the REAL local floor, not the road's. The old pass assumed
+        // ground at the road's own elevation, which is exactly wrong on
+        // relief: a bank puts the floor above road level (the column was
+        // skipped entirely), a dip puts it below (legs stopped mid-air,
+        // still floating). baseK = the first air cell above the local floor.
+        let baseK;
+        if (w.get(x, gy, z) || w.get(x, gy - 1, z)) {
+          baseK = 1;
+          while (baseK < 30 && w.get(x, gy + baseK, z)) baseK++;
+          if (baseK >= 30) continue;             // solid wall — nothing hangs here
+        } else {
+          baseK = 0;
+          while (baseK > -36 && !w.get(x, gy + baseK - 1, z)) baseK--;
+          if (baseK <= -36) continue;            // a true chasm — legs would be towers
+        }
         let lowest = null, mat = null;
-        for (let k = 1; k <= 24; k++) { const v = w.get(x, gy + k, z); if (v) { lowest = k; mat = v; break; } }
+        for (let k = baseK; k <= baseK + 30; k++) { const v = w.get(x, gy + k, z); if (v) { lowest = k; mat = v; break; } }
         if (lowest === null || SKIP.has(mat)) continue;
+        const hang = lowest - baseK;             // true air under the prop
+        if (hang < 2) continue;
         // how much MASS sits on this hang: a pipe run is 3 thick, a building
         // corner is a storey — the fix differs
         let thick = 0;
         for (let k = lowest; k <= lowest + 12 && w.get(x, gy + k, z); k++) thick++;
-        if (lowest >= 2 && lowest <= 12) {
+        if (hang <= 12) {
           // thin HIGH runs are pipework and rails riding their own posts —
-          // legs under every sample would turn a pipe rack into a fence
-          if (thick <= 3 && lowest >= 9) continue;
+          // but only if they actually RUN: a neighbour along s must carry
+          // solid at the same height, or this is an isolated floater
+          if (thick <= 3 && hang >= 8) {
+            let runs = false;
+            for (const ds of [-5, 5]) {
+              path.place(s + ds, side * u, gf);
+              const x2 = Math.round(gf.x), z2 = Math.round(gf.z);
+              const gy2 = GROUND_Y + elev(s + ds);
+              for (let k = lowest - 2; k <= lowest + 2; k++) {
+                if (w.get(x2, gy2 + k, z2)) { runs = true; break; }
+              }
+              if (runs) break;
+            }
+            if (runs) continue;
+          }
           const fill = GLOW.has(mat) ? 'metalDark' : mat;
-          for (let k = lowest - 1; k >= 0; k--) w.set(x, gy + k, z, fill);
+          for (let k = lowest - 1; k >= baseK; k--) w.set(x, gy + k, z, fill);
           grounded++;
-        } else if (lowest >= 13 && lowest <= 22 && thick >= 8) {
+        } else if (hang <= 26 && thick >= 6) {
           // a building's corner hanging over a knoll: foundation it
           const fill = GLOW.has(mat) ? 'concreteOld' : mat;
-          for (let k = lowest - 1; k >= 0; k--) w.set(x, gy + k, z, fill);
+          for (let k = lowest - 1; k >= baseK; k--) w.set(x, gy + k, z, fill);
           grounded++;
-        } else if (lowest > 12) {
+        } else {
           floats++;
           const d2 = sectionAt(s).district;
           byDist[d2] = (byDist[d2] || 0) + 1;

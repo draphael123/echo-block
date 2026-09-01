@@ -142,6 +142,8 @@ export default {
   // — and A WIDE LOAD with escorts and amber beacons crawling the whole
   // bypass: you catch it every lap somewhere new. The Works' parade.
   moving: [{ kind: 'crossing', s: 5900 }, { kind: 'convoy', s: 0, u: 150 }],
+  // arc welders stuttering in the yards — the only cold light on the circuit
+  flair: { welders: [{ s: 2150, u: -230 }, { s: 5050, u: 240 }, { s: 7300, u: -260 }] },
   // Sodium, in the small hours. Everything orange except the sky, and the
   // thickest fog in the city -- which does the same job as the crests do:
   // it takes the distance away from you.

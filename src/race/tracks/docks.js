@@ -152,6 +152,8 @@ export default {
   lampColor: '#ffd9a0',
   // boost pads — one of them on the ship's deck, because of course it is
   pads: [{ s: 1850 }, { s: 4400 }, { s: 6350 }],
+  // the lighthouse on the cliff run, beams sweeping the whole bay
+  flair: { lighthouse: { s: 3560, u: 340 } },
   // the second ramp lands you almost on the basin pad: chain them and the
   // quay is a flight path
   ramps: [{ s: 1000, u: -80 }, { s: 4250, u: 60 }],

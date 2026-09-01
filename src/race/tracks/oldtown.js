@@ -147,6 +147,9 @@ export default {
   // THE PORTCULLIS: the gatehouse bars its own gate on a rhythm — drops
   // fast, winches up slow, red lamps say which is coming.
   moving: [{ kind: 'portcullis', s: 3880 }],
+  // festival bulbs sagging across the narrow streets — never in the roofed
+  // legs (market hall, gatehouse, tunnel), where they would hang in a ceiling
+  flair: { lanterns: [650, 1750, 2450, 3350] },
   // Dusk over the medieval quarter. The narrow streets read as silhouettes cut
   // out of a bright western sky -- which is what an old town at sunset looks
   // like and nothing like the Parade, on the same palette and the same props.

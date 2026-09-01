@@ -9,7 +9,7 @@ import { buildSky } from '../lights.js';
 import { skyOf } from './skies.js';
 import { Post } from '../post.js';
 import { Ground } from '../walk.js';
-import { buildTrack, hydrateTrack, sectionAt, safeSpot, lifeSpots, ROAD_HALF } from './track.js';
+import { buildTrack, hydrateTrack, sectionAt, safeSpot, lifeSpots, ROAD_HALF, SET } from './track.js';
 import { TRACKS, pickTrack, chooseTrack, byId } from './tracks/index.js';
 import { buildCar, V_MAX, BODIES } from './car.js';
 import { buildLife, buildTraffic } from './life.js';
@@ -517,6 +517,7 @@ let dynTipAt = 0;                    // the one-time dynamo tutorial toast
 // boost kicks the aberration too; GO shoves the camera in. All decay fast —
 // juice is a reflex, not a state.
 let hitStop = 0, camPunch = 0, punchDir = 0, aberKick = 0, goPush = 0;
+let wasNos = false;
 // player settings, persisted on the save
 const settings = Object.assign(
   { music: true, sfx: true, shake: true, streaks: true, fx: true,
@@ -533,6 +534,187 @@ let PADS = [], padCool = [];
 // the moving set pieces — a crane load, a level crossing — spec-declared,
 // animated on the RACE clock so R resets their pattern with the race
 let movers = [];
+
+// ------------------------------------------------------------------- flair
+// Each circuit's SIGNATURE ambience — the thing you would put on the poster.
+// Spec-driven like the movers (`flair: {...}` per track), built on the main
+// thread from the path frame, torn down with the track. None of it touches
+// the sim: this is atmosphere, and atmosphere is allowed to be pure theatre.
+let flair = null;
+
+// The Parade gets FIREWORKS: shells bursting over the hook all night, because
+// a town that closes its streets for a race would.
+function flairFireworks(sites) {
+  const g = new THREE.Group();
+  const N_B = 3, N_P = 36;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(N_B * N_P * 3);
+  const col = new Float32Array(N_B * N_P * 3);
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+    size: 10, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending,
+    depthWrite: false, toneMapped: false }));
+  pts.frustumCulled = false;
+  g.add(pts);
+  const f = pathFrame();
+  const anchors = sites.map(st => {
+    track.path.place(st.s, st.u, f);
+    return { x: f.x, z: f.z, y: track.elev(st.s) + 250 };
+  });
+  const PAL = [[1, 0.8, 0.45], [1, 0.45, 0.35], [0.5, 0.85, 1], [0.95, 0.95, 1]];
+  const bursts = [];
+  for (let b = 0; b < N_B; b++) bursts.push({ t: 99, life: 1.7, vel: new Float32Array(N_P * 3), cx: 0, cy: 0, cz: 0, cr: 1, cg: 1, cb: 1 });
+  let next = 1.2, bi = 0, si = 0;
+  function update(dt) {
+    next -= dt;
+    if (next <= 0) {
+      next = 1.7 + Math.random() * 2.2;
+      const bu = bursts[bi++ % N_B], a = anchors[si++ % anchors.length];
+      bu.t = 0;
+      bu.cx = a.x + (Math.random() - 0.5) * 180;
+      bu.cy = a.y + Math.random() * 90;
+      bu.cz = a.z + (Math.random() - 0.5) * 180;
+      const c = PAL[(Math.random() * PAL.length) | 0];
+      bu.cr = c[0]; bu.cg = c[1]; bu.cb = c[2];
+      for (let p = 0; p < N_P; p++) {
+        const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
+        const sp = 60 + Math.random() * 95;
+        bu.vel[p * 3] = Math.sin(ph) * Math.cos(th) * sp;
+        bu.vel[p * 3 + 1] = Math.cos(ph) * sp * 0.85 + 25;
+        bu.vel[p * 3 + 2] = Math.sin(ph) * Math.sin(th) * sp;
+      }
+    }
+    for (let b = 0; b < N_B; b++) {
+      const bu = bursts[b];
+      const alive = bu.t < bu.life;
+      bu.t += dt;
+      for (let p = 0; p < N_P; p++) {
+        const i = (b * N_P + p) * 3;
+        if (!alive) { col[i] = col[i + 1] = col[i + 2] = 0; continue; }
+        const k = 1 - bu.t / bu.life;
+        pos[i] = bu.cx + bu.vel[p * 3] * bu.t;
+        pos[i + 1] = bu.cy + bu.vel[p * 3 + 1] * bu.t - 45 * bu.t * bu.t;
+        pos[i + 2] = bu.cz + bu.vel[p * 3 + 2] * bu.t;
+        const tw = k * (0.55 + 0.45 * Math.sin(bu.t * 30 + p));
+        col[i] = bu.cr * tw; col[i + 1] = bu.cg * tw; col[i + 2] = bu.cb * tw;
+      }
+    }
+    geo.attributes.position.needsUpdate = true;
+    geo.attributes.color.needsUpdate = true;
+  }
+  return { g, update };
+}
+
+// The Old Town gets LANTERN STRINGS: festival bulbs sagging across the street
+// between the building lines, at heights no roof box ever reaches.
+function flairLanterns(list) {
+  const g = new THREE.Group();
+  const f = pathFrame();
+  const COLS = [0xffc98a, 0xff8a70, 0x7fd4ff, 0xd9ffa0];
+  const geo = new THREE.SphereGeometry(2.4, 6, 5);
+  const mats = COLS.map(c => new THREE.MeshBasicMaterial({ color: c, toneMapped: false }));
+  const span = SET + 6;                          // ends land ON the building line
+  for (const s of list) {
+    const y0 = track.elev(s) + 2;
+    const n = 13;
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1), u = -span + t * span * 2;
+      track.path.place(s, u, f);
+      const sag = Math.sin(Math.PI * t) * 14;
+      const m = new THREE.Mesh(geo, mats[i % mats.length]);
+      m.position.set(f.x, y0 + 64 - sag, f.z);
+      g.add(m);
+    }
+  }
+  return { g, update: null };
+}
+
+// The Seafront gets a LIGHTHOUSE that works: banded tower on the cliff, twin
+// beams sweeping the bay. Planted on the REAL local floor via the walk field.
+function flairLighthouse(spot) {
+  const g = new THREE.Group();
+  const f = pathFrame();
+  track.path.place(spot.s, spot.u, f);
+  let base = ground ? ground.floorAt(f.x, f.z) : NaN;
+  if (!Number.isFinite(base) || Math.abs(base) > 400) base = track.elev(spot.s) + 2;
+  const white = new THREE.MeshStandardMaterial({ color: 0xd8d4c8 });
+  const red = new THREE.MeshStandardMaterial({ color: 0xb0403a });
+  const t1 = new THREE.Mesh(new THREE.CylinderGeometry(11, 15, 48, 10), white);
+  t1.position.y = 24;
+  const t2 = new THREE.Mesh(new THREE.CylinderGeometry(10, 11, 34, 10), red);
+  t2.position.y = 65;
+  const t3 = new THREE.Mesh(new THREE.CylinderGeometry(9, 10, 30, 10), white);
+  t3.position.y = 97;
+  const room = new THREE.Mesh(new THREE.BoxGeometry(15, 11, 15),
+    new THREE.MeshBasicMaterial({ color: 0xfff2cc, toneMapped: false }));
+  room.position.y = 117;
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(11, 10, 8), red);
+  cap.position.y = 128;
+  g.add(t1, t2, t3, room, cap);
+  const beamGeo = new THREE.ConeGeometry(42, 640, 10, 1, true);
+  beamGeo.rotateZ(-Math.PI / 2);
+  beamGeo.translate(-320, 0, 0);                 // apex at the lamp, widening away
+  const beamMat = new THREE.MeshBasicMaterial({
+    color: 0xfff2cc, transparent: true, opacity: 0.12, side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+  const pivot = new THREE.Group();
+  pivot.position.y = 117;
+  const b1 = new THREE.Mesh(beamGeo, beamMat);
+  const b2 = new THREE.Mesh(beamGeo, beamMat);
+  b2.rotation.y = Math.PI;
+  pivot.add(b1, b2);
+  g.add(pivot);
+  g.position.set(f.x, base, f.z);
+  return { g, update(dt) { pivot.rotation.y += dt * 0.5; } };
+}
+
+// The Works gets WELDERS: blue-white arc flashes stuttering out of the yards,
+// the one light in the game that is not warm and not steady.
+function flairWelders(list) {
+  const g = new THREE.Group();
+  const f = pathFrame();
+  const spots = list.map(w2 => {
+    track.path.place(w2.s, w2.u, f);
+    let y = ground ? ground.floorAt(f.x, f.z) : NaN;
+    if (!Number.isFinite(y) || Math.abs(y) > 400) y = track.elev(w2.s) + 2;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(30, 30),
+      new THREE.MeshBasicMaterial({ color: 0xbfe4ff, transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }));
+    m.position.set(f.x, y + 10, f.z);
+    g.add(m);
+    return { m, next: 2 + Math.random() * 6, burst: 0 };
+  });
+  function update(dt) {
+    for (const sp of spots) {
+      if (sp.burst > 0) {
+        sp.burst -= dt;
+        sp.m.material.opacity = Math.random() < 0.55 ? 0.85 : 0.1;
+        sp.m.lookAt(camera.position);
+      } else {
+        sp.m.material.opacity = 0;
+        sp.next -= dt;
+        if (sp.next <= 0) { sp.burst = 0.4 + Math.random() * 0.9; sp.next = 3 + Math.random() * 7; }
+      }
+    }
+  }
+  return { g, update };
+}
+
+function buildFlair(spec) {
+  const fl = spec.flair;
+  if (!fl) return null;
+  const parts = [];
+  if (fl.fireworks) parts.push(flairFireworks(fl.fireworks));
+  if (fl.lanterns) parts.push(flairLanterns(fl.lanterns));
+  if (fl.lighthouse) parts.push(flairLighthouse(fl.lighthouse));
+  if (fl.welders) parts.push(flairWelders(fl.welders));
+  if (!parts.length) return null;
+  const g = new THREE.Group();
+  g.name = 'flair';
+  for (const p of parts) g.add(p.g);
+  return { g, update(dt) { for (const p of parts) if (p.update) p.update(dt); } };
+}
 // per-world hazard mechanics: slick zones (grip drops for a beat) and
 // steam vents (a plume on a cycle that shoves the car)
 let slickZones = [], ventZones = [];
@@ -885,6 +1067,8 @@ function applyTrack(spec, trk) {
   trafCool = (track.traffic || []).map(() => 0);
   movers = (spec.moving || []).map(buildMover);
   for (const mv of movers) scene.add(mv.g);
+  flair = buildFlair(spec);
+  if (flair) scene.add(flair.g);
   {
     const zf = pathFrame();
     slickZones = (spec.slicks || []).map(sl => {
@@ -1521,6 +1705,7 @@ function teardownTrack() {
   if (ghost) { scene.remove(ghost.root); disposeDeep(ghost.root, true); ghost = null; }
   for (const mv of movers) { scene.remove(mv.g); disposeDeep(mv.g, true); }
   movers = [];
+  if (flair) { scene.remove(flair.g); disposeDeep(flair.g, true); flair = null; }
   slickZones = []; ventZones = [];
   track = null; ground = null; field = null; START = null;
   smoke = null; life = null; traffic = null;
@@ -1777,7 +1962,12 @@ function tick() {
     lapTime = 0;
     // THE FINAL LAP turns the music's heat up: denser hats, open filters,
     // the arp everywhere. The radio knows how the race is going.
-    if (mode !== 'tt' && lap === LAPS - 1) music.intensity(1);
+    if (mode !== 'tt' && lap === LAPS - 1) {
+      music.intensity(1);
+      hud.msg.innerHTML = '<b style="color:#ffd9a0">FINAL LAP</b>';
+      msgUntil = time + 2.2;
+      audio.beep(660);
+    }
     if (lap >= LAPS) {
       done = true;
       finish();
@@ -2063,6 +2253,7 @@ function tick() {
   }
 
   for (const mv of movers) mv.update(dt, raceClock);
+  if (flair) flair.update(dt);
 
   car.setWet(wet);
   field.setWet(wet);
@@ -2079,6 +2270,15 @@ function tick() {
     aberKick = Math.max(aberKick, 0.55);       // the boost fringes the frame
   }
   wasBoosting = car.state.boost > 0;
+  // NOS IGNITION: the moment it lights is the moment you paid for — thump,
+  // lens lunge, fringe, all on the rising edge, then the burn carries it
+  if (car.state.nos && !wasNos) {
+    audio.nosIgnite();
+    goPush = Math.max(goPush, 0.75);
+    aberKick = Math.max(aberKick, 1.0);
+    if (settings.shake) camPunch = Math.max(camPunch, 0.25);
+  }
+  wasNos = car.state.nos;
   car.present(dt);
   field.update(dt, LAPS, car.state);
   traffic.update(dt, track.path.total);
@@ -2188,7 +2388,7 @@ function tick() {
   // A boost opens it four more and the air two: both are moments, and the
   // lens is how a camera says "moment".
   const wantFov = 34 + fSpd * fSpd * 15
-    + (car.state.boost > 0 || car.state.nos ? 5 : 0) + (car.state.air > 0 ? 2 : 0);
+    + (car.state.nos ? 8 : car.state.boost > 0 ? 5 : 0) + (car.state.air > 0 ? 2 : 0);
   if (Math.abs(camera.fov - wantFov) > 0.02) {
     camera.fov += (wantFov - camera.fov) * Math.min(1, dt * 3);
     camera.updateProjectionMatrix();
@@ -2472,6 +2672,7 @@ applySettings();
 window.DYNAMO = {
   scene, camera, renderer, post, track, car, ground, life, traffic, field, gp: GP,
   reset, swapTrack, prefetchNext,
+  get flair() { return flair; },
   sim: (opts) => {
     const r = compare(track, opts);
     console.table(r.rows.map(({ policy, time, crashes, blindHits, avgSpeed, finished }) =>

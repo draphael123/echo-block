@@ -173,6 +173,21 @@ export function createAudio() {
     },
 
     impact(severity) { hit(90 + severity * 40, 0.9, 0.32 + severity * 0.3, clamp(0.12 + severity * 0.5, 0, 0.7)); },
+    // the NOS ignition: a chest-thump and a rising whoosh, ON the press —
+    // the burn's wind takes over from here, this is the moment it lights
+    nosIgnite() {
+      if (!ctx || !ready || muted) return;
+      const now = ctx.currentTime;
+      hit(140, 0.4, 0.5, 0.5);                    // the thump
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(130, now);
+      o.frequency.exponentialRampToValueAtTime(46, now + 0.28);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.5, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      o.connect(g).connect(master);
+      o.start(now); o.stop(now + 0.32);           // the drop under it
+    },
     horn() { hit(330, 0.12, 0.16, 0.22); hit(415, 0.12, 0.22, 0.22); },   // the two-note menace
     thud() { hit(70, 0.45, 0.3, 0.4); },          // somebody on the bonnet
     kerb() { hit(150, 0.7, 0.11, 0.16); },        // riding over something

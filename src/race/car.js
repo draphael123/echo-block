@@ -139,7 +139,7 @@ const BOOST_CAP = [1.10, 1.16, 1.24];         // how far over V_MAX it will pull
 // Punchier (playtest: "should be a little faster, more impactful"): more
 // shove, higher ceiling, and the tank spends faster so a burn is an EVENT.
 const NOS_DRAIN = 0.34;                // tank per second of burn
-const NOS_PUSH = 640;                  // v/s^2 while burning
+const NOS_PUSH = 730;                  // v/s^2 while burning
 const NOS_CAP = 1.3;                   // ceiling multiplier while burning
 const NOS_DRIFT = 0.11;               // tank per second of genuine slide
 const NOS_FLATOUT = 0.02;             // trickle above 92% speed
@@ -739,6 +739,10 @@ export function buildCar(paint = 0, tune = {}, parts = null, chassisId = 'brindl
       const flick = 0.7 + Math.random() * 0.5;
       for (const m of sparkMats) m.color.setRGB(c[0] * flick, c[1] * flick, c[2] * flick);
     }
+    // the NOS flame is a FLAME: it stretches metres behind the car and
+    // gutters frame to frame, instead of the drift sparks' polite glow
+    if (state.nos) sparkMesh.scale.set(1.3, 1.3, 2.4 + Math.random() * 1.4);
+    else sparkMesh.scale.set(1, 1, 1);
 
     state.yView += (state.y - state.yView) * Math.min(1, dt * 9);
     root.position.set(state.x, state.yView, state.z);

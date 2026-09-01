@@ -154,6 +154,8 @@ export default {
   // And THE PARADE ITSELF: three lit floats and their marchers working up
   // the high street in the outside lane, all race long. The name, kept.
   moving: [{ kind: 'tram', s: 4550 }, { kind: 'parade', s: 700, u: 195, from: -80, to: 1580 }],
+  // fireworks over the hook and the top — a festival town racing at night
+  flair: { fireworks: [{ s: 3400, u: 340 }, { s: 5170, u: -320 }] },
 
   // 11pm. This is the circuit the sight mechanic belongs to, so its dark has
   // to be genuinely dark; every other track moved off midnight, this one owns it.
