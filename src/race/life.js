@@ -64,6 +64,9 @@ export function buildLife(path, spots, ground, elev) {
       pace: spot.idle ? 0 : (spot.pace || 24 + (i % 5) * 5),
       idle: !!spot.idle,
       cross: !!spot.cross,
+      // spec-declared crossers live at the marked zebras and cross for ever;
+      // only JAYWALK conversions (see below) finish their crossing and stay
+      zebra: !!spot.cross,
       // a crosser paces across u instead of along s, between the two pavements
       reach: Math.abs(spot.u),
       home: spot.s,
@@ -130,8 +133,23 @@ export function buildLife(path, spots, ground, elev) {
     for (const w of folk) {
       if (w.cross) {
         w.u += w.dir * w.pace * dt;
-        if (w.u > w.reach) { w.u = w.reach; w.dir = -1; }
-        if (w.u < -w.reach) { w.u = -w.reach; w.dir = 1; }
+        // A jaywalk ENDS. The first version left `cross` set, so a walker
+        // who had jaywalked once paced between the pavements for the rest of
+        // the race — which is what the playtest saw as people wandering the
+        // middle of the road. On arrival they become a walker on THAT side.
+        // (Zebra crossers are different: crossing IS their whole job.)
+        if (!w.zebra && (w.u > w.reach || w.u < -w.reach)) {
+          w.u = Math.sign(w.u) * w.reach;
+          w.cross = false;
+          w.side = Math.sign(w.u) || 1;
+          w.u0 = w.u;
+          w.lim = [null, null];
+          w.baulked = 0; w.since = 0;
+          w.dir = w.s > w.home ? -1 : 1;
+        } else {
+          if (w.u > w.reach) { w.u = w.reach; w.dir = -1; }
+          if (w.u < -w.reach) { w.u = -w.reach; w.dir = 1; }
+        }
       } else {
         // pace up and down a stretch of pavement
         w.s += w.dir * w.pace * dt;

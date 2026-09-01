@@ -37,6 +37,9 @@ renderer.toneMapping = THREE.NoToneMapping;
 // other, which is what makes a warm sky over cold fog read as a bug.
 let SPEC = pickTrack();
 let SKY = null;                    // set by applySky
+// TIME TRIAL: same circuit, nobody else on the grid, your ghost to chase.
+// A mode rather than a page — T can flip between them in place.
+let mode = new URLSearchParams(location.search).get('mode') === 'tt' ? 'tt' : 'race';
 
 const scene = new THREE.Scene();
 // The sky is lifted; the FOG is not, and the two are different jobs. Fog is
@@ -135,6 +138,8 @@ const savefile = Garage.load();
 // is meshed from voxels, so a wider tyre or an extra pair of lamps is a
 // different mesh, and it is cheap enough to throw the old one away.
 let car = buildCar(savefile.paint, Garage.tuneOf(savefile), savefile.parts);
+// only the PLAYER'S car has a dynamo — see car.js
+car.state.dynEnabled = true;
 
 function rebuildCar() {
   const keep = { ...car.state };
@@ -194,6 +199,25 @@ let zoom = 1;
 let camYaw = 0, camYawWant = 0, camDrop = 0;
 const camPos = new THREE.Vector3(), camAim = new THREE.Vector3();
 
+// WIND STREAKS: seventy short lines that live in a tube around the camera's
+// forward axis and stream past at speed. Nothing else in the frame changes
+// with velocity as honestly as air does — this is most of the 80mph.
+const STREAK_N = 70;
+const streakGeo = new THREE.BufferGeometry();
+const streakPos = new Float32Array(STREAK_N * 6);
+streakGeo.setAttribute('position', new THREE.BufferAttribute(streakPos, 3));
+const streakMat = new THREE.LineBasicMaterial({
+  color: 0xbfd4ff, transparent: true, opacity: 0,
+  blending: THREE.AdditiveBlending, depthWrite: false,
+});
+const streakMesh = new THREE.LineSegments(streakGeo, streakMat);
+streakMesh.frustumCulled = false;
+streakMesh.renderOrder = 5;
+scene.add(streakMesh);
+// per-streak anchors, respawned ahead of the car as they fall behind
+const streakA = new Float32Array(STREAK_N * 3);
+let streaksLive = false;
+
 let lastW = 0, lastH = 0;
 function resize() {
   const w = canvas.clientWidth || innerWidth, h = canvas.clientHeight || innerHeight;
@@ -231,6 +255,13 @@ addEventListener('keydown', (e) => {
   keys.add(k);
   if (k === 'r') reset();
   if (k === 'v') camYawWant = camYawWant ? 0 : Math.PI;   // latched look-back
+  // THE DYNAMO OUTPUT SELECTOR: one meter, two outlets. On a dark leg this
+  // is the game's whole question in one key.
+  if (k === 'c') {
+    car.state.dynMode = car.state.dynMode === 'lights' ? 'engine' : 'lights';
+    hud.msg.innerHTML = 'dynamo &rarr; <b>' + car.state.dynMode.toUpperCase() + '</b>';
+    msgUntil = time + 1.1;
+  }
   if (k === 'h') { hud.help.classList.toggle('hidden'); hud.hint.classList.toggle('hidden'); }
   // The championship: N swaps the next round IN PLACE — the circuit was built
   // in the worker while you raced this one, so there is no page load and
@@ -282,6 +313,9 @@ const hud = {
   circuit: document.getElementById('circuit'),
   board: document.getElementById('board'),
   hint: document.getElementById('hint'),
+  dyn: document.getElementById('dyn'),
+  dynFill: document.getElementById('dynfill'),
+  dynMode: document.getElementById('dynmode'),
 };
 // ------------------------------------------------------------------ minimap
 // The circuit's true shape with everybody on it. A racer glances at a map for
@@ -373,7 +407,7 @@ let countdown = GRID_HOLD;
 let gp = null, inGP = false;       // recomputed per circuit by applyTrack
 let lapTime = 0, lap = 0, running = false, done = false;
 let s = 80, prevS = 80, crashes = 0, wasDown = false, downAt = 0;
-let struck = 0, msgUntil = 0, wasBoosting = false, lastLight = 99;
+let struck = 0, msgUntil = 0, wasBoosting = false, wasAir = false, lastLight = 99;
 // The race clock — the same clock the rivals keep, so finish ORDER can be
 // ranked by when everybody actually crossed the line (see field.standings).
 let raceClock = 0;
@@ -384,6 +418,10 @@ let PADS = [], padCool = [];
 // the moving set pieces — a crane load, a level crossing — spec-declared,
 // animated on the RACE clock so R resets their pattern with the race
 let movers = [];
+// near-miss cooldowns (per hazard / per traffic car) and the race's stats —
+// the results board reads these, and so will anyone bragging
+let hazCool = [], trafCool = [];
+let stats = { topSpeed: 0, nearMisses: 0, padsHit: 0, driftBanks: 0, bigAir: 0 };
 
 // ----------------------------------------------------- ghost, delta, sectors
 // THE GHOST is the best lap, embodied: position samples at 10Hz, saved with
@@ -431,9 +469,10 @@ function fillIntroCard() {
   if (!introCard) return;
   const bst = savefile.bests && savefile.bests[track.id];
   introCard.innerHTML = `<h1>${track.name}</h1><p>${track.spec.blurb}</p>`
-    + `<div class="facts">${LAPS} laps &middot; ${Math.round(track.lapLength * 0.08)} m`
+    + `<div class="facts">${mode === 'tt' ? 'time trial — you and the ghost' : `${LAPS} laps`}`
+    + ` &middot; ${Math.round(track.lapLength * 0.08)} m`
     + ` &middot; ${track.spec.wet ? 'rain' : 'clear'}`
-    + ` &middot; field of ${track.spec.field || 6}`
+    + (mode === 'tt' ? '' : ` &middot; field of ${track.spec.field || 6}`)
     + (bst ? ` &middot; best ${bst.toFixed(2)}s` : '') + `</div>`;
 }
 // One score per round per page life. finish() used to award GP points every
@@ -450,6 +489,8 @@ function reset(ceremony = false) {
   intro = ceremony ? 6.0 : 0;
   if (introCard) introCard.classList.toggle('hidden', !ceremony);
   if (resultsEl) resultsEl.classList.add('hidden');
+  const pod2 = document.getElementById('podium');
+  if (pod2) pod2.classList.add('hidden');
   lastPlace = null; wrongWay = 0; rec = []; recTimer = 0; gPtr = 0;
   if (ghost) ghost.root.visible = false;
   track.path.place(START.s, START.u, gridFrame);
@@ -460,7 +501,9 @@ function reset(ceremony = false) {
   lapTime = 0; lap = 0; running = false; done = false; raceClock = 0;
   countdown = GRID_HOLD; lastLight = 99;
   s = prevS = START.s; crashes = 0; wasDown = false; struck = 0; msgUntil = 0;
-  offCourse = 0; pinned = 0;
+  offCourse = 0; pinned = 0; wasAir = false;
+  stats = { topSpeed: 0, nearMisses: 0, padsHit: 0, driftBanks: 0, bigAir: 0 };
+  hazCool = hazCool.map(() => 0); trafCool = trafCool.map(() => 0);
   splits.length = 0;
   lampsRed();
   hud.msg.innerHTML = inGP
@@ -518,6 +561,34 @@ function finish() {
       headline = r.standings[0].you ? 'CHAMPION' : 'season over';
       payline = `${prize + paid} earned`;
       hint = '<b>G</b> start a new season &nbsp; <b>R</b> race again';
+      // THE PODIUM. A season that just ran out undersold the one thing the
+      // whole mode builds to — this is the awards ceremony.
+      const pod = document.getElementById('podium');
+      if (pod) {
+        const top3 = r.standings.slice(0, 3);
+        const ORD2 = ['p1', 'p2', 'p3'];
+        const arrange = [top3[1], top3[0], top3[2]].filter(Boolean);
+        const won = r.standings[0].you;
+        const roundsHtml = (savefile.gp.results || []).map((res, i) =>
+          `<b>R${i + 1}</b> ${TRACKS.find(t => t.id === res.track)?.name || res.track}: ${res.order[0]}`
+        ).join(' &nbsp;&middot;&nbsp; ');
+        pod.innerHTML = `<div class="pcard">`
+          + `<h1 class="${won ? '' : 'lost'}">${won ? 'CHAMPION' : r.standings[0].name + ' TAKES IT'}</h1>`
+          + `<div class="psub">the town championship &middot; ${GP.ROUNDS.length} rounds</div>`
+          + `<div class="plinths">` + arrange.map((p2) => {
+            const cls = ORD2[top3.indexOf(p2)];
+            return `<div class="plinth ${cls}"><div class="name">${p2.you ? 'YOU' : p2.name}</div>`
+              + `<div class="pts">${p2.points} pts</div>`
+              + `<div class="block">${top3.indexOf(p2) + 1}</div></div>`;
+          }).join('') + `</div>`
+          + `<div class="ptable">` + r.standings.map(x =>
+            `<span class="${x.you ? 'you' : ''}">${x.you ? 'you' : x.name}<b>${x.points}</b></span>`).join('') + `</div>`
+          + `<div class="prounds">${roundsHtml}</div>`
+          + `<div class="pprize">${prize} for ${['the title', 'second', 'third', 'fourth', 'fifth', 'sixth'][r.standings.findIndex(x => x.you)] || 'the season'} &middot; ${paid} for the round</div>`
+          + `<div class="phint"><b>G</b> start a new season &nbsp; <b>R</b> race again</div>`
+          + `</div>`;
+        pod.classList.remove('hidden');
+      }
     } else {
       const next = GP.roundTrack(savefile.gp);
       const nt = TRACKS.find(t => t.id === next);
@@ -539,6 +610,13 @@ function finish() {
       + ` &nbsp;&mdash;&nbsp; ${crashes} crash${crashes === 1 ? '' : 'es'}`
       + (struck ? ` &middot; ${struck} pedestrian${struck === 1 ? '' : 's'}` : '')
       + (best ? ` &middot; best ${best.toFixed(2)}s` : '') + `</div>`
+      // THE RACE, MEASURED: what you actually did out there. Numbers a
+      // player will quote at somebody are the cheapest replay value there is.
+      + `<div class="rmeta">top ${Math.round(stats.topSpeed * 0.08 * 3.6)} km/h`
+      + ` &middot; ${stats.driftBanks} boost${stats.driftBanks === 1 ? '' : 's'}`
+      + ` &middot; ${stats.nearMisses} near miss${stats.nearMisses === 1 ? '' : 'es'}`
+      + (stats.padsHit ? ` &middot; ${stats.padsHit} pad${stats.padsHit === 1 ? '' : 's'}` : '')
+      + (stats.bigAir > 0.15 ? ` &middot; ${stats.bigAir.toFixed(1)}s of air` : '') + `</div>`
       + gpHtml
       + `<div class="rhint">${hint}</div></div>`;
     resultsEl.classList.remove('hidden');
@@ -605,7 +683,7 @@ function applyTrack(spec, trk) {
   });
 
   field = buildField(track, ground, buildCar,
-    { count: fieldSizeOf(spec), playerPaint: savefile.paint });
+    { count: mode === 'tt' ? 1 : fieldSizeOf(spec), playerPaint: savefile.paint });
   field.addTo(scene);
   START = gridSlot(0);
   track.path.place(START.s, START.u, gridFrame);
@@ -629,19 +707,21 @@ function applyTrack(spec, trk) {
   scene.add(traffic.group);
 
   wet = track.spec.wet || 0;
-  hud.circuit.textContent = track.name;
+  hud.circuit.textContent = track.name + (mode === 'tt' ? ' — time trial' : '');
   MAP = buildMapModel();
-  LAPS = spec.laps || 3;
+  LAPS = mode === 'tt' ? Infinity : (spec.laps || 3);
   START_LAMP_US.forEach((u, i) => {
     track.path.place(30, u, lampFrame);
     startLamps[i].position.set(lampFrame.x, track.elev(30) + 100, lampFrame.z);
   });
   gp = GP.current(savefile);
-  inGP = !!gp && GP.roundTrack(gp) === track.id;
+  inGP = mode === 'race' && !!gp && GP.roundTrack(gp) === track.id;
   scored = false;
   nextRound = null;
   PADS = spec.pads || [];
   padCool = PADS.map(() => 0);
+  hazCool = track.hazards.map(() => 0);
+  trafCool = (track.traffic || []).map(() => 0);
   movers = (spec.moving || []).map(buildMover);
   for (const mv of movers) scene.add(mv.g);
   ghostData = (savefile.ghosts && savefile.ghosts[track.id]) || null;
@@ -733,7 +813,9 @@ function buildMover(m) {
 
   if (m.kind === 'crossing') {
     // a level crossing: an arm from each kerb, red lamps blinking while they
-    // are down. The cycle is long enough to read from braking distance.
+    // are down — AND NOW A TRAIN, because a barrier that guards nothing is
+    // theatre. It crosses mid-way through the down phase; being on the
+    // rails when it arrives is the biggest hit in the game.
     const half = track.roadHalf || ROAD_HALF;
     const armMatR = new THREE.MeshBasicMaterial({ color: 0xd83a34, toneMapped: false });
     const armMatW = new THREE.MeshStandardMaterial({ color: 0xe8eefc, roughness: 0.8 });
@@ -761,6 +843,30 @@ function buildMover(m) {
       arms.push(arm);
       g.add(post, lamp, arm);
     }
+    // the rails, lying flat across the road and out past both verges
+    const railMat = new THREE.MeshStandardMaterial({ color: 0x1c2028, roughness: 0.6, metalness: 0.4 });
+    for (const off of [-6, 6]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(2, 1.2, (half + 300) * 2), railMat);
+      rail.position.set(cx + tx * off, roadY + 0.6, cz + tz * off);
+      rail.rotation.y = Math.atan2(nx, nz);
+      g.add(rail);
+    }
+    // THE TRAIN: a loco and three wagons, windows lit, crossing at 320 v/s
+    const train = new THREE.Group();
+    const tBodyMat = new THREE.MeshStandardMaterial({ color: 0x3a2c26, roughness: 0.9 });
+    const tWinMat = new THREE.MeshBasicMaterial({ color: 0xffd9a0, toneMapped: false });
+    const TRAIN_LEN = 4 * 74;
+    for (let i2 = 0; i2 < 4; i2++) {
+      const carBody = new THREE.Mesh(new THREE.BoxGeometry(24, 24, 64), tBodyMat);
+      carBody.position.set(0, 13, -i2 * 74);
+      train.add(carBody);
+      const win = new THREE.Mesh(new THREE.BoxGeometry(25, 5, 52), tWinMat);
+      win.position.set(0, 18, -i2 * 74);
+      train.add(win);
+    }
+    train.rotation.y = Math.atan2(nx, nz);     // travels along the crossing
+    train.visible = false;
+    g.add(train);
     let angle = 1.35;                          // starts raised
     return {
       g,
@@ -774,9 +880,25 @@ function buildMover(m) {
         const warning = wantDown || down;
         const blink = warning && Math.floor(t * 2.5) % 2 === 0;
         for (const l of lamps) { l.visible = blink; if (blink) l.lookAt(camera.position); }
+        // the train: enters at ph 11, clears by 15 — while the arms are down
+        const span = half + 380;
+        let headLat = null;
+        if (ph > 11 && ph < 15.2) {
+          headLat = -span + (ph - 11) * 320;
+          train.visible = true;
+          train.position.set(cx + nx * headLat, roadY, cz + nz * headLat);
+        } else train.visible = false;
         if (!running || done) return;
         const d = (car.state.x - cx) * tx + (car.state.z - cz) * tz;
         const lat = (car.state.x - cx) * nx + (car.state.z - cz) * nz;
+        // ON THE RAILS WHEN IT ARRIVES: the biggest hit in the game
+        if (train.visible && !car.state.crash && Math.abs(d) < 16
+            && lat < headLat && lat > headLat - TRAIN_LEN) {
+          car.impact(0.98, true);
+          audio.impact(1);
+          hud.msg.innerHTML = '<b style="color:#ff8a6a">THE TRAIN</b>';
+          msgUntil = time + 2;
+        }
         if (down && !car.state.crash && Math.abs(d) < 12 && Math.abs(lat) < half
             && Math.abs(car.state.speed) > 25) {
           car.impact(0.7, true);
@@ -791,6 +913,181 @@ function buildMover(m) {
           const dd = (st.x - cx) * tx + (st.z - cz) * tz;
           if (dd > -280 && dd < -20) st.speed *= Math.max(0, 1 - 2.4 * dt);
         }
+      },
+    };
+  }
+
+  if (m.kind === 'tram') {
+    // A TRAM crossing the main road from a side street, on its own clock.
+    // Amber lamps blink through the approach; the tram itself is the
+    // obstacle — slower than the train, lit like a living room, and long
+    // enough that "beat it across" is a real call.
+    const half = track.roadHalf || ROAD_HALF;
+    const lampMat = new THREE.MeshBasicMaterial({ color: 0xffb04c, toneMapped: false });
+    const lamps2 = [];
+    const pf3 = pathFrame();
+    for (const side of [-1, 1]) {
+      track.path.place(m.s, side * (half + 12), pf3);
+      const post = new THREE.Mesh(new THREE.BoxGeometry(4, 18, 4),
+        new THREE.MeshStandardMaterial({ color: 0x3a4152, roughness: 0.9 }));
+      post.position.set(pf3.x, roadY + 9, pf3.z);
+      const lamp = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), lampMat);
+      lamp.position.set(pf3.x, roadY + 21, pf3.z);
+      lamps2.push(lamp);
+      g.add(post, lamp);
+    }
+    const railMat2 = new THREE.MeshStandardMaterial({ color: 0x1c2028, roughness: 0.6, metalness: 0.4 });
+    for (const off of [-5, 5]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(2, 1.2, (half + 160) * 2), railMat2);
+      rail.position.set(cx + tx * off, roadY + 0.6, cz + tz * off);
+      rail.rotation.y = Math.atan2(nx, nz);
+      g.add(rail);
+    }
+    const tram = new THREE.Group();
+    const tramMat = new THREE.MeshStandardMaterial({ color: 0x6b3f2a, roughness: 0.85 });
+    const tramWin = new THREE.MeshBasicMaterial({ color: 0xffe2b0, toneMapped: false });
+    const TRAM_LEN = 2 * 62;
+    for (let i2 = 0; i2 < 2; i2++) {
+      const body = new THREE.Mesh(new THREE.BoxGeometry(20, 26, 54), tramMat);
+      body.position.set(0, 14, -i2 * 62);
+      tram.add(body);
+      const win = new THREE.Mesh(new THREE.BoxGeometry(21, 7, 44), tramWin);
+      win.position.set(0, 19, -i2 * 62);
+      tram.add(win);
+      const pole = new THREE.Mesh(new THREE.BoxGeometry(1.5, 14, 1.5), tramMat);
+      pole.position.set(0, 32, -i2 * 62);
+      tram.add(pole);
+    }
+    tram.rotation.y = Math.atan2(nx, nz);
+    tram.visible = false;
+    g.add(tram);
+    return {
+      g,
+      update(dt, t) {
+        const P = 21, ph = t % P;
+        const warning = ph > 6.5 && ph < 13;
+        const blink = warning && Math.floor(t * 3) % 2 === 0;
+        for (const l of lamps2) { l.visible = blink; if (blink) l.lookAt(camera.position); }
+        const span = half + 200;
+        let headLat = null;
+        if (ph > 8 && ph < 12.6) {
+          headLat = -span + (ph - 8) * 140;
+          tram.visible = true;
+          tram.position.set(cx + nx * headLat, roadY, cz + nz * headLat);
+        } else tram.visible = false;
+        if (!running || done) return;
+        const d = (car.state.x - cx) * tx + (car.state.z - cz) * tz;
+        const lat = (car.state.x - cx) * nx + (car.state.z - cz) * nz;
+        if (tram.visible && !car.state.crash && Math.abs(d) < 14
+            && lat < headLat && lat > headLat - TRAM_LEN) {
+          car.impact(0.85, true);
+          audio.impact(0.8);
+          hud.msg.textContent = 'the tram!';
+          msgUntil = time + 1.8;
+        }
+        if (warning) for (const rv of field.cars) {
+          const st = rv.car.state;
+          const dd = (st.x - cx) * tx + (st.z - cz) * tz;
+          if (dd > -240 && dd < -20) st.speed *= Math.max(0, 1 - 2.2 * dt);
+        }
+      },
+    };
+  }
+
+  if (m.kind === 'portcullis') {
+    // THE GATEHOUSE BARS ITS GATE. A grid of iron slides down into the arch
+    // on a rhythm — the medieval quarter's own level crossing, guarding the
+    // one set piece the camera already ducks for.
+    const half = track.roadHalf || ROAD_HALF;
+    const gate = new THREE.Group();
+    const ironMat = new THREE.MeshStandardMaterial({ color: 0x23262e, roughness: 0.7, metalness: 0.5 });
+    const W2 = half * 2 + 20, H2 = 44;
+    for (let bx = -W2 / 2; bx <= W2 / 2; bx += 16) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(3, H2, 3), ironMat);
+      bar.position.set(0, H2 / 2, bx);        // built along local z, rotated to span
+      gate.add(bar);
+    }
+    for (const gy2 of [10, 30]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(3.4, 3.4, W2), ironMat);
+      rail.position.set(0, gy2, 0);
+      gate.add(rail);
+    }
+    gate.rotation.y = Math.atan2(nx, nz);
+    g.add(gate);
+    const lampMat3 = new THREE.MeshBasicMaterial({ color: 0xd83a34, toneMapped: false });
+    const lamps3 = [];
+    const pf4 = pathFrame();
+    for (const side of [-1, 1]) {
+      track.path.place(m.s - 26, side * (half + 6), pf4);
+      const lamp = new THREE.Mesh(new THREE.PlaneGeometry(5, 5), lampMat3);
+      lamp.position.set(pf4.x, roadY + 34, pf4.z);
+      lamps3.push(lamp);
+      g.add(lamp);
+    }
+    let gateY = 46;                            // fully raised
+    return {
+      g,
+      update(dt, t) {
+        const P = 17, ph = t % P;
+        const wantDown = ph > 7 && ph < 11;
+        // drops fast, winches up slowly — that asymmetry IS the read
+        const target = wantDown ? 1 : 46;
+        gateY += (target - gateY) * Math.min(1, dt * (wantDown ? 4.5 : 1.4));
+        gate.position.set(cx, roadY + gateY, cz);
+        const down = gateY < 22;
+        const warning = wantDown || down;
+        const blink = warning && Math.floor(t * 2.5) % 2 === 0;
+        for (const l of lamps3) { l.visible = blink; if (blink) l.lookAt(camera.position); }
+        if (!running || done) return;
+        const d = (car.state.x - cx) * tx + (car.state.z - cz) * tz;
+        const lat = (car.state.x - cx) * nx + (car.state.z - cz) * nz;
+        if (down && !car.state.crash && Math.abs(d) < 9 && Math.abs(lat) < half
+            && Math.abs(car.state.speed) > 25) {
+          car.impact(0.8, true);
+          audio.impact(0.7);
+          hud.msg.textContent = 'the portcullis!';
+          msgUntil = time + 1.8;
+        }
+        if (warning) for (const rv of field.cars) {
+          const st = rv.car.state;
+          const dd = (st.x - cx) * tx + (st.z - cz) * tz;
+          if (dd > -220 && dd < -16) st.speed *= Math.max(0, 1 - 2.4 * dt);
+        }
+      },
+    };
+  }
+
+  if (m.kind === 'boat') {
+    // A sailboat working along the harbour beyond the quay edge. Pure
+    // spectacle — no collision — but a horizon that MOVES is what makes the
+    // water read as water rather than as flat blue paint.
+    const u0 = m.u || 560;
+    const a2 = pathFrame(), b2 = pathFrame();
+    track.path.place(m.s - 500, u0, a2);
+    track.path.place(m.s + 500, u0, b2);
+    const hull = new THREE.Mesh(new THREE.BoxGeometry(16, 12, 78),
+      new THREE.MeshStandardMaterial({ color: 0x4a2e22, roughness: 0.9 }));
+    const mast = new THREE.Mesh(new THREE.BoxGeometry(2, 52, 2),
+      new THREE.MeshStandardMaterial({ color: 0x2c2620, roughness: 0.9 }));
+    mast.position.y = 30;
+    const sail = new THREE.Mesh(new THREE.BoxGeometry(1.4, 34, 22),
+      new THREE.MeshStandardMaterial({ color: 0xcfd4da, roughness: 0.9 }));
+    sail.position.set(0, 32, 8);
+    const lamp = new THREE.Mesh(new THREE.PlaneGeometry(3, 3),
+      new THREE.MeshBasicMaterial({ color: 0x7fe08a, toneMapped: false }));
+    lamp.position.y = 58;
+    const boat = new THREE.Group();
+    boat.add(hull, mast, sail, lamp);
+    boat.rotation.y = Math.atan2(b2.x - a2.x, b2.z - a2.z);
+    g.add(boat);
+    return {
+      g,
+      update(dt, t) {
+        const k = (t % 80) / 80;               // 80 seconds end to end
+        const e = k < 0.5 ? k * 2 : (1 - k) * 2;   // there and back
+        boat.position.set(a2.x + (b2.x - a2.x) * e, roadY - 40 + Math.sin(t * 0.7) * 1.2,
+          a2.z + (b2.z - a2.z) * e);
+        boat.rotation.y = Math.atan2((b2.x - a2.x) * (k < 0.5 ? 1 : -1), (b2.z - a2.z) * (k < 0.5 ? 1 : -1));
       },
     };
   }
@@ -838,21 +1135,34 @@ function prefetchNext(id) {
 }
 
 let swapping = false;
-async function swapTrack(id) {
+async function swapTrack(id, newMode) {
   if (swapping) return;
   if (track && id === track.id) {
-    // same circuit: nothing to build, just put the season state and the grid
-    // back the way a fresh arrival would find them
+    // same circuit: nothing to build. A MODE change swaps the grid in place
+    // — the field is the only thing a time trial removes.
+    if (newMode && newMode !== mode) {
+      mode = newMode;
+      for (const c2 of field.cars) { scene.remove(c2.root); disposeDeep(c2.root); }
+      field = buildField(track, ground, buildCar,
+        { count: mode === 'tt' ? 1 : fieldSizeOf(track.spec), playerPaint: savefile.paint });
+      field.addTo(scene);
+      LAPS = mode === 'tt' ? Infinity : (track.spec.laps || 3);
+      hud.circuit.textContent = track.name + (mode === 'tt' ? ' — time trial' : '');
+      fillIntroCard();
+      if (window.DYNAMO) window.DYNAMO.field = field;
+      history.replaceState(null, '', './race.html?track=' + id + (mode === 'tt' ? '&mode=tt' : ''));
+    }
     gp = GP.current(savefile);
-    inGP = !!gp && GP.roundTrack(gp) === track.id;
+    inGP = mode === 'race' && !!gp && GP.roundTrack(gp) === track.id;
     scored = false;
     nextRound = null;
     reset(true);
     return;
   }
   swapping = true;
+  if (newMode) mode = newMode;
   chooseTrack(id);
-  history.replaceState(null, '', './race.html?track=' + id);
+  history.replaceState(null, '', './race.html?track=' + id + (mode === 'tt' ? '&mode=tt' : ''));
   const spec2 = byId(id);
   // The boot screen fronts every swap. With a finished prefetch it is a
   // sub-second blink; mid-prefetch it is honest cover for the wait — the
@@ -1048,6 +1358,8 @@ function tick() {
         padCool[i] = time + 4;
         car.state.boost = 0.9;
         car.state.boostTier = 1;
+        car.feedDynamo(0.45);
+        stats.padsHit++;
       }
     }
   }
@@ -1117,6 +1429,41 @@ function tick() {
       msgUntil = time + 1.8;
     }
   }
+  // NEAR MISSES feed the dynamo. Passing close to what could have ended the
+  // lap is the excitement, and the meter says so: hazards and live traffic
+  // both count, on a per-object cooldown so a slow crawl past earns nothing.
+  if (running && !done && !car.state.crash && Math.abs(car.state.speed) > 120) {
+    for (let i = 0; i < track.hazards.length; i++) {
+      const hz2 = track.hazards[i];
+      if (hz2.x === undefined) continue;
+      const dd = Math.hypot(hz2.x - car.state.x, hz2.z - car.state.z);
+      if (dd < 72 && time > (hazCool[i] || 0)) {
+        hazCool[i] = time + 4;
+        car.feedDynamo(0.12);
+        stats.nearMisses++;
+        if (!msgUntil) { hud.msg.innerHTML = '<b style="color:#7fd4ff">close!</b>'; msgUntil = time + 0.6; }
+      }
+    }
+    for (let i = 0; i < traffic.cars.length; i++) {
+      const tc = traffic.cars[i].c.root.position;
+      const dd = Math.hypot(tc.x - car.state.x, tc.z - car.state.z);
+      if (dd < 60 && time > (trafCool[i] || 0)) {
+        trafCool[i] = time + 3;
+        car.feedDynamo(0.10);
+        stats.nearMisses++;
+        if (!msgUntil) { hud.msg.innerHTML = '<b style="color:#7fd4ff">close!</b>'; msgUntil = time + 0.6; }
+      }
+    }
+  }
+  // the landing, heard and banked: real air feeds the dynamo too
+  if (wasAir && car.state.air === 0) {
+    audio.impact(0.2);
+    if (car.state.bigAir > 0.4) car.feedDynamo(0.15);
+  }
+  wasAir = car.state.air > 0;
+  stats.topSpeed = Math.max(stats.topSpeed, Math.abs(car.state.speed));
+  stats.bigAir = Math.max(stats.bigAir, car.state.bigAir);
+
   if (msgUntil && time > msgUntil && !done) { hud.msg.textContent = ''; msgUntil = 0; }
   if (car.state.crash > 0 && !wasDown) { crashes++; downAt = s; audio.impact(car.state.shake || 0.5); }
   wasDown = car.state.crash > 0;
@@ -1138,7 +1485,7 @@ function tick() {
   scene.fog.density = SKY.fogD + wet * 0.00008;
 
   audio.update(car.state.speed, V_MAX, throttle, car.state.slip, car.state.offRoad);
-  if (car.state.boost > 0 && !wasBoosting) audio.kerb();
+  if (car.state.boost > 0 && !wasBoosting) { audio.kerb(); stats.driftBanks++; }
   wasBoosting = car.state.boost > 0;
   car.present(dt);
   field.update(dt, LAPS, car.state);
@@ -1152,6 +1499,24 @@ function tick() {
     if (st.crash > 0 || st.speed <= 40) continue;
     const hit = traffic.hits(st.x, st.z, st.heading);
     if (hit) { rv.car.impact(0.6, true); traffic.shove(hit, st.x, st.z); }
+  }
+  // The rivals take the boost pads too — a tool only the player can use is a
+  // difficulty slider wearing a costume, and the field bunching up was half
+  // because you out-accelerated everybody off every pad.
+  for (const rv of field.cars) {
+    const st = rv.car.state;
+    if (st.boost > 0 || st.crash > 0) continue;
+    if (!rv.padCool) rv.padCool = PADS.map(() => 0);
+    const rs = rv.progress % track.path.total;
+    for (let i = 0; i < PADS.length; i++) {
+      let ds2 = rs - PADS[i].s;
+      if (ds2 < -track.path.total / 2) ds2 += track.path.total;
+      if (ds2 >= 0 && ds2 < 60 && time > rv.padCool[i]) {
+        rv.padCool[i] = time + 6;
+        st.boost = 0.9;
+        st.boostTier = 1;
+      }
+    }
   }
   life.update(time, dt, car.state.x, car.state.z);
   smoke.update(time, dt);
@@ -1196,6 +1561,7 @@ function tick() {
   // camera: trail the heading and look well up the road — at 80 km/h you are
   // reading the corner, not the bonnet
   const h = car.state.heading;
+  const fSpd = Math.min(1, Math.abs(car.state.speed) / V_MAX);
   const shift = (keys.has('q') ? -1 : 0) + (keys.has('e') ? 1 : 0) + held;
   const want = shift ? Math.sign(shift) * 1.15 : camYawWant;
   camYaw += (want - camYaw) * Math.min(1, dt * 7);
@@ -1205,10 +1571,14 @@ function tick() {
   // whole leg was watched through the portcullis grate. Eased, so entering
   // the leg reads as ducking under the arch rather than a cut.
   const sec = sectionAt(s);
-  const wantUp = CAM.up * zoom;
+  // THE CAMERA CROUCHES with speed: 22 voxels lower and slightly tighter at
+  // the top end. A low camera is the cheapest speed there is — the road
+  // rushes, the buildings loom, and nothing about the sim changed at all.
+  const crouch = fSpd * fSpd * 22;
+  const wantUp = (CAM.up - crouch) * zoom;
   const lowCap = sec.district === 'gatehouse' ? 46 : null;
   camDrop += (((lowCap !== null && lowCap < wantUp) ? wantUp - lowCap : 0) - camDrop) * Math.min(1, dt * 4);
-  const back = CAM.back * zoom, up = wantUp - camDrop;
+  const back = (CAM.back - fSpd * fSpd * 14) * zoom, up = wantUp - camDrop;
   // Height is relative to the CAR, not to zero — on a 4-metre profile a fixed
   // camera height is underground at the top of the crescent.
   camPos.set(car.state.x - Math.sin(hc) * back, car.state.yView + up, car.state.z - Math.cos(hc) * back);
@@ -1217,18 +1587,56 @@ function tick() {
   // speed. The lens opens eight degrees across the range and the camera picks
   // up a tremble past halfway -- both small enough that you feel them rather
   // than see them, which is the point.
-  const fSpd = Math.min(1, Math.abs(car.state.speed) / V_MAX);
   // 13 degrees across the range, was 8 — the widening moved the road edges
   // away and took the speed read with them; the lens gives some of it back.
-  const wantFov = 34 + fSpd * fSpd * 13;
+  // A boost opens it four more and the air two: both are moments, and the
+  // lens is how a camera says "moment".
+  const wantFov = 34 + fSpd * fSpd * 13
+    + (car.state.boost > 0 ? 4 : 0) + (car.state.air > 0 ? 2 : 0);
   if (Math.abs(camera.fov - wantFov) > 0.02) {
     camera.fov += (wantFov - camera.fov) * Math.min(1, dt * 3);
     camera.updateProjectionMatrix();
   }
-  const rattle = Math.max(0, fSpd - 0.5) * (car.state.offRoad ? 5.2 : 2.3);
-  if (rattle > 0.01) {
+  const rattle = Math.max(0, fSpd - 0.5) * (car.state.offRoad ? 5.2 : 2.3)
+    + (car.state.boost > 0 ? 1.9 : 0);
+  if (rattle > 0.01 && car.state.air === 0) {
     camera.position.x += Math.sin(time * 47.3) * rattle;
     camera.position.y += Math.sin(time * 61.7) * rattle * 0.8;
+  }
+  // the landing, felt: one downward camera thump scaled by the fall
+  if (car.state.landed > 0.22) {
+    camera.position.y -= (car.state.landed - 0.22) * 40 * (0.5 + car.state.shake);
+  }
+  // wind streaks: alive from ~60% speed, doubled by a boost
+  {
+    const on = fSpd > 0.55 || car.state.boost > 0;
+    const wantOp = on ? 0.34 + (car.state.boost > 0 ? 0.3 : 0) + fSpd * 0.2 : 0;
+    streakMat.opacity += (wantOp - streakMat.opacity) * Math.min(1, dt * 6);
+    if (streakMat.opacity > 0.02) {
+      const tx2 = Math.sin(h), tz2 = Math.cos(h);
+      const len = 14 + fSpd * 30 + (car.state.boost > 0 ? 16 : 0);
+      for (let i2 = 0; i2 < STREAK_N; i2++) {
+        let ax = streakA[i2 * 3], ay = streakA[i2 * 3 + 1], az = streakA[i2 * 3 + 2];
+        // stream backwards past the car; respawn ahead when passed
+        ax -= tx2 * car.state.speed * dt * 1.25;
+        az -= tz2 * car.state.speed * dt * 1.25;
+        const rel = (ax - car.state.x) * tx2 + (az - car.state.z) * tz2;
+        if (!streaksLive || rel < -140 || Math.abs((ax - car.state.x) * tz2 - (az - car.state.z) * tx2) > 130) {
+          const side = (Math.random() - 0.5) * 190;
+          const ahead2 = 180 + Math.random() * 240;
+          ax = car.state.x + tx2 * ahead2 - tz2 * side;
+          az = car.state.z + tz2 * ahead2 + tx2 * side;
+          ay = car.state.yView + 8 + Math.random() * 78;
+        }
+        streakA[i2 * 3] = ax; streakA[i2 * 3 + 1] = ay; streakA[i2 * 3 + 2] = az;
+        const o = i2 * 6;
+        streakPos[o] = ax; streakPos[o + 1] = ay; streakPos[o + 2] = az;
+        streakPos[o + 3] = ax + tx2 * len; streakPos[o + 4] = ay; streakPos[o + 5] = az + tz2 * len;
+      }
+      streaksLive = true;
+      streakGeo.attributes.position.needsUpdate = true;
+      streakMesh.visible = true;
+    } else { streakMesh.visible = false; streaksLive = false; }
   }
   // Looking up the road only makes sense while the camera is behind you. The
   // further it swings, the more it aims at the car itself.
@@ -1271,12 +1679,19 @@ function tick() {
   hud.drift.className = 'on t' + tier;
   if (tier === 0 && Math.abs(car.state.slip) <= 0.12) hud.drift.className = '';
   hud.time.textContent = lapTime.toFixed(2);
+  if (hud.dyn) {
+    hud.dynFill.style.width = Math.round(car.state.dyn * 100) + '%';
+    hud.dyn.className = car.state.dynMode === 'engine' ? 'engine' : '';
+    hud.dynMode.textContent = 'dynamo · ' + car.state.dynMode;
+  }
   hud.best.textContent = best ? `best ${best.toFixed(2)}s` : '';
-  hud.lap.textContent = `lap ${Math.min(lap + 1, LAPS)}/${LAPS}`;
+  hud.lap.textContent = mode === 'tt'
+    ? `lap ${lap + 1} — trial`
+    : `lap ${Math.min(lap + 1, LAPS)}/${LAPS}`;
   // Where you are in the field, in metres of TRACK rather than straight-line
   // distance — on a loop those two disagree by half a lap.
   const mine = lap * track.path.total + s;
-  if (running && !done) {
+  if (running && !done && mode !== 'tt') {
     const table = field.standings(mine);
     const at = table.findIndex(r => r.you);
     // The gap that matters is to whoever is immediately in front, or behind if
@@ -1307,7 +1722,15 @@ function tick() {
   } else {
     hud.pos.textContent = '';
     hud.board.innerHTML = '';
-    if (hud.delta) hud.delta.textContent = '';
+    // the time trial keeps its delta — chasing the ghost IS the mode
+    if (mode === 'tt' && running && !done && ghostData && hud.delta) {
+      const gt = ghostTimeAt(s);
+      if (gt !== null) {
+        const dl = lapTime - gt;
+        hud.delta.textContent = `${dl >= 0 ? '+' : ''}${dl.toFixed(2)}`;
+        hud.delta.className = dl <= 0 ? 'up' : 'down';
+      }
+    } else if (hud.delta) hud.delta.textContent = '';
   }
 
   hud.sect.textContent = sec.name;
@@ -1334,7 +1757,7 @@ const garage = mountGarage({
 // walking back through the hub.
 const picker = mountTrackSelect({
   save: savefile,
-  onGo: (t2) => { picker.hide(); swapTrack(t2.id); },
+  onGo: (t2, m2) => { picker.hide(); swapTrack(t2.id, m2 || 'race'); },
 });
 const pickerShow = () => picker.show();
 const paintGarage = () => garage.paint();

@@ -58,7 +58,10 @@ export const POLICIES = {
 // harder without giving it different physics from the player. 1 drives the
 // policy as written; 0.9 is a driver who lifts a little sooner everywhere.
 export function createDriver(track, opts = {}) {
-  const { policy = 'racing', frac = 0.8, pace = 1, startS = 80 } = opts;
+  // `lineU` is the driver's own lane preference — the offset it drives when
+  // nothing needs dodging. Six rivals all defaulting to the centreline drove
+  // nose-to-tail in a train, which is why every mirror looked the same.
+  const { policy = 'racing', frac = 0.8, pace = 1, startS = 80, lineU = 0 } = opts;
   const path = track.path;
   const pick = policy === 'steady' ? POLICIES.steady(frac) : POLICIES[policy];
 
@@ -95,7 +98,7 @@ export function createDriver(track, opts = {}) {
 
     // You start moving the moment you see it, after a reaction time. Reaction
     // is a delay; getting across is a distance; they are not the same number.
-    targetU = 0;
+    targetU = lineU;
     let dodgeAhead = 0;
     for (const h of track.hazards) {
       let ahead = h.s - s;
@@ -145,8 +148,11 @@ export function createDriver(track, opts = {}) {
     // at the clamp's limit — and never below 120, so a marginal dodge is taken
     // at speed with margin rather than at a crawl. Unseen hazards still
     // surprise at full speed: that is the sight mechanic, and it stays.
+    // pace !== 1, not < 1: a pace ABOVE one is a driver who commits later
+    // than the policy would — the same shim run the other way, and the knob
+    // that finally makes the front of the field worth chasing.
     let pcar = car;
-    if (pace < 1) {
+    if (pace !== 1) {
       sensed.state = { speed: car.state.speed / pace };
       sensed.sightRange = () => car.sightRange();
       sensed.gripFactor = () => (car.gripFactor ? car.gripFactor() : 1);

@@ -64,6 +64,12 @@ const CSS = `
   cursor: pointer; font: inherit; padding: 4px 0 0;
 }
 #pick .drop:hover { color: #ff8a6a; }
+#pick .tt {
+  background: none; border: 1px solid #232d3f; border-radius: 5px; color: #7fd4ff;
+  font: 600 10px/1 sans-serif; letter-spacing: .12em; padding: 7px 10px;
+  cursor: pointer; margin-left: 12px; white-space: nowrap; align-self: center;
+}
+#pick .tt:hover { border-color: #7fd4ff; }
 
 /* The pit wall: the campaign in one line — purse and what is bolted on. */
 #pick .wall {
@@ -139,8 +145,17 @@ export function mountTrackSelect({ save, onGo, closeLabel, onClose }) {
         + `<div class="q">${t.blurb}${tally}</div></div>`
         + `<div class="meta">${best ? `<b>${best.toFixed(2)}s</b>` : '<b>no time yet</b>'}`
         + `${Math.round(t.lapMetres || 0)} m &middot; `
-        + `${t.wet ? '<span class="wet">rain</span>' : 'clear'}</div>`;
+        + `${t.wet ? '<span class="wet">rain</span>' : 'clear'}</div>`
+        + `<button class="tt" title="time trial — just you and your ghost">&#9201; trial</button>`;
       row.onclick = () => { chooseTrack(t.id); onGo(t); };
+      // TIME TRIAL: the same circuit, nobody else on the grid, your best
+      // lap's ghost to chase. The button is ON the row, so stop the click
+      // from also starting a race.
+      row.querySelector('.tt').onclick = (ev) => {
+        ev.stopPropagation();
+        chooseTrack(t.id);
+        onGo(t, 'tt');
+      };
       list.appendChild(row);
     }
     paintSeason();

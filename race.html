@@ -45,6 +45,19 @@
   #drift.t2 { color: #ffa04c; }
   #drift.t3 { color: #d182ff; }
 
+  /* THE DYNAMO: one meter, two outlets. The bar is the charge; the word is
+     where it is going. Lights-blue when feeding the beam, boost-orange when
+     feeding the engine. */
+  #dyn { margin-top: 8px; width: 132px; }
+  #dynbar { height: 4px; background: #1d2432; border-radius: 2px; overflow: hidden; }
+  #dynfill { height: 100%; width: 0; background: #7fd4ff; border-radius: 2px; transition: width .12s; }
+  #dyn.engine #dynfill { background: #ffa04c; }
+  #dynmode {
+    font: 700 9px/1 sans-serif; letter-spacing: .34em; color: #5d84a0;
+    margin-top: 4px; text-transform: uppercase;
+  }
+  #dyn.engine #dynmode { color: #b07840; }
+
   /* the lap strip, top right */
   #clock { right: 30px; top: 24px; text-align: right; }
   #time {
@@ -166,6 +179,42 @@
   #hint { right: 30px; bottom: 62px; font-size: 10px; letter-spacing: .18em; color: #4d566a; }
   #hint.hidden { display: none; }
 
+  /* THE PODIUM — a championship should END somewhere. Three plinths, the
+     season table, the money. Shown once, when the last round is scored. */
+  #podium {
+    position: fixed; inset: 0; z-index: 60; display: flex; align-items: center;
+    justify-content: center; background: rgba(5, 8, 14, .88); backdrop-filter: blur(3px);
+  }
+  #podium.hidden { display: none; }
+  #podium .pcard { text-align: center; max-width: 560px; width: 92%; }
+  #podium h1 {
+    margin: 0 0 4px; font-size: 34px; font-weight: 700; letter-spacing: .3em;
+    color: #ffce54; text-shadow: 0 0 26px rgba(255, 206, 84, .45);
+  }
+  #podium h1.lost { color: #b9c3d4; text-shadow: none; }
+  #podium .psub { color: #6d7688; font-size: 12px; letter-spacing: .16em; margin-bottom: 26px; }
+  #podium .plinths { display: flex; align-items: flex-end; justify-content: center; gap: 10px; margin-bottom: 26px; }
+  #podium .plinth { width: 130px; }
+  #podium .plinth .name { font-size: 13px; color: #d8dfeb; font-weight: 600; margin-bottom: 2px; }
+  #podium .plinth .pts { font-size: 11px; color: #6d7688; margin-bottom: 8px; }
+  #podium .plinth .block {
+    border-radius: 6px 6px 0 0; display: flex; align-items: center; justify-content: center;
+    font: 700 22px/1 sans-serif; color: #0d1118;
+  }
+  #podium .p1 .block { height: 92px; background: linear-gradient(#ffe08a, #cf9c2e); }
+  #podium .p2 .block { height: 64px; background: linear-gradient(#dde4ef, #97a2b4); }
+  #podium .p3 .block { height: 46px; background: linear-gradient(#e0a86e, #9c6a34); }
+  #podium .p1 .name { color: #ffce54; }
+  #podium .ptable { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 18px; margin-bottom: 18px; }
+  #podium .ptable span { display: flex; justify-content: space-between; font-size: 12px; color: #8d97ab; }
+  #podium .ptable span b { color: #d8dfeb; }
+  #podium .ptable span.you, #podium .ptable span.you b { color: #7fe08a; }
+  #podium .prounds { font-size: 11px; color: #6d7688; letter-spacing: .06em; margin-bottom: 16px; line-height: 1.9; }
+  #podium .prounds b { color: #b9c3d4; font-weight: 600; }
+  #podium .pprize { font-size: 14px; color: #ffc98a; margin-bottom: 22px; }
+  #podium .phint { color: #6d7688; font-size: 11px; letter-spacing: .12em; }
+  #podium .phint b { color: #b9c3d4; }
+
   #back {
     left: 30px; top: 62px; pointer-events: auto; color: #5d6678;
     text-decoration: none; letter-spacing: .12em; font-size: 10px; font-weight: 600;
@@ -188,7 +237,9 @@
 <div id="ui">
   <div id="where"><div id="circuit"></div><div id="sect"></div></div>
   <a id="back" href="./index.html">&larr; menu</a>
-  <div id="dash"><div id="speed">0</div><div id="gear"></div><div id="drift">drift</div></div>
+  <div id="dash"><div id="speed">0</div><div id="gear"></div><div id="drift">drift</div>
+    <div id="dyn"><div id="dynbar"><div id="dynfill"></div></div><div id="dynmode">dynamo &middot; lights</div></div>
+  </div>
   <div id="clock"><div id="time">0.00</div><div id="delta"></div><div id="lap"></div><div id="best"></div><div id="pos"></div></div>
   <div id="board"></div>
   <canvas id="map" width="190" height="190"></canvas>
@@ -205,11 +256,13 @@
   <div id="help" class="hidden">
     <b>w</b> throttle &nbsp; <b>s</b> brake &nbsp; <b>a</b>/<b>d</b> steer<br>
     <b>space</b> drift &mdash; hold it to bank a boost<br>
+    <b>c</b> dynamo output &mdash; LIGHTS or ENGINE<br>
     <b>s</b> at a stop &rarr; reverse<br>
     <b>q</b>/<b>e</b> look &nbsp; <b>v</b> behind &nbsp; <b>scroll</b> zoom<br>
     <b>g</b> garage &nbsp; <b>t</b> circuits &nbsp; <b>m</b> sound &nbsp; <b>r</b> reset
   </div>
   <div id="hint"><b>h</b> &mdash; controls</div>
+  <div id="podium" class="hidden"></div>
 </div>
 <div id="boot"><div>building the circuit…</div><small id="bootmsg"></small><div id="boottrack"><div id="bootbar"></div></div></div>
 

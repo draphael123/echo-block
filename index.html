@@ -76,7 +76,7 @@ import { createMusic } from './src/music.js';
 const save = Garage.load();
 const picker = mountTrackSelect({
   save,
-  onGo: (t) => { location.href = './race.html?track=' + t.id; },
+  onGo: (t, m) => { location.href = './race.html?track=' + t.id + (m === 'tt' ? '&mode=tt' : ''); },
   closeLabel: 'walk the block instead →',
   onClose: () => { location.href = './block.html'; },
 });

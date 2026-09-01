@@ -84,17 +84,22 @@ export default {
   ],
 
   crossings: [],
-  parked: [[2900, 1], [3080, 1], [3260, 1], [3440, -1], [3620, -1]],
+  // in the SERVICES (1940–2640), not strewn down the long right — the old
+  // values were authored before the legs were measured and half of them
+  // landed in the woods and the tunnel mouth, which is where the playtest
+  // met them. The build-time validator drops strays now, but the data
+  // should be right, not merely caught.
+  parked: [[2050, 1], [2230, 1], [2410, 1], [2500, -1], [2590, -1]],
 
   // A bypass has nobody walking on it, and that is right -- but the SERVICES
   // does, and it was empty. This is the only place on the circuit with people.
   life: [
-    { s: 2950, side: 1, dir: 1, span: 120 },
-    { s: 3050, side: 1, dir: 1, span: 160 },
-    { s: 3120, side: -1, dir: 1, idle: true },
-    { s: 3200, side: -1, dir: -1, span: 140 },
-    { s: 3320, side: 1, dir: -1, span: 130 },
-    { s: 3450, side: -1, dir: 1, span: 150 },
+    { s: 2100, side: 1, dir: 1, span: 120 },
+    { s: 2200, side: 1, dir: 1, span: 160 },
+    { s: 2280, side: -1, dir: 1, idle: true },
+    { s: 2360, side: -1, dir: -1, span: 140 },
+    { s: 2450, side: 1, dir: -1, span: 130 },
+    { s: 2550, side: -1, dir: 1, span: 150 },
   ],
 
   traffic: [
@@ -136,6 +141,8 @@ export default {
   lampColor: '#ff9226',
   // boost pads
   pads: [{ s: 1500 }, { s: 3650 }, { s: 7550 }],
+  // at bypass speeds these buy the longest air in the game
+  ramps: [{ s: 850, u: -100 }, { s: 6150, u: 80 }],
   refLap: 36,
   wet: 0,
 };

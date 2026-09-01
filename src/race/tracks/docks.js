@@ -119,7 +119,7 @@ export default {
   // THE WORKING HARBOUR: a crane load swings across the quay road on its
   // cables. Time it or wear it — the only moving hazard on the circuit, and
   // it belongs to the one leg with cranes on it.
-  moving: [{ kind: 'craneload', s: 350 }],
+  moving: [{ kind: 'craneload', s: 350 }, { kind: 'boat', s: 900, u: 620 }],
   // Dawn at the river, an hour before anyone else is up. The wet road is this
   // circuit's one mechanic and at midnight it was reflecting almost nothing --
   // a wet surface needs a BRIGHT sky to be worth having.
@@ -131,6 +131,9 @@ export default {
   lampColor: '#cfe2ff',
   // boost pads — one of them on the ship's deck, because of course it is
   pads: [{ s: 1850 }, { s: 4400 }, { s: 6350 }],
+  // the second ramp lands you almost on the basin pad: chain them and the
+  // quay is a flight path
+  ramps: [{ s: 1000, u: -80 }, { s: 4250, u: 60 }],
   refLap: 41,
   wet: 0.85,
 };

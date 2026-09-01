@@ -34,13 +34,18 @@ const GRID_S = 80;              // where the back row sits
 // pace scales the driver's TARGETS (it lifts at pace x every cap), not the
 // throttle. As a throttle multiplier the whole 1.00–0.90 spread collapsed to
 // zero on corner-capped circuits and grid position decided every race.
+// Each rival now has a LINE (the lane it prefers when nothing needs dodging
+// — six centreline drivers were a train), a visual KIT (parts with no tune,
+// so they look different without driving different physics), and a pace
+// spread that finally puts somebody above 1.00: Vasey commits harder than
+// the policy would, and catching him is the game.
 const RUNNERS = [
-  { name: 'Vasey', policy: 'racing', pace: 1.00, paint: 2 },
-  { name: 'Ó Broin', policy: 'racing', pace: 0.97, paint: 5 },
-  { name: 'Hale', policy: 'cautious', pace: 1.00, paint: 1 },
-  { name: 'Ferreira', policy: 'racing', pace: 0.93, paint: 6 },
-  { name: 'Pike', policy: 'cautious', pace: 0.95, paint: 4 },
-  { name: 'Wren', policy: 'steady', pace: 0.90, paint: 7 },
+  { name: 'Vasey', policy: 'racing', pace: 1.03, paint: 2, lineU: -26, parts: { engine: 2, tyres: 1, lamps: 1 } },
+  { name: 'Ó Broin', policy: 'racing', pace: 1.00, paint: 5, lineU: 30, parts: { engine: 1, tyres: 2 } },
+  { name: 'Hale', policy: 'cautious', pace: 1.00, paint: 1, lineU: -44, parts: { lamps: 2, brakes: 1 } },
+  { name: 'Ferreira', policy: 'racing', pace: 0.96, paint: 6, lineU: 48, parts: { engine: 1 } },
+  { name: 'Pike', policy: 'cautious', pace: 0.97, paint: 4, lineU: 12, parts: { tyres: 1, brakes: 1 } },
+  { name: 'Wren', policy: 'steady', pace: 0.92, paint: 7, lineU: -12, parts: {} },
 ];
 
 // Slot 0 is the back-left of the grid and belongs to the player; slots count
@@ -62,8 +67,10 @@ export function buildField(track, ground, buildCar, { count = FIELD_SIZE, player
     if (paint === playerPaint) paint = (paint + 4) % 8;
     const rival = buildRival(track, ground, buildCar, {
       paint, policy: r.policy, pace: r.pace, startS: slot.s, startU: slot.u,
+      lineU: r.lineU || 0, parts: r.parts || null,
     });
     rival.name = r.name;
+    rival.pace = r.pace;
     cars.push(rival);
   }
 

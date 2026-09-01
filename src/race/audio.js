@@ -149,8 +149,11 @@ export function createAudio() {
       tyreGain.gain.setTargetAtTime(scrub * 0.20 + (offRoad ? f * 0.12 : 0), now, 0.05);
       tyreFilter.frequency.setTargetAtTime(offRoad ? 620 : 1500 + scrub * 900, now, 0.05);
 
-      windGain.gain.setTargetAtTime(f * f * 0.11, now, 0.12);
-      windFilter.frequency.setTargetAtTime(400 + f * 1100, now, 0.12);
+      // the wind carries the speed now: nearly triple at the top end, and it
+      // keeps rising past where the engine flattens out — the last 20% of
+      // speed is mostly SOUND, which is what a fast road car feels like
+      windGain.gain.setTargetAtTime(f * f * 0.28, now, 0.12);
+      windFilter.frequency.setTargetAtTime(400 + f * 1800, now, 0.12);
     },
 
     impact(severity) { hit(90 + severity * 40, 0.9, 0.32 + severity * 0.3, clamp(0.12 + severity * 0.5, 0, 0.7)); },

@@ -102,6 +102,18 @@ const WET_GRIP = 0.72, WET_BRAKE = 0.64, WET_BEAM = 0.90;
 // corners policy runs with allowReverse false and never sees this.
 const V_REV = 78, REV_ACCEL = 96, REV_ENGAGE = 0.22;
 
+// ------------------------------------------------------------------- AIR
+// The car can leave the ground now. While GROUNDED it tracks the vertical
+// rate the floor is feeding it; when the floor falls away sharply while that
+// rate is upward — a ramp lip, not a crest — the car keeps the rate and
+// flies. Crests never launch (descending floor, negative rate, and the car
+// simply follows); ramps always do. Gravity is tuned for arcade hang:
+// a 16-high ramp at 250 v/s buys about three quarters of a second of air.
+const GRAV = 300;
+const LAUNCH_VY = 30;                  // minimum upward rate to leave the lip
+const AIR_STEER = 0.25;                // steering authority in the air
+const HARD_LANDING = 110;              // downward v that costs speed
+
 // ------------------------------------------------------- DRIFT INTO BOOST
 //
 // The drift was a rescue: three times the yaw for two thirds of your speed, for
@@ -118,10 +130,26 @@ const BOOST_TIME = [0.75, 1.25, 1.9];         // seconds of push it buys
 const BOOST_PUSH = 460;                       // v/s^2 while it lasts
 const BOOST_CAP = [1.10, 1.16, 1.24];         // how far over V_MAX it will pull
 
-// Headlights do not care how fast you are going — that was the dynamo, and it
-// went with the bike. What survives is the structural half of that idea: the
-// town's lighting IS the level design, so an unlit stretch is one where the
-// beam is all you have.
+// ----------------------------------------------------------- THE DYNAMO
+// The game is called DYNAMO and now the car IS one. Driving hard charges it:
+// drifting, grazing hazards and traffic, boost pads, flat-out running. The
+// charge drains through whichever output you have selected —
+//   LIGHTS  — the beam overdrives 60% further and brighter
+//   ENGINE  — 8% over the top speed and harder acceleration
+// — and that is the hook: on a dark leg the same meter is either sight or
+// speed, never both. The rivals have no dynamo; what you make of it is
+// yours. Full charge drains in about eighteen seconds.
+const DYN_DRAIN = 0.055;
+const DYN_DRIFT = 0.11;                // per second of genuine slide
+const DYN_FLATOUT = 0.022;             // per second above 92% speed
+const DYN_BEAM = 0.6;                  // lights: extra reach at full output
+const DYN_VMAX = 0.08;                 // engine: extra ceiling
+const DYN_ACCEL = 0.22;                // engine: extra push
+
+// Headlights do not care how fast you are going — that USED to be the dynamo,
+// and it went with the bike; now it is back as the choice above. What also
+// survives is the structural half of that idea: the town's lighting IS the
+// level design, so an unlit stretch is one where the beam is all you have.
 // 280 voxels is 22m: dipped beams on an eighties hatchback. It was 420, and
 // 420 was the whole reason the dark did nothing — at 1.5s of warning, 420
 // voxels covers 280 voxels/second, which IS the top speed, so seeing further
@@ -374,6 +402,13 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     y: 0, yView: 0, shake: 0, wedged: false, offRoad: false, rev: 0,
     charge: 0, tier: 0, boost: 0, boostTier: 0,
     braking: false, lampGlow: 0.34,
+    // airborne state: vertical rate, time in the air, a landing pulse for
+    // the camera and audio, the floor last seen, and the longest air this
+    // race (the stats screen wants it)
+    vy: 0, air: 0, landed: 0, lastFl: 0, bigAir: 0,
+    // the dynamo: charge 0..1, which output it feeds, and how much output
+    // is actually flowing (smoothed, so the beam breathes rather than snaps)
+    dyn: 0, dynMode: 'lights', dynOut: 0,
   };
 
   function step(dt, throttle, steer, ground, drift = false, allowReverse = true) {
@@ -382,6 +417,7 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     // the "weird dance" came from -- no racing game does that, and it turned
     // clipping a kerb into a punishment you could only sit through.
     if (state.crash > 0) state.crash = Math.max(0, state.crash - dt);
+    if (state.landed > 0) state.landed = Math.max(0, state.landed - dt);
 
     const off = state.offRoad;
     const spd = state.speed;
@@ -396,6 +432,22 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     // without this it selects reverse the moment anything stops it and drives
     // the rest of the lap backwards. A racing driver does not use reverse.
     const canRev = allowReverse && state.rev > REV_ENGAGE;
+
+    // THE DYNAMO charges from hard driving and drains through its output.
+    // PLAYER ONLY (dynEnabled): the rivals and the sim's bots run this same
+    // step(), and a bot whose beam quietly grew with its own speed would
+    // shift every sight-mechanic measurement without anybody deciding to.
+    let dynEngine = 0;
+    if (state.dynEnabled) {
+      if (sliding && Math.abs(state.slip) > 0.14) state.dyn = Math.min(1, state.dyn + DYN_DRIFT * dt);
+      if (Math.abs(spd) > VMAX * 0.92) state.dyn = Math.min(1, state.dyn + DYN_FLATOUT * dt);
+      if (state.dyn > 0) state.dyn = Math.max(0, state.dyn - DYN_DRAIN * dt);
+      state.dynOut += ((state.dyn > 0.01 ? 1 : 0) - state.dynOut) * Math.min(1, dt * 3.5);
+      dynEngine = state.dynMode === 'engine' ? state.dynOut : 0;
+      const dynLights = state.dynMode === 'lights' ? state.dynOut : 0;
+      beam.distance = BEAM * (1 - wet * (1 - WET_BEAM)) * (1 + DYN_BEAM * dynLights);
+      beam.intensity = 300000 * (0.75 + T.beam * 0.25) * (1 + 0.5 * dynLights);
+    }
 
     // charge builds only while actually sideways, and cashes in on release
     if (sliding && Math.abs(state.slip) > 0.14) {
@@ -413,7 +465,8 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     const bleed = (v, amount) => Math.sign(v) * Math.max(0, Math.abs(v) - amount);
     if (throttle > 0) {
       if (spd < 0) state.speed = Math.min(0, spd + BRK * dt);       // brake out of reverse
-      else state.speed = spd + ACC * throttle * dt * (off ? OFF_ACCEL : 1);
+      else state.speed = spd + ACC * throttle * dt * (off ? OFF_ACCEL : 1)
+        * (1 + DYN_ACCEL * dynEngine);
     } else if (throttle < 0) {
       if (spd > 0.5) state.speed = spd + BRK * (1 - wet * (1 - WET_BRAKE)) * throttle * dt;
       else if (canRev) state.speed = Math.max(-V_REV, spd - REV_ACCEL * dt);
@@ -432,7 +485,8 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     // the cap drops back and drag walks you down to it, so the speed you were
     // given is spent rather than kept.
     if (state.boost > 0 && state.speed > 0) state.speed += BOOST_PUSH * dt;
-    const cap = state.boost > 0 ? VMAX * BOOST_CAP[state.boostTier - 1] : VMAX;
+    const dynCap = VMAX * (1 + DYN_VMAX * dynEngine);
+    const cap = state.boost > 0 ? dynCap * BOOST_CAP[state.boostTier - 1] : dynCap;
     state.speed = Math.max(canRev ? -V_REV : 0, Math.min(cap, state.speed));
 
     const f = Math.abs(state.speed) / VMAX;
@@ -445,7 +499,8 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     state.turnRate = steer * (T_SLOW + (T_FAST - T_SLOW) * f)
       * (0.22 + 0.78 * Math.min(1, Math.abs(state.speed) / 30)) * way
       * (1 - wet * (1 - WET_GRIP))
-      * (sliding ? DRIFT_TURN : 1) * (state.offRoad ? OFF_TURN : 1);
+      * (sliding ? DRIFT_TURN : 1) * (state.offRoad ? OFF_TURN : 1)
+      * (state.air > 0 ? AIR_STEER : 1);    // in the air the wheels do nothing
     state.heading += state.turnRate * dt;
 
     // The slip angle: how far the nose leads the direction of travel. It builds
@@ -464,23 +519,62 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     if (ground) {
       const bx = state.x, bz = state.z;
       const p = { x: state.x, y: 0, z: state.z };
-      ground.move(p, dx, dz, null, CAR_PROBE, CAR_STEP);
+      // Airborne, the car clears anything it is actually above: the lateral
+      // step allowance grows by the flight height, so a jump sails over the
+      // barrier that would have stopped it on the ground. Walls taller than
+      // the flight still stop it, which is what a wall is for.
+      const stepAllow = state.air > 0
+        ? CAR_STEP + Math.max(0, (state.y - RIDE) - state.lastFl)
+        : CAR_STEP;
+      ground.move(p, dx, dz, null, CAR_PROBE, stepAllow);
       state.x = p.x; state.z = p.z;
       // Sampled at the CENTRE, not across the whole footprint. ceilingAt takes
       // the highest floor under the probe ring, so with the car-sized ring a
       // single cone or kerb under one corner lifted the entire car onto it.
       const fl = ground.ceilingAt(state.x, state.z, 1);
       if (fl > -900) {
-        // Riding up over something costs SPEED, in proportion to how big the
-        // thing was. A kerb is nothing, a skip is most of your momentum, and
-        // either way you are still moving — which is the whole point.
-        const rise = fl - (state.y - RIDE);
-        if (rise > 2 && Math.abs(state.speed) > 25) {
-          state.speed *= Math.max(0.25, 1 - rise * CLIMB_COST);
-          state.shake = Math.min(1, rise / 18);
-          state.crash = Math.max(state.crash, 0.18);
+        state.lastFl = fl;
+        const floorY = fl + RIDE;
+        if (state.air > 0) {
+          // FLYING. Integrate, and land when the ground comes back up.
+          state.vy -= GRAV * dt;
+          state.y += state.vy * dt;
+          state.air += dt;
+          if (state.y <= floorY) {
+            state.bigAir = Math.max(state.bigAir, state.air);
+            const thump = -state.vy;
+            state.y = floorY;
+            state.air = 0;
+            state.vy = 0;
+            state.landed = 0.3;
+            if (thump > HARD_LANDING) {
+              state.speed *= 0.88;
+              state.shake = Math.min(1, thump / 260);
+            }
+          }
+        } else {
+          const rise = floorY - state.y;
+          // grounded: remember the vertical rate the floor is feeding us
+          const rate = rise / Math.max(dt, 1e-4);
+          if (rise > 2 && Math.abs(state.speed) > 25) {
+            // Riding up over something costs SPEED, in proportion to how big
+            // the thing was. A kerb is nothing, a skip is most of your
+            // momentum, and either way you are still moving.
+            state.speed *= Math.max(0.25, 1 - rise * CLIMB_COST);
+            state.shake = Math.min(1, rise / 18);
+            state.crash = Math.max(state.crash, 0.18);
+            state.y = floorY;
+            state.vy = 0;
+          } else if (rise < -(6 + 60 * dt) && state.vy > LAUNCH_VY
+              && Math.abs(state.speed) > 110) {
+            // THE LIP: the floor fell away while we were climbing — fly
+            state.air = dt;
+            state.y += state.vy * dt;
+          } else {
+            state.vy = state.vy * 0.6 + rate * 0.4;
+            state.y = floorY;
+          }
         }
-        state.y = fl + RIDE;
       }
       // How much of the motion the world refused. A glancing scrape along a
       // kerb costs you a little; driving square into a wall stops you. Squaring
@@ -532,6 +626,8 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     state.speed = 0; state.turnRate = 0; state.roll = 0; state.stuck = 0; state.slip = 0;
     state.crash = 0; state.wedged = false; state.rev = 0; state.offRoad = false;
     state.charge = 0; state.tier = 0; state.boost = 0;
+    state.vy = 0; state.air = 0; state.landed = 0; state.bigAir = 0;
+    state.dyn = 0; state.dynOut = 0;
     root.rotation.z = 0; chassis.rotation.z = 0;
   }
 
@@ -571,13 +667,19 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
       const k = state.crash / 0.3;
       root.position.y = state.yView + Math.sin(state.crash * 90) * state.shake * 2.2 * k;
       chassis.rotation.x = Math.sin(state.crash * 70) * state.shake * 0.1 * k;
-    } else chassis.rotation.x = 0;
+    } else if (state.air > 0) {
+      // in the air the nose follows the arc: up off the lip, down for landing
+      chassis.rotation.x += (THREE.MathUtils.clamp(-state.vy * 0.0016, -0.2, 0.28)
+        - chassis.rotation.x) * Math.min(1, dt * 5);
+    } else chassis.rotation.x += (0 - chassis.rotation.x) * Math.min(1, dt * 8);
     root.rotation.z += (0 - root.rotation.z) * Math.min(1, dt * 6);
   }
 
   return {
     root, state, step, crash, impact, respawn, present, beam, length: L, width: W, vmax: VMAX,
-    sightRange: () => BEAM * (1 - wet * (1 - WET_BEAM)),
+    sightRange: () => beam.distance,
+    // feed the dynamo from outside: boost pads, near-misses, big air
+    feedDynamo(v) { if (state.dynEnabled) state.dyn = Math.min(1, state.dyn + v); },
     // How much cornering the surface will actually sell you, 1 dry. The
     // driver reads this to slow its corner targets in the rain — the sim's
     // head is target-limited, not grip-limited, so without being TOLD about

@@ -1368,15 +1368,44 @@ function dress(w, path, anchors, houses) {
   for (const [s, side, kind] of F.signs || [])
     put(s, side * KERBSIDE, (x, z, ff, gy) => S.signPost(w, x, gy, z, kind));
 
-  // BOOST PADS: three neon chevrons flush with the road. Emissive, so they
+  // CORNER BOARDS: glowing chevron panels at the entry to every corner
+  // tighter than r480, standing on the OUTSIDE of the turn — the wall you
+  // would hit is the wall that warns you. Placed from the shape data itself,
+  // so a re-tuned corner re-warns without anyone remembering to move a sign.
+  for (const sec of SECTIONS) {
+    if (!sec.arc || !sec.r || sec.r >= 480) continue;
+    const outSide = Math.sign(sec.arc);
+    const inDir = -outSide;
+    for (const ds of [46, 116]) {
+      const at = sec.from - ds;
+      if (at < 0) continue;
+      for (let du = -12; du <= 12; du++) {
+        put(at, outSide * (ROAD_HALF + KERB + 10) + du, (x, z, ff, gy) => {
+          if (Math.abs(du) === 12) { w.box(x, gy, z, 1, 9, 1, 'metalDark'); return; }
+          for (let py = 0; py <= 12; py++) {
+            const v = ((du * inDir + Math.abs(py - 6)) % 9 + 9) % 9;
+            if (v < 2) w.set(x, gy + 8 + py, z, 'neonSign');
+            else if (v < 4) w.set(x, gy + 8 + py, z, 'signRed');
+          }
+        });
+      }
+    }
+  }
+
+  // BOOST PADS: four neon chevrons flush with the road. Emissive, so they
   // read from three hundred voxels out at night — a pad you cannot see coming
   // is a trap, not a reward. Flush, so they are paint to the collision field.
+  //
+  // THE TIP POINTS THE WAY YOU RACE. The first version put the vertex at the
+  // LOW-s end with the arms sweeping forward, which is an arrow aimed at
+  // oncoming traffic — the playtest read the pads as wrong-way markers. The
+  // arms trail BEHIND the tip: subtract the |du| term.
   for (const pd of SPEC.pads || []) {
     const pu = pd.u || 0;
-    for (let a2 = 0; a2 < 3; a2++)
-      for (let du = -26; du <= 26; du++)
-        for (let t2 = 0; t2 < 3; t2++)
-          put(pd.s + a2 * 16 + Math.abs(du) * 0.45 + t2, pu + du,
+    for (let a2 = 0; a2 < 4; a2++)
+      for (let du = -30; du <= 30; du++)
+        for (let t2 = 0; t2 < 4; t2++)
+          put(pd.s + a2 * 18 - Math.abs(du) * 0.5 + t2, pu + du,
             (x, z, ff, gy) => w.set(x, gy - 1, z, 'neonSign'));
   }
 
@@ -1749,13 +1778,40 @@ export function initTrackState(trackSpec) {
   HAZARDS = trackSpec.hazards.map(h => ({ ...h }));
   CROSSINGS = trackSpec.crossings || [];
   PARKED = trackSpec.parked || [];
+  const path = buildPath(trackSpec);
+  // PEOPLE BELONG WHERE PEOPLE GO. A walker's beat is authored as (s, span)
+  // and the spans wandered into tunnels, motorway verges and container
+  // yards — places with no footway and no reason to be. Validate against
+  // the DISTRICT, structurally, instead of trusting seventeen hand-typed
+  // numbers per circuit: an entry whose home is in a no-walk district is
+  // dropped, and every beat is clamped so it ends 40 short of the nearest
+  // no-walk boundary in each direction.
+  const NO_WALK = new Set(['tunnel', 'motorway', 'viaduct', 'wood', 'yard',
+    'containers', 'ship', 'sheds', 'mill', 'millyard']);
+  const T = path.total;
+  const wrapS = (s) => ((s % T) + T) % T;
+  const walkable = (s) => { const sec = sectionAt(wrapS(s)); return sec && !NO_WALK.has(sec.district); };
   LIFE = (trackSpec.life || []).map(l => ({
     ...l, u: (l.side || 1) * PAVE_MID,
   })).concat((trackSpec.crossings || []).map((cs, i) => ({
     // the ones who step out in front of you, at the marked crossings
     s: cs, u: i % 2 ? PAVE_MID : -PAVE_MID, cross: true, pace: 30 + i * 4,
-  })));
-  return buildPath(trackSpec);
+  }))).filter((l) => {
+    if (!walkable(l.s)) {
+      console.warn('life: dropped a walker at s=' + l.s + ' — '
+        + sectionAt(wrapS(l.s)).district + ' is not somewhere people walk');
+      return false;
+    }
+    return true;
+  }).map((l) => {
+    if (l.cross || !l.span) return l;
+    let lo = 0, hi = 0;
+    while (lo < l.span && walkable(l.s - lo - 20)) lo += 20;
+    while (hi < l.span && walkable(l.s + hi + 20)) hi += 20;
+    const span = Math.max(40, Math.min(lo, hi) - 40);
+    return { ...l, span: Math.min(l.span, span) };
+  });
+  return path;
 }
 
 export async function buildTrack(trackSpec, onPhase) {
@@ -1831,6 +1887,39 @@ export async function buildTrack(trackSpec, onPhase) {
       + 'carriageway — some district is still leaking props onto the road');
   }
 
+  // RAMPS, built AFTER the scrub on purpose: a ramp is exactly the shape the
+  // scrub exists to delete — a solid mass rising over the carriageway — and
+  // it is the one thing on the road that is meant to be there. A wedge 40
+  // long rising to a 13-voxel lip: drive it at speed and the launch comes
+  // from the physics (see car.js AIR), drive round it and it costs nothing —
+  // it is 64 wide on roads at least 260, so taking it is a CHOICE.
+  //
+  // 13, not 16: FLOOR_MAX is 14, so any column taller than that over its own
+  // base stops being a floor and becomes a wall — a 16-high lip left the last
+  // five columns of the ramp as a barrier the car parked against, at the top,
+  // for ever. The launch energy comes from the SLOPE, not the lip height.
+  {
+    const rf = frame();
+    for (const rp of SPEC.ramps || []) {
+      const RW = 32, RL = 40, RH = 13;
+      for (let d2 = 0; d2 <= RL; d2++) {
+        const h = Math.round((d2 / RL) * RH);
+        for (let du = -RW; du <= RW; du++) {
+          path.place(rp.s + d2, (rp.u || 0) + du, rf);
+          const x = Math.round(rf.x), z = Math.round(rf.z), gy = elev(rp.s + d2);
+          const edge = Math.abs(du) > RW - 3;
+          for (let k = 0; k <= h; k++)
+            w.set(x, gy - 1 + k, z,
+              k === h ? (edge ? 'coneOrange' : ((d2 % 12) < 3 ? 'stripLight' : 'metalDark')) : 'metal');
+        }
+      }
+      // NO decoration past the lip: a floating warning band there put voxels
+      // in the 14–16 band of the landing columns, which the head rule reads
+      // as a wall — the car climbed the ramp and stopped dead at the top.
+      // The lip's own stripLight rows are the warning.
+    }
+  }
+
 
   const group = new THREE.Group();
   group.name = 'track';
@@ -1902,7 +1991,11 @@ export async function buildTrack(trackSpec, onPhase) {
     // 0.575 x ROAD_HALF along s, and a fixed 160 was one voxel too tight the
     // moment the city widened.
     const win = Math.max(160, ROAD_HALF * 0.6 + 40);
-    const rogue = blockers.filter(([s]) => ![...hz].some(h => Math.abs(h - s) < win));
+    // ramps are deliberate 16-high masses on the road; the audit must not
+    // report the one thing that is supposed to be there
+    const rampsAt = (SPEC.ramps || []).map(r => r.s);
+    const rogue = blockers.filter(([s]) => ![...hz].some(h => Math.abs(h - s) < win)
+      && !rampsAt.some(rs => s >= rs - 24 && s <= rs + 90));
     if (rogue.length) {
       console.error('track: ' + rogue.length + ' points of the carriageway are not drivable, '
         + 'starting at s=' + rogue[0][0] + ' u=' + rogue[0][1]

@@ -143,6 +143,10 @@ export default {
   },
 
   landmarks: { waterTower: [40, 20], pylons: 0 },
+
+  // THE PORTCULLIS: the gatehouse bars its own gate on a rhythm — drops
+  // fast, winches up slow, red lamps say which is coming.
+  moving: [{ kind: 'portcullis', s: 3880 }],
   // Dusk over the medieval quarter. The narrow streets read as silhouettes cut
   // out of a bright western sky -- which is what an old town at sunset looks
   // like and nothing like the Parade, on the same palette and the same props.
@@ -158,6 +162,9 @@ export default {
   lampColor: '#ffc776',
   // boost pads
   pads: [{ s: 980 }, { s: 2950 }],
+  // one ramp, on the wide side of wall street — the narrow town gets exactly
+  // one moment of air, and you have to aim for it
+  ramps: [{ s: 860, u: 40 }],
   refLap: 34,
   wet: 0,
 };

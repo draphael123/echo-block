@@ -14,10 +14,13 @@ import { safeSpot } from './track.js';
 import { frame } from './path.js';
 
 export function buildRival(track, ground, buildCar, opts = {}) {
-  const { paint = 1, policy = 'racing', pace = 1, startS = 80, startU = 34 } = opts;
-  const car = buildCar(paint);
+  const { paint = 1, policy = 'racing', pace = 1, startS = 80, startU = 34,
+    lineU = 0, parts = null } = opts;
+  // parts are VISUAL here — no tune — so each rival wears its own kit
+  // (scoops, flares, lamp bars) without gaining physics the player didn't buy
+  const car = buildCar(paint, {}, parts);
   car.root.name = 'rival';
-  const driver = createDriver(track, { policy, pace, startS });
+  const driver = createDriver(track, { policy, pace, startS, lineU });
 
   const f = frame();
   track.path.place(startS, startU, f);

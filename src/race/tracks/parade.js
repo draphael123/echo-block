@@ -149,6 +149,10 @@ export default {
     signs: [[1380, 1, 'stop'], [2480, -1, 'sign'], [5150, 1, 'sign'], [5790, -1, 'stop']],
   },
 
+  // THE TRAM crosses the crescent from a side street, on its own clock —
+  // lit like a living room and long enough that beating it is a real call.
+  moving: [{ kind: 'tram', s: 4550 }],
+
   // 11pm. This is the circuit the sight mechanic belongs to, so its dark has
   // to be genuinely dark; every other track moved off midnight, this one owns it.
   sky: 'midnight',
@@ -161,6 +165,9 @@ export default {
   lampColor: '#ffa23c',
   // boost pads: neon chevrons on the straights — a reward line, not a shortcut
   pads: [{ s: 950 }, { s: 3550 }, { s: 4780 }],
+  // ramps: offset from the centreline so taking one is a CHOICE — the jump
+  // buys air and a moment of invulnerable clearance, the ground line is free
+  ramps: [{ s: 330, u: 70 }, { s: 3900, u: -60 }],
   refLap: 40,
   wet: 0,
 };
