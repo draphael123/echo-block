@@ -219,6 +219,45 @@ scene.add(streakMesh);
 const streakA = new Float32Array(STREAK_N * 3);
 let streaksLive = false;
 
+// THE RECOVERY CHOPPER — the game's Lakitu. Fall off the world and a small
+// helicopter with a searchlight swoops in, winches the car, carries it back
+// to the racing line and sets it down facing the right way. Built once,
+// hidden until needed, survives circuit swaps.
+const heli = new THREE.Group();
+{
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xc9a23a, roughness: 0.8 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 0.9 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(16, 12, 30), bodyMat);
+  body.position.y = 10;
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(14, 6, 8),
+    new THREE.MeshStandardMaterial({ color: 0x223044, roughness: 0.4 }));
+  glass.position.set(0, 12, 16);
+  const boom = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 26), bodyMat);
+  boom.position.set(0, 12, -24);
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(2, 10, 8), bodyMat);
+  fin.position.set(0, 18, -35);
+  const skidL = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 26), darkMat);
+  skidL.position.set(-8, 2, 2);
+  const skidR = skidL.clone();
+  skidR.position.x = 8;
+  const rotor = new THREE.Mesh(new THREE.BoxGeometry(3, 1.4, 56), darkMat);
+  rotor.position.y = 18;
+  const beacon = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.5, 2.5),
+    new THREE.MeshBasicMaterial({ color: 0xd83a34, toneMapped: false }));
+  beacon.position.set(0, 20, -35);
+  const search = new THREE.SpotLight(0xfff2d0, 260000, 400, 0.45, 0.5, 1.6);
+  search.position.set(0, 0, 8);
+  const searchTgt = new THREE.Object3D();
+  searchTgt.position.set(0, -100, 8);
+  search.target = searchTgt;
+  heli.add(body, glass, boom, fin, skidL, skidR, rotor, beacon, search, searchTgt);
+  heli.visible = false;
+  heli.userData.rotor = rotor;
+  heli.userData.beacon = beacon;
+  scene.add(heli);
+}
+let rescue = null;
+
 // TYRE SMOKE: a pooled train of fading puffs off the rear wheels while the
 // slip angle is live — the drift reads from the car, not just the HUD.
 const PUFF_N = 16;
@@ -300,19 +339,10 @@ addEventListener('keydown', (e) => {
   keys.add(k);
   if (k === 'r') reset();
   if (k === 'v') camYawWant = camYawWant ? 0 : Math.PI;   // latched look-back
-  // THE DYNAMO OUTPUT SELECTOR: one meter, two outlets. On a dark leg this
-  // is the game's whole question in one key.
-  if (k === 'c') {
-    car.state.dynMode = car.state.dynMode === 'lights' ? 'engine' : 'lights';
-    hud.msg.innerHTML = 'dynamo &rarr; <b>' + car.state.dynMode.toUpperCase() + '</b>'
-      + '<span class="dim">' + (car.state.dynMode === 'lights'
-        ? 'charge feeds the beam — see further' : 'charge feeds the engine — go faster') + '</span>';
-    msgUntil = time + 1.6;
-    // twice is understanding: after that the tutorial toast retires for good
-    if (!savefile.dynTaught) {
-      savefile.dynTaughtN = (savefile.dynTaughtN || 0) + 1;
-      if (savefile.dynTaughtN >= 2) { savefile.dynTaught = true; Garage.save(savefile); }
-    }
+  // the NOS teaches itself the first time it is burned
+  if (k === 'shift' && car.state.dyn > 0 && !savefile.dynTaught) {
+    savefile.dynTaughtN = (savefile.dynTaughtN || 0) + 1;
+    if (savefile.dynTaughtN >= 2) { savefile.dynTaught = true; Garage.save(savefile); }
   }
   if (k === 'h') { hud.help.classList.toggle('hidden'); hud.hint.classList.toggle('hidden'); }
   // The championship: N swaps the next round IN PLACE — the circuit was built
@@ -565,6 +595,7 @@ function reset(ceremony = false) {
   countdown = GRID_HOLD; lastLight = 99;
   s = prevS = START.s; crashes = 0; wasDown = false; struck = 0; msgUntil = 0;
   offCourse = 0; pinned = 0; wasAir = false;
+  rescue = null; heli.visible = false;
   stats = { topSpeed: 0, nearMisses: 0, padsHit: 0, driftBanks: 0, bigAir: 0 };
   hazCool = hazCool.map(() => 0); trafCool = trafCool.map(() => 0);
   splits.length = 0;
@@ -1503,9 +1534,10 @@ function tick() {
   time += dt;
   renderer.shadowMap.needsUpdate = (frames++ % 3) === 0;
 
-  let throttle = 0, steer = 0, drift = false;
+  let throttle = 0, steer = 0, drift = false, nosHeld = false;
   if (!done) {
-    drift = keys.has(' ') || keys.has('shift');
+    drift = keys.has(' ');
+    nosHeld = keys.has('shift');               // SHIFT is the NOS now
     if (keys.has('w') || keys.has('arrowup')) throttle = 1;
     if (keys.has('s') || keys.has('arrowdown')) throttle = -1;
     if (keys.has('a') || keys.has('arrowleft')) steer = -1;
@@ -1551,7 +1583,7 @@ function tick() {
     }
   }
 
-  car.step(dt, throttle, steer, ground, drift);
+  if (!rescue) car.step(dt, throttle, steer, ground, drift, true, nosHeld);
   if (running && !done) { lapTime += dt; raceClock += dt; }
 
   const loc = track.path.locate(car.state.x, car.state.z, s);
@@ -1639,17 +1671,71 @@ function tick() {
       hud.msg.textContent = 'return to the road';
       msgUntil = time + 0.4;
     }
-    if (offCourse >= 3) {
+    if (offCourse >= 3 && !rescue) {
       offCourse = 0;
       const spot = safeSpot(track.path, ground, s);
       if (spot) {
-        car.respawn(spot.x, spot.z, spot.heading, track.elev(spot.s) - 1);
-        s = prevS = spot.s;
-        hud.msg.textContent = 'back to the road';
-        msgUntil = time + 1.4;
+        // send the chopper, not a teleport
+        rescue = { phase: 'in', t: 0, spot };
+        heli.visible = true;
+        heli.position.set(car.state.x + 120, car.state.yView + 260, car.state.z + 120);
+        hud.msg.textContent = 'the recovery chopper is on its way';
+        msgUntil = time + 1.6;
+        audio.beep(640);
       }
     }
-  } else offCourse = 0;
+  } else if (!rescue) offCourse = 0;
+
+  // THE RESCUE, playing out: fly in, winch, carry, set down, fly away.
+  if (rescue) {
+    rescue.t += dt;
+    heli.userData.rotor.rotation.y += dt * 42;
+    heli.userData.beacon.visible = Math.floor(time * 4) % 2 === 0;
+    const sp = rescue.spot;
+    const roadY2 = track.elev(sp.s) - 1;
+    car.state.speed = 0;
+    if (rescue.phase === 'in') {
+      const k2 = Math.min(1, rescue.t / 0.9);
+      const e2 = k2 * k2 * (3 - 2 * k2);
+      heli.position.set(
+        car.state.x + 120 * (1 - e2), car.state.yView + 260 - 214 * e2, car.state.z + 120 * (1 - e2));
+      if (k2 >= 1) { rescue.phase = 'lift'; rescue.t = 0; }
+    } else if (rescue.phase === 'lift') {
+      const k2 = Math.min(1, rescue.t / 0.7);
+      car.state.y = car.state.yView = car.state.yView + 60 * dt;
+      heli.position.set(car.state.x, car.state.yView + 46, car.state.z);
+      if (k2 >= 1) {
+        rescue.phase = 'carry'; rescue.t = 0;
+        rescue.fx = car.state.x; rescue.fy = car.state.yView; rescue.fz = car.state.z;
+      }
+    } else if (rescue.phase === 'carry') {
+      const k2 = Math.min(1, rescue.t / 1.3);
+      const e2 = k2 * k2 * (3 - 2 * k2);
+      const cx2 = rescue.fx + (sp.x - rescue.fx) * e2;
+      const cz2 = rescue.fz + (sp.z - rescue.fz) * e2;
+      const cy2 = rescue.fy + (roadY2 + 44 - rescue.fy) * e2;
+      car.state.x = cx2; car.state.z = cz2;
+      car.state.y = car.state.yView = cy2;
+      car.state.heading = sp.heading;
+      heli.position.set(cx2, cy2 + 46, cz2);
+      if (k2 >= 1) { rescue.phase = 'drop'; rescue.t = 0; }
+    } else if (rescue.phase === 'drop') {
+      const k2 = Math.min(1, rescue.t / 0.45);
+      car.state.y = car.state.yView = roadY2 + 44 - (44 - 1) * k2;
+      heli.position.set(car.state.x, car.state.yView + 46, car.state.z);
+      if (k2 >= 1) {
+        car.respawn(sp.x, sp.z, sp.heading, roadY2);
+        s = prevS = sp.s;
+        rescue.phase = 'out'; rescue.t = 0;
+        hud.msg.textContent = 'back to the road';
+        msgUntil = time + 1.2;
+      }
+    } else if (rescue.phase === 'out') {
+      heli.position.y += dt * 180;
+      heli.position.x += dt * 90;
+      if (rescue.t > 1.1) { heli.visible = false; rescue = null; }
+    }
+  }
 
   // STUCK AGAINST SOMETHING. Reverse frees you everywhere on tarmac, but the
   // playtest did not reach for it — so the game says so, once the car has
@@ -1732,9 +1818,9 @@ function tick() {
 
   if (dynTipAt && time > dynTipAt && !msgUntil) {
     dynTipAt = 0;
-    hud.msg.innerHTML = '<b style="color:#7fd4ff">&#9889; THE DYNAMO</b>'
-      + '<span class="dim">drift, graze traffic &amp; jump to charge it &mdash; '
-      + '<b>C</b> sends the charge to your LIGHTS or your ENGINE</span>';
+    hud.msg.innerHTML = '<b style="color:#7fd4ff">&#9889; NOS</b>'
+      + '<span class="dim">drift, graze traffic &amp; jump to fill the tank &mdash; '
+      + 'hold <b>SHIFT</b> to burn it</span>';
     msgUntil = time + 6;
   }
   if (msgUntil && time > msgUntil && !done) { hud.msg.textContent = ''; msgUntil = 0; }
@@ -1882,13 +1968,13 @@ function tick() {
   // A boost opens it four more and the air two: both are moments, and the
   // lens is how a camera says "moment".
   const wantFov = 34 + fSpd * fSpd * 13
-    + (car.state.boost > 0 ? 4 : 0) + (car.state.air > 0 ? 2 : 0);
+    + (car.state.boost > 0 || car.state.nos ? 4 : 0) + (car.state.air > 0 ? 2 : 0);
   if (Math.abs(camera.fov - wantFov) > 0.02) {
     camera.fov += (wantFov - camera.fov) * Math.min(1, dt * 3);
     camera.updateProjectionMatrix();
   }
   const rattle = Math.max(0, fSpd - 0.5) * (car.state.offRoad ? 5.2 : 2.3)
-    + (car.state.boost > 0 ? 1.9 : 0);
+    + (car.state.boost > 0 ? 1.9 : 0) + (car.state.nos ? 2.4 : 0);
   if (rattle > 0.01 && car.state.air === 0 && settings.shake) {
     camera.position.x += Math.sin(time * 47.3) * rattle;
     camera.position.y += Math.sin(time * 61.7) * rattle * 0.8;
@@ -1911,7 +1997,9 @@ function tick() {
     camera.position.z += Math.cos(hc) * goPush * 26;
     goPush *= Math.max(0, 1 - dt * 3.2);
   }
-  // the aberration kick: boosts and hits fringe the frame for a beat
+  // the aberration kick: boosts and hits fringe the frame for a beat —
+  // and the NOS holds a burn-fringe for as long as you hold it
+  if (car.state.nos) aberKick = Math.max(aberKick, 0.42);
   if (aberKick > 0.01) {
     aberKick *= Math.max(0, 1 - dt * 4.5);
   }
@@ -1942,8 +2030,8 @@ function tick() {
 
   // wind streaks: alive from ~60% speed, doubled by a boost
   {
-    const on = settings.streaks && (fSpd > 0.55 || car.state.boost > 0);
-    const wantOp = on ? 0.34 + (car.state.boost > 0 ? 0.3 : 0) + fSpd * 0.2 : 0;
+    const on = settings.streaks && (fSpd > 0.55 || car.state.boost > 0 || car.state.nos);
+    const wantOp = on ? 0.34 + (car.state.boost > 0 || car.state.nos ? 0.3 : 0) + fSpd * 0.2 : 0;
     streakMat.opacity += (wantOp - streakMat.opacity) * Math.min(1, dt * 6);
     if (streakMat.opacity > 0.02) {
       const tx2 = Math.sin(h), tz2 = Math.cos(h);
@@ -2018,8 +2106,9 @@ function tick() {
   hud.time.textContent = lapTime.toFixed(2);
   if (hud.dyn) {
     hud.dynFill.style.width = Math.round(car.state.dyn * 100) + '%';
-    hud.dyn.className = car.state.dynMode === 'engine' ? 'engine' : '';
-    hud.dynMode.textContent = 'dynamo · ' + car.state.dynMode;
+    hud.dyn.className = car.state.nos ? 'engine' : '';
+    hud.dynMode.textContent = car.state.nos ? 'NOS · burning'
+      : (car.state.dyn > 0.05 ? 'NOS · hold shift' : 'NOS');
   }
   hud.best.textContent = best ? `best ${best.toFixed(2)}s` : '';
   hud.lap.textContent = mode === 'tt'

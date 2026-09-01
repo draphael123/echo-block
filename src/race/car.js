@@ -130,21 +130,17 @@ const BOOST_TIME = [0.75, 1.25, 1.9];         // seconds of push it buys
 const BOOST_PUSH = 460;                       // v/s^2 while it lasts
 const BOOST_CAP = [1.10, 1.16, 1.24];         // how far over V_MAX it will pull
 
-// ----------------------------------------------------------- THE DYNAMO
-// The game is called DYNAMO and now the car IS one. Driving hard charges it:
-// drifting, grazing hazards and traffic, boost pads, flat-out running. The
-// charge drains through whichever output you have selected —
-//   LIGHTS  — the beam overdrives 60% further and brighter
-//   ENGINE  — 8% over the top speed and harder acceleration
-// — and that is the hook: on a dark leg the same meter is either sight or
-// speed, never both. The rivals have no dynamo; what you make of it is
-// yours. Full charge drains in about eighteen seconds.
-const DYN_DRAIN = 0.055;
-const DYN_DRIFT = 0.11;                // per second of genuine slide
-const DYN_FLATOUT = 0.022;             // per second above 92% speed
-const DYN_BEAM = 0.6;                  // lights: extra reach at full output
-const DYN_VMAX = 0.08;                 // engine: extra ceiling
-const DYN_ACCEL = 0.22;                // engine: extra push
+// --------------------------------------------------------------- THE NOS
+// The dynamo's two-mode output asked for reading at 200 v/s and the
+// playtest said no. Same EARNING — drifts, near-misses, boost pads, big
+// air fill the tank — but the spend is one button and one idea: hold
+// SHIFT, burn tank, go violently faster. A full tank is about 3.2 seconds
+// of burn, spent in whatever sips or gulps you like. Player only.
+const NOS_DRAIN = 0.31;                // tank per second of burn
+const NOS_PUSH = 520;                  // v/s^2 while burning
+const NOS_CAP = 1.22;                  // ceiling multiplier while burning
+const NOS_DRIFT = 0.11;               // tank per second of genuine slide
+const NOS_FLATOUT = 0.02;             // trickle above 92% speed
 
 // Headlights do not care how fast you are going — that USED to be the dynamo,
 // and it went with the bike; now it is back as the choice above. What also
@@ -361,7 +357,8 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
   chassis.add(sparkMesh);
   const sparkMats = [];
   sparkMesh.traverse(o => { if (o.isMesh && o.material) sparkMats.push(o.material); });
-  const TIER_COL = [null, [0.35, 0.62, 1.0], [1.0, 0.55, 0.15], [0.85, 0.35, 1.0]];
+  const TIER_COL = [null, [0.35, 0.62, 1.0], [1.0, 0.55, 0.15], [0.85, 0.35, 1.0],
+    [0.8, 0.92, 1.0]];                        // 4 = the NOS flame, white-blue
 
   const rw = new VoxWorld(); reverseLamps(rw);
   const revMesh = meshWorld(rw, PALETTE, { name: 'reverse', solidBelow: -999 });
@@ -406,12 +403,11 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     // the camera and audio, the floor last seen, and the longest air this
     // race (the stats screen wants it)
     vy: 0, air: 0, landed: 0, lastFl: 0, bigAir: 0,
-    // the dynamo: charge 0..1, which output it feeds, and how much output
-    // is actually flowing (smoothed, so the beam breathes rather than snaps)
-    dyn: 0, dynMode: 'lights', dynOut: 0,
+    // the NOS: tank 0..1 and whether it is burning this frame
+    dyn: 0, nos: false,
   };
 
-  function step(dt, throttle, steer, ground, drift = false, allowReverse = true) {
+  function step(dt, throttle, steer, ground, drift = false, allowReverse = true, nos = false) {
     // An impact is a moment, not a cutscene. The old version took the controls
     // away for a second and a half and span the car on its axis, which is where
     // the "weird dance" came from -- no racing game does that, and it turned
@@ -433,20 +429,17 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     // the rest of the lap backwards. A racing driver does not use reverse.
     const canRev = allowReverse && state.rev > REV_ENGAGE;
 
-    // THE DYNAMO charges from hard driving and drains through its output.
-    // PLAYER ONLY (dynEnabled): the rivals and the sim's bots run this same
-    // step(), and a bot whose beam quietly grew with its own speed would
-    // shift every sight-mechanic measurement without anybody deciding to.
-    let dynEngine = 0;
+    // THE NOS tank fills from hard driving and burns while the button is
+    // held. PLAYER ONLY (dynEnabled): the rivals and the sim's bots run
+    // this same step(), and their races must not quietly change.
+    state.nos = false;
     if (state.dynEnabled) {
-      if (sliding && Math.abs(state.slip) > 0.14) state.dyn = Math.min(1, state.dyn + DYN_DRIFT * dt);
-      if (Math.abs(spd) > VMAX * 0.92) state.dyn = Math.min(1, state.dyn + DYN_FLATOUT * dt);
-      if (state.dyn > 0) state.dyn = Math.max(0, state.dyn - DYN_DRAIN * dt);
-      state.dynOut += ((state.dyn > 0.01 ? 1 : 0) - state.dynOut) * Math.min(1, dt * 3.5);
-      dynEngine = state.dynMode === 'engine' ? state.dynOut : 0;
-      const dynLights = state.dynMode === 'lights' ? state.dynOut : 0;
-      beam.distance = BEAM * (1 - wet * (1 - WET_BEAM)) * (1 + DYN_BEAM * dynLights);
-      beam.intensity = 300000 * (0.75 + T.beam * 0.25) * (1 + 0.5 * dynLights);
+      if (sliding && Math.abs(state.slip) > 0.14) state.dyn = Math.min(1, state.dyn + NOS_DRIFT * dt);
+      if (Math.abs(spd) > VMAX * 0.92) state.dyn = Math.min(1, state.dyn + NOS_FLATOUT * dt);
+      if (nos && state.dyn > 0 && spd > 30 && state.crash <= 0) {
+        state.nos = true;
+        state.dyn = Math.max(0, state.dyn - NOS_DRAIN * dt);
+      }
     }
 
     // charge builds only while actually sideways, and cashes in on release
@@ -465,8 +458,7 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     const bleed = (v, amount) => Math.sign(v) * Math.max(0, Math.abs(v) - amount);
     if (throttle > 0) {
       if (spd < 0) state.speed = Math.min(0, spd + BRK * dt);       // brake out of reverse
-      else state.speed = spd + ACC * throttle * dt * (off ? OFF_ACCEL : 1)
-        * (1 + DYN_ACCEL * dynEngine);
+      else state.speed = spd + ACC * throttle * dt * (off ? OFF_ACCEL : 1);
     } else if (throttle < 0) {
       if (spd > 0.5) state.speed = spd + BRK * (1 - wet * (1 - WET_BRAKE)) * throttle * dt;
       else if (canRev) state.speed = Math.max(-V_REV, spd - REV_ACCEL * dt);
@@ -485,8 +477,9 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     // the cap drops back and drag walks you down to it, so the speed you were
     // given is spent rather than kept.
     if (state.boost > 0 && state.speed > 0) state.speed += BOOST_PUSH * dt;
-    const dynCap = VMAX * (1 + DYN_VMAX * dynEngine);
-    const cap = state.boost > 0 ? dynCap * BOOST_CAP[state.boostTier - 1] : dynCap;
+    if (state.nos && state.speed > 0) state.speed += NOS_PUSH * dt;
+    let cap = state.boost > 0 ? VMAX * BOOST_CAP[state.boostTier - 1] : VMAX;
+    if (state.nos) cap = Math.max(cap, VMAX * NOS_CAP);
     state.speed = Math.max(canRev ? -V_REV : 0, Math.min(cap, state.speed));
 
     const f = Math.abs(state.speed) / VMAX;
@@ -627,7 +620,7 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     state.crash = 0; state.wedged = false; state.rev = 0; state.offRoad = false;
     state.charge = 0; state.tier = 0; state.boost = 0;
     state.vy = 0; state.air = 0; state.landed = 0; state.bigAir = 0;
-    state.dyn = 0; state.dynOut = 0;
+    state.dyn = 0; state.nos = false;
     root.rotation.z = 0; chassis.rotation.z = 0;
   }
 
@@ -642,7 +635,7 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
     state.lampGlow += (wantGlow - state.lampGlow) * Math.min(1, dt * 18);
     for (const m of brakeMats) m.color.setScalar(state.lampGlow);
     revMesh.visible = state.speed < -1;
-    const show = state.tier > 0 ? state.tier : (state.boost > 0 ? state.boostTier : 0);
+    const show = state.nos ? 4 : (state.tier > 0 ? state.tier : (state.boost > 0 ? state.boostTier : 0));
     sparkMesh.visible = show > 0;
     if (show > 0) {
       const c = TIER_COL[show];
