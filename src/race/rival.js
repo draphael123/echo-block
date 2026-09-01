@@ -15,10 +15,11 @@ import { frame } from './path.js';
 
 export function buildRival(track, ground, buildCar, opts = {}) {
   const { paint = 1, policy = 'racing', pace = 1, startS = 80, startU = 34,
-    lineU = 0, parts = null } = opts;
-  // parts are VISUAL here — no tune — so each rival wears its own kit
-  // (scoops, flares, lamp bars) without gaining physics the player didn't buy
-  const car = buildCar(paint, {}, parts);
+    lineU = 0, parts = null, chassis = 'brindle' } = opts;
+  // parts are VISUAL here — no tune — but the CHASSIS is real: Vasey's
+  // wedge is genuinely faster and more nervous than Wren's hatch, which is
+  // half of what makes each rival a different problem.
+  const car = buildCar(paint, {}, parts, chassis);
   car.root.name = 'rival';
   const driver = createDriver(track, { policy, pace, startS, lineU });
 

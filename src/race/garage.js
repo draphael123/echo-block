@@ -16,8 +16,16 @@
 // in echo-block.look — written by different modules, none of them aware of the
 // others, and no way to clear the lot. It is one record now, versioned, and it
 // migrates the old keys on first load so nobody loses their car.
+import { CHASSIS, chassisOf } from './car.js';
+
 const KEY = 'dynamo.save';
-const VERSION = 2;
+const VERSION = 3;
+
+// THE CAREER: the rival ladder (duel them in this order), and the season
+// tiers. Beating the ladder and winning seasons is the minute-40 answer.
+export const LADDER = ['Wren', 'Pike', 'Ferreira', 'Hale', 'Ó Broin', 'Vasey'];
+export const TIER_FEES = [0, 500, 1200];
+export const TIER_NAMES = ['clubman', 'national', 'midnight league'];
 
 export const PARTS = [
   {
@@ -46,6 +54,9 @@ const BLANK = {
   v: VERSION,
   money: 0, races: 0, paint: 0,
   parts: { engine: 0, brakes: 0, tyres: 0, lamps: 0 },
+  cars: ['brindle'],      // chassis owned
+  chassis: 'brindle',     // chassis driven
+  career: { tier: 0, duelsWon: [] },
   bests: {},              // per circuit, because one number for four tracks is a lie
   ghosts: {},             // the best lap, embodied: 10Hz position samples per circuit
   stats: {},              // races / wins / clean runs, per circuit
@@ -53,14 +64,18 @@ const BLANK = {
   track: 'parade',
 };
 
-const fresh = () => ({ ...BLANK, parts: { ...BLANK.parts }, bests: {}, ghosts: {}, stats: {} });
+const fresh = () => ({ ...BLANK, parts: { ...BLANK.parts }, bests: {}, ghosts: {}, stats: {},
+  cars: ['brindle'], career: { tier: 0, duelsWon: [] } });
 
 export function load() {
   let s;
   try { s = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { s = null; }
   const out = s
     ? { ...fresh(), ...s, parts: { ...BLANK.parts, ...(s.parts || {}) }, bests: { ...(s.bests || {}) },
-        ghosts: { ...(s.ghosts || {}) }, stats: { ...(s.stats || {}) } }
+        ghosts: { ...(s.ghosts || {}) }, stats: { ...(s.stats || {}) },
+        cars: [...new Set(['brindle', ...(s.cars || [])])],
+        chassis: s.chassis || 'brindle',
+        career: { tier: 0, duelsWon: [], ...(s.career || {}) } }
     : fresh();
 
   if (!s || (s.v || 1) < VERSION) {
@@ -107,6 +122,39 @@ export function tuneOf(s) {
   const t = {};
   for (const p of PARTS) t[p.stat] = p.steps[Math.min(s.parts[p.id] || 0, p.steps.length - 1)];
   return t;
+}
+
+// ----------------------------------------------------------- the showroom
+export function ownsCar(s, id) { return (s.cars || []).includes(id); }
+export function carLocked(s, id) {
+  const ch = chassisOf(id);
+  return (s.career?.tier || 0) < (ch.reqTier || 0);
+}
+export function buyCar(s, id) {
+  const ch = CHASSIS.find(c => c.id === id);
+  if (!ch || ownsCar(s, id) || carLocked(s, id) || s.money < ch.price) return false;
+  s.money -= ch.price;
+  s.cars.push(id);
+  s.chassis = id;
+  save(s);
+  return true;
+}
+export function driveCar(s, id) {
+  if (!ownsCar(s, id)) return false;
+  s.chassis = id;
+  save(s);
+  return true;
+}
+
+// ------------------------------------------------------------- the ladder
+export function nextRival(s) {
+  return LADDER.find(n => !(s.career?.duelsWon || []).includes(n)) || null;
+}
+export function recordDuel(s, name, won) {
+  if (!won) return false;
+  s.career.duelsWon = [...new Set([...(s.career.duelsWon || []), name])];
+  save(s);
+  return true;
 }
 
 export function nextCost(s, id) {

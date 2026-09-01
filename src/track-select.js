@@ -10,6 +10,8 @@
 // nothing about whether you want to drive it.
 import { TRACKS, chooseTrack, pickTrack } from './race/tracks/index.js';
 import * as GP from './race/gp.js';
+import * as Garage from './race/garage.js';
+import { runnerByName } from './race/field.js';
 
 const CSS = `
 #pick {
@@ -73,6 +75,8 @@ const CSS = `
   cursor: pointer; margin-left: 12px; white-space: nowrap; align-self: center;
 }
 #pick .tt:hover { border-color: #7fd4ff; }
+#pick .ladder .nm { color: #ffb45c; }
+#pick .q.dim { color: #4d566a; }
 
 /* The pit wall: the campaign in one line — purse and what is bolted on. */
 #pick .wall {
@@ -96,7 +100,7 @@ const CSS = `
 #pick .medal.bronze { background: #c98d54; }
 `;
 
-export function mountTrackSelect({ save, onGo, closeLabel, onClose }) {
+export function mountTrackSelect({ save, onGo, onDuel, closeLabel, onClose }) {
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -196,18 +200,43 @@ export function mountTrackSelect({ save, onGo, closeLabel, onClose }) {
       drop.onclick = (e) => { e.stopPropagation(); GP.abandon(save); paint(); };
       season.appendChild(drop);
     } else {
-      row.innerHTML = '<div><div class="nm">Grand Prix</div>'
-        + '<div class="q">all four circuits, in order &mdash; points, and a table</div>'
+      const tier = save.career?.tier || 0;
+      const fee = Garage.TIER_FEES[tier] || 0;
+      row.innerHTML = '<div><div class="nm">Grand Prix &mdash; the '
+        + `${Garage.TIER_NAMES[tier]}</div>`
+        + `<div class="q">all four circuits, in order &mdash; points, a table`
+        + `${fee ? `, and a ${fee} entry fee` : ''}</div>`
         + `<div class="rounds">${GP.ROUNDS.map(() => '<i></i>').join('')}</div></div>`
-        + '<div class="meta"><b>start a season</b>4 rounds</div>';
+        + `<div class="meta"><b>start a season</b>${fee ? fee + ' to enter' : '4 rounds'}</div>`;
       row.onclick = () => {
-        GP.begin(save);
+        const g2 = GP.begin(save);
+        if (!g2) { row.querySelector('.meta b').textContent = 'need ' + fee; return; }
         const first = GP.ROUNDS[0];
         chooseTrack(first);
         onGo(TRACKS.find(t => t.id === first));
       };
       season.appendChild(row);
     }
+
+    // THE LADDER: duel the field one name at a time. The next rung shows
+    // its face and its car; beaten names stay on the wall.
+    const next = Garage.nextRival(save);
+    const lrow = document.createElement('div');
+    lrow.className = 'gp ladder';
+    if (next) {
+      const r2 = runnerByName(next);
+      const beaten = (save.career?.duelsWon || []);
+      lrow.innerHTML = `<div><div class="nm">The Ladder &mdash; duel ${next}</div>`
+        + `<div class="q">${r2 ? r2.bio : ''}</div>`
+        + `<div class="q dim">${beaten.length ? 'beaten: ' + beaten.join(', ') : 'nobody beaten yet'}</div></div>`
+        + `<div class="meta"><b>duel &middot; 1v1</b>first win pays 400</div>`;
+      lrow.onclick = () => { if (onDuel) onDuel(next); };
+    } else {
+      lrow.innerHTML = `<div><div class="nm">The Ladder &mdash; complete</div>`
+        + `<div class="q">every name on the grid has lost to you, one on one</div></div>`
+        + `<div class="meta"><b>done</b></div>`;
+    }
+    season.appendChild(lrow);
   }
 
   const closeBtn = el.querySelector('.close');

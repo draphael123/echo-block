@@ -91,6 +91,8 @@ const go = (url) => { fade.classList.add('on'); setTimeout(() => { location.href
 const picker = mountTrackSelect({
   save,
   onGo: (t, m) => go('./race.html?track=' + t.id + (m === 'tt' ? '&mode=tt' : '')),
+  onDuel: (name) => go('./race.html?track=' + (save.track || 'parade')
+    + '&mode=duel&rival=' + encodeURIComponent(name)),
   closeLabel: 'walk the block instead →',
   onClose: () => go('./block.html'),
 });

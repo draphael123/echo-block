@@ -152,6 +152,32 @@ const NOS_FLATOUT = 0.02;             // trickle above 92% speed
 // than your headlights never bought you anything. The number is the mechanic.
 const BEAM_REACH = 280;
 
+// ------------------------------------------------------------- CHASSIS
+// Cars, plural — the career's first pillar. Each chassis is a different
+// SHAPE and a different set of base multipliers, stacked under the parts
+// tune: the wedge is fast and nervous, the estate is planted and slow to
+// wind up, the kei is all elbows. The rivals drive them too (with no parts
+// tune), which finally makes the mirror full of different silhouettes.
+export const CHASSIS = [
+  { id: 'brindle', name: 'Brindle 3-Door', price: 0, reqTier: 0,
+    blurb: 'the hatch you started with — honest everywhere',
+    dims: { L: 58, W: 26, roofH: 22, rear: 'hatch' },
+    t: { vmax: 1.00, accel: 1.00, brake: 1.00, grip: 1.00 } },
+  { id: 'kestrel', name: 'Kestrel Kei', price: 2400, reqTier: 0,
+    blurb: 'tiny, darty, brakes like a thought',
+    dims: { L: 48, W: 22, roofH: 21, rear: 'kei' },
+    t: { vmax: 0.93, accel: 1.16, brake: 1.05, grip: 1.08 } },
+  { id: 'dray', name: 'Dray Estate', price: 3600, reqTier: 1,
+    blurb: 'heavy, planted, unbothered by rain',
+    dims: { L: 62, W: 27, roofH: 23, rear: 'estate' },
+    t: { vmax: 0.97, accel: 0.93, brake: 1.10, grip: 1.12 } },
+  { id: 'vespid', name: 'Vespid GT', price: 5200, reqTier: 2,
+    blurb: 'wedge nose, glass back — fast and nervous',
+    dims: { L: 64, W: 26, roofH: 19, rear: 'wedge' },
+    t: { vmax: 1.09, accel: 1.10, brake: 0.97, grip: 0.94 } },
+];
+export const chassisOf = (id) => CHASSIS.find(c => c.id === id) || CHASSIS[0];
+
 export const BODIES = [
   { body: 'carBody', roof: 'carBody', trim: 'carTrim', name: 'red', swatch: '#8d2b26' },
   { body: 'doorBlue', roof: 'doorBlue', trim: 'chrome', name: 'blue', swatch: '#33507e' },
@@ -163,34 +189,46 @@ export const BODIES = [
   { body: 'plasticRed', roof: 'shirtCream', trim: 'chrome', name: 'rally', swatch: '#b0403a' },
 ];
 
-// A 1986 three-door, facing +Z. Wedge nose, upright glass, black bumpers.
-function shell(w, c, parts) {
-  const L = 58, W = 26, sill = 5, hw = W >> 1;
+// A 1986 body, facing +Z, in the shape the chassis asks for. The base is
+// the three-door hatch; the estate squares the tail, the wedge drops the
+// roofline and stretches the nose, the kei shrinks everything.
+function shell(w, c, parts, ch) {
+  const d = (ch && ch.dims) || { L: 58, W: 26, roofH: 22, rear: 'hatch' };
+  const L = d.L, W = d.W, sill = 5, hw = W >> 1;
+  const RH = d.roofH;
   // What you have bought, on the outside of the car. Every part shows, because
   // an upgrade you cannot see is a number in a menu — and the lamps in
   // particular ARE the mechanic, so they had better be the thing you notice.
   const lv = (id) => (parts && parts[id]) || 0;
 
-  // main body, tapering slightly toward the nose
+  // main body, tapering toward the nose — the wedge starts its taper early
+  const pinchT = d.rear === 'wedge' ? 0.6 : 0.72;
   for (let k = 0; k < L; k++) {
     const t = k / (L - 1);
-    const pinch = t > 0.72 ? 1 : 0;
+    const pinch = t > pinchT ? (d.rear === 'wedge' && t > 0.85 ? 2 : 1) : 0;
     w.box(-hw + pinch, sill, k, W - pinch * 2, 10, 1, c.body);
   }
   w.box(-hw, sill - 2, 6, W, 2, L - 14, c.body);          // sills
   w.box(-hw + 1, sill + 10, 4, W - 2, 1, L - 10, c.body);
 
-  // greenhouse: inset, with a raked screen and a hatchback rear
-  const cz = 12, cL = 30;
-  w.box(-hw + 3, sill + 11, cz, W - 6, 11, cL, 'carGlass');
-  w.box(-hw + 3, sill + 11, cz, 1, 11, cL, c.body);        // pillars
-  w.box(hw - 4, sill + 11, cz, 1, 11, cL, c.body);
-  w.box(-hw + 3, sill + 11, cz + 15, W - 6, 11, 1, c.body); // B-pillar
-  w.box(-hw + 2, sill + 22, cz + 1, W - 4, 2, cL - 2, c.roof);
+  // greenhouse: inset, raked screen, and a tail in the chassis's own style
+  const cz = d.rear === 'estate' ? 8 : 12, cL = L - 28;
+  const gh = RH - 11;
+  w.box(-hw + 3, sill + 11, cz, W - 6, gh, cL, 'carGlass');
+  w.box(-hw + 3, sill + 11, cz, 1, gh, cL, c.body);        // pillars
+  w.box(hw - 4, sill + 11, cz, 1, gh, cL, c.body);
+  w.box(-hw + 3, sill + 11, cz + (cL >> 1), W - 6, gh, 1, c.body); // B-pillar
+  w.box(-hw + 2, sill + RH, cz + 1, W - 4, 2, cL - 2, c.roof);
   for (let k = 0; k < 6; k++)                               // raked screen
-    w.box(-hw + 3, sill + 21 - k, cz + cL + k, W - 6, 1, 1, 'carGlass');
-  for (let k = 0; k < 5; k++)                               // hatch
-    w.box(-hw + 3, sill + 21 - k, cz - 1 - k, W - 6, 1, 1, 'carGlass');
+    w.box(-hw + 3, sill + RH - 1 - k, cz + cL + k, W - 6, 1, 1, 'carGlass');
+  if (d.rear === 'estate') {
+    // the estate: vertical tail glass and a roof that runs to the bumper
+    w.box(-hw + 3, sill + 11, cz - 3, W - 6, gh, 3, 'carGlass');
+    w.box(-hw + 2, sill + RH, cz - 3, W - 4, 2, 4, c.roof);
+  } else {
+    for (let k = 0; k < 5; k++)                             // hatch / fastback
+      w.box(-hw + 3, sill + RH - 1 - k, cz - 1 - k, W - 6, 1, 1, 'carGlass');
+  }
 
   // bonnet and tail
   w.box(-hw + 2, sill + 9, L - 14, W - 4, 2, 12, c.body);
@@ -265,9 +303,9 @@ function shell(w, c, parts) {
     w.box(px + 1, sill + 4, L + 1, 2, 2, 1, 'headLight');
   }
   if (lamps > 2) {
-    w.box(-hw + 2, sill + 24, cz + cL - 2, W - 4, 2, 4, 'metalDark');
+    w.box(-hw + 2, sill + RH + 2, cz + cL - 2, W - 4, 2, 4, 'metalDark');
     for (let i = 0; i < 4; i++)
-      w.box(-hw + 4 + i * 5, sill + 26, cz + cL - 1, 3, 3, 2, 'headLight');
+      w.box(-hw + 4 + i * 5, sill + RH + 4, cz + cL - 1, 3, 3, 2, 'headLight');
   }
   return { L, W };
 }
@@ -282,22 +320,25 @@ function shell(w, c, parts) {
 // meant the rival looked identical whether it was flat out or standing on the
 // brakes — and watching where the car ahead lifts is how anybody has ever
 // learned a circuit. Now it teaches you something.
-function lamps(w, c) {
-  const L = 58, W = 26, sill = 5, hw = W >> 1;
+function lamps(w, c, d) {
+  const W = d.W, sill = 5, hw = W >> 1;
   w.box(-hw + 2, sill + 6, -1, 6, 4, 1, 'tailLight');
   w.box(hw - 8, sill + 6, -1, 6, 4, 1, 'tailLight');
-  return { L };
+  return { L: d.L };
 }
-function reverseLamps(w) {
-  const W = 26, sill = 5, hw = W >> 1;
+function reverseLamps(w, d) {
+  const W = d.W, sill = 5, hw = W >> 1;
   w.box(-hw + 9, sill + 7, -2, 3, 2, 1, 'headLight');
   w.box(hw - 12, sill + 7, -2, 3, 2, 1, 'headLight');
 }
 
-export function buildCar(paint = 0, tune = {}, parts = null) {
+export function buildCar(paint = 0, tune = {}, parts = null, chassisId = 'brindle') {
+  const ch = chassisOf(chassisId);
+  // parts tune stacks ON the chassis's own character
   const T = {
-    vmax: tune.vmax || 1, accel: tune.accel || 1, brake: tune.brake || 1,
-    grip: tune.grip || 1, beam: tune.beam || 1,
+    vmax: (tune.vmax || 1) * ch.t.vmax, accel: (tune.accel || 1) * ch.t.accel,
+    brake: (tune.brake || 1) * ch.t.brake, grip: (tune.grip || 1) * ch.t.grip,
+    beam: tune.beam || 1,
   };
   const VMAX = V_MAX * T.vmax;
   const ACC = ACCEL * T.accel;
@@ -307,7 +348,7 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
   let wet = 0;
   const c = BODIES[paint % BODIES.length];
   const w = new VoxWorld();
-  const { L, W } = shell(w, c, parts);
+  const { L, W } = shell(w, c, parts, ch);
 
   // A CONTACT SHADOW.
   //
@@ -339,7 +380,7 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
   mesh.position.set(0, 0, -L / 2);            // pivot about the middle
   chassis.add(mesh);
 
-  const lw = new VoxWorld(); lamps(lw, c);
+  const lw = new VoxWorld(); lamps(lw, c, ch.dims);
   const brakeMesh = meshWorld(lw, PALETTE, { name: 'brake', solidBelow: -999 });
   brakeMesh.position.set(0, 0, -L / 2);
   chassis.add(brakeMesh);
@@ -360,7 +401,7 @@ export function buildCar(paint = 0, tune = {}, parts = null) {
   const TIER_COL = [null, [0.35, 0.62, 1.0], [1.0, 0.55, 0.15], [0.85, 0.35, 1.0],
     [0.8, 0.92, 1.0]];                        // 4 = the NOS flame, white-blue
 
-  const rw = new VoxWorld(); reverseLamps(rw);
+  const rw = new VoxWorld(); reverseLamps(rw, ch.dims);
   const revMesh = meshWorld(rw, PALETTE, { name: 'reverse', solidBelow: -999 });
   revMesh.position.set(0, 0, -L / 2);
   revMesh.visible = false;

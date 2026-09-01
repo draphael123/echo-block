@@ -8,7 +8,7 @@
 // bought — the circuit rebuilds its car on the spot, the hub just says thanks
 // — which keeps the shop from having to know which page it is on.
 import * as Garage from './race/garage.js';
-import { BODIES } from './race/car.js';
+import { BODIES, CHASSIS } from './race/car.js';
 
 const CSS = `
 #garage {
@@ -71,6 +71,31 @@ export function mountGarage({ save, onChange, closeHint = 'G to close' } = {}) {
       b.textContent = cost === null ? 'MAX' : `${cost} cr`;
       b.disabled = cost === null || save.money < cost;
       b.onclick = () => { if (Garage.buy(save, p.id)) changed(); };
+      row.appendChild(b);
+      partsEl.appendChild(row);
+    }
+
+    // THE SHOWROOM: cars, plural — the career's first pillar. Each chassis
+    // is a real shape and a real character; parts carry across. Locked cars
+    // name the tier that opens them, priced cars name the price, and your
+    // current car says DRIVING.
+    for (const ch of CHASSIS) {
+      const owned = Garage.ownsCar(save, ch.id);
+      const locked = Garage.carLocked(save, ch.id);
+      const active = save.chassis === ch.id;
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.innerHTML = `<div><div class="nm">${ch.name}</div><div class="bl">${ch.blurb}</div></div>`
+        + `<div class="pips">${active ? 'DRIVING' : owned ? 'OWNED' : ''}</div>`;
+      const b = document.createElement('button');
+      if (active) { b.textContent = 'YOURS'; b.disabled = true; }
+      else if (owned) { b.textContent = 'DRIVE'; b.onclick = () => { Garage.driveCar(save, ch.id); changed(); }; }
+      else if (locked) { b.textContent = `tier ${ch.reqTier + 1}`; b.disabled = true; }
+      else {
+        b.textContent = `${ch.price} cr`;
+        b.disabled = save.money < ch.price;
+        b.onclick = () => { if (Garage.buyCar(save, ch.id)) changed(); };
+      }
       row.appendChild(b);
       partsEl.appendChild(row);
     }

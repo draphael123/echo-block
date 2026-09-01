@@ -38,9 +38,12 @@ renderer.toneMapping = THREE.NoToneMapping;
 // other, which is what makes a warm sky over cold fog read as a bug.
 let SPEC = pickTrack();
 let SKY = null;                    // set by applySky
-// TIME TRIAL: same circuit, nobody else on the grid, your ghost to chase.
-// A mode rather than a page — T can flip between them in place.
-let mode = new URLSearchParams(location.search).get('mode') === 'tt' ? 'tt' : 'race';
+// MODES: 'race' (the full grid), 'tt' (you and the ghost), 'duel' (one
+// named rival off the career ladder). Modes, not pages — T flips in place.
+const params0 = new URLSearchParams(location.search);
+let mode = params0.get('mode') === 'tt' ? 'tt'
+  : params0.get('mode') === 'duel' ? 'duel' : 'race';
+let duelRival = params0.get('rival') || null;
 
 const scene = new THREE.Scene();
 // The sky is lifted; the FOG is not, and the two are different jobs. Fog is
@@ -138,15 +141,15 @@ const savefile = Garage.load();
 // `let`, because buying a part or a respray rebuilds the car in place: the body
 // is meshed from voxels, so a wider tyre or an extra pair of lamps is a
 // different mesh, and it is cheap enough to throw the old one away.
-let car = buildCar(savefile.paint, Garage.tuneOf(savefile), savefile.parts);
-// only the PLAYER'S car has a dynamo — see car.js
+let car = buildCar(savefile.paint, Garage.tuneOf(savefile), savefile.parts, savefile.chassis);
+// only the PLAYER'S car has a NOS tank — see car.js
 car.state.dynEnabled = true;
 
 function rebuildCar() {
   const keep = { ...car.state };
   scene.remove(car.root);
   car.root.traverse(o => { if (o.isMesh && o.geometry) o.geometry.dispose(); });
-  car = buildCar(savefile.paint, Garage.tuneOf(savefile), savefile.parts);
+  car = buildCar(savefile.paint, Garage.tuneOf(savefile), savefile.parts, savefile.chassis);
   scene.add(car.root);
   Object.assign(car.state, keep);
 }
@@ -352,8 +355,14 @@ addEventListener('keydown', (e) => {
   if (k === 'n' && nextRound) swapTrack(nextRound);
   if (k === 't') pickerShow();
   if (k === 'g') {
-    if (done) { GP.begin(savefile); swapTrack(GP.ROUNDS[0]); }
-    else toggleGarage();
+    if (done && mode === 'race') {
+      const g2 = GP.begin(savefile);
+      if (g2) swapTrack(GP.ROUNDS[0], 'race');
+      else {
+        hud.msg.innerHTML = `entry fee is <b>${Garage.TIER_FEES[savefile.career.tier || 0]}</b> — race for it`;
+        msgUntil = time + 2.2;
+      }
+    } else toggleGarage();
   }
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
@@ -642,6 +651,19 @@ function finish() {
   let payline = `${paid} earned`;
   let gpHtml = '', hint = '<b>R</b> race again &nbsp; <b>G</b> garage';
 
+  // A DUEL settles a rung of the ladder. First win over each rival pays a
+  // bonus and opens the next name; a loss is just a loss, rematch on R.
+  if (mode === 'duel' && duelRival) {
+    const won = place === 0;
+    headline = won ? 'DUEL WON' : 'duel lost';
+    if (won && !(savefile.career.duelsWon || []).includes(duelRival)) {
+      Garage.recordDuel(savefile, duelRival, true);
+      savefile.money += 400;
+      payline = `${paid + 400} earned &middot; the ladder moves: ${duelRival} beaten`;
+    }
+    hint = '<b>R</b> rematch &nbsp; <b>T</b> circuits';
+  }
+
   if (inGP && !scored) {
     scored = true;
     const r = GP.score(savefile, order);
@@ -655,6 +677,15 @@ function finish() {
       headline = r.standings[0].you ? 'CHAMPION' : 'season over';
       payline = `${prize + paid} earned`;
       hint = '<b>G</b> start a new season &nbsp; <b>R</b> race again';
+      // A TITLE AT YOUR TIER UNLOCKS THE NEXT — harder grid, bigger fee,
+      // bigger cheque, and the showroom's next car.
+      let tierLine = '';
+      if (r.standings[0].you && (savefile.career.tier || 0) === (savefile.gp.tier || 0)
+          && savefile.career.tier < Garage.TIER_FEES.length - 1) {
+        savefile.career.tier = (savefile.career.tier || 0) + 1;
+        tierLine = `<div class="rnext">TIER UP — the ${Garage.TIER_NAMES[savefile.career.tier]} is open</div>`;
+      }
+      gpHtml += tierLine;
       // THE PODIUM. A season that just ran out undersold the one thing the
       // whole mode builds to — this is the awards ceremony.
       const pod = document.getElementById('podium');
@@ -776,8 +807,16 @@ function applyTrack(spec, trk) {
     return { light: l, x, z };
   });
 
-  field = buildField(track, ground, buildCar,
-    { count: mode === 'tt' ? 1 : fieldSizeOf(spec), playerPaint: savefile.paint });
+  {
+    const gpNow = GP.current(savefile);
+    field = buildField(track, ground, buildCar, {
+      count: mode === 'tt' ? 1 : fieldSizeOf(spec),
+      playerPaint: savefile.paint,
+      duel: mode === 'duel' ? duelRival : null,
+      tierBump: mode === 'race' && gpNow && GP.roundTrack(gpNow) === spec.id
+        ? (gpNow.tier || 0) * 0.02 : 0,
+    });
+  }
   field.addTo(scene);
   START = gridSlot(0);
   track.path.place(START.s, START.u, gridFrame);
@@ -801,7 +840,8 @@ function applyTrack(spec, trk) {
   scene.add(traffic.group);
 
   wet = track.spec.wet || 0;
-  hud.circuit.textContent = track.name + (mode === 'tt' ? ' — time trial' : '');
+  hud.circuit.textContent = track.name
+    + (mode === 'tt' ? ' — time trial' : mode === 'duel' && duelRival ? ' — duel: ' + duelRival : '');
   MAP = buildMapModel();
   LAPS = mode === 'tt' ? Infinity : (spec.laps || 3);
   START_LAMP_US.forEach((u, i) => {
@@ -1411,23 +1451,32 @@ function prefetchNext(id) {
   prefetch = { id, promise: workerBuild(id, null).catch(() => null) };
 }
 
+const modeUrl = (id) => './race.html?track=' + id
+  + (mode === 'tt' ? '&mode=tt' : '')
+  + (mode === 'duel' && duelRival ? '&mode=duel&rival=' + encodeURIComponent(duelRival) : '');
+
 let swapping = false;
-async function swapTrack(id, newMode) {
+async function swapTrack(id, newMode, rival) {
   if (swapping) return;
+  if (rival !== undefined) duelRival = rival;
   if (track && id === track.id) {
     // same circuit: nothing to build. A MODE change swaps the grid in place
-    // — the field is the only thing a time trial removes.
-    if (newMode && newMode !== mode) {
+    // — the field is the only thing the modes differ by.
+    if (newMode && (newMode !== mode || newMode === 'duel')) {
       mode = newMode;
       for (const c2 of field.cars) { scene.remove(c2.root); disposeDeep(c2.root); }
-      field = buildField(track, ground, buildCar,
-        { count: mode === 'tt' ? 1 : fieldSizeOf(track.spec), playerPaint: savefile.paint });
+      field = buildField(track, ground, buildCar, {
+        count: mode === 'tt' ? 1 : fieldSizeOf(track.spec),
+        playerPaint: savefile.paint,
+        duel: mode === 'duel' ? duelRival : null,
+      });
       field.addTo(scene);
       LAPS = mode === 'tt' ? Infinity : (track.spec.laps || 3);
-      hud.circuit.textContent = track.name + (mode === 'tt' ? ' — time trial' : '');
+      hud.circuit.textContent = track.name
+        + (mode === 'tt' ? ' — time trial' : mode === 'duel' ? ' — duel: ' + duelRival : '');
       fillIntroCard();
       if (window.DYNAMO) window.DYNAMO.field = field;
-      history.replaceState(null, '', './race.html?track=' + id + (mode === 'tt' ? '&mode=tt' : ''));
+      history.replaceState(null, '', modeUrl(id));
     }
     gp = GP.current(savefile);
     inGP = mode === 'race' && !!gp && GP.roundTrack(gp) === track.id;
@@ -1439,7 +1488,7 @@ async function swapTrack(id, newMode) {
   swapping = true;
   if (newMode) mode = newMode;
   chooseTrack(id);
-  history.replaceState(null, '', './race.html?track=' + id + (mode === 'tt' ? '&mode=tt' : ''));
+  history.replaceState(null, '', modeUrl(id));
   const spec2 = byId(id);
   // The boot screen fronts every swap. With a finished prefetch it is a
   // sub-second blink; mid-prefetch it is honest cover for the wait — the
@@ -2185,6 +2234,7 @@ const garage = mountGarage({
 const picker = mountTrackSelect({
   save: savefile,
   onGo: (t2, m2) => { picker.hide(); swapTrack(t2.id, m2 || 'race'); },
+  onDuel: (name) => { picker.hide(); swapTrack(track.id, 'duel', name); },
 });
 const pickerShow = () => picker.show();
 const paintGarage = () => garage.paint();

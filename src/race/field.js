@@ -40,13 +40,26 @@ const GRID_S = 80;              // where the back row sits
 // spread that finally puts somebody above 1.00: Vasey commits harder than
 // the policy would, and catching him is the game.
 const RUNNERS = [
-  { name: 'Vasey', policy: 'racing', pace: 1.03, paint: 2, lineU: -26, parts: { engine: 2, tyres: 1, lamps: 1 } },
-  { name: 'Ó Broin', policy: 'racing', pace: 1.00, paint: 5, lineU: 30, parts: { engine: 1, tyres: 2 } },
-  { name: 'Hale', policy: 'cautious', pace: 1.00, paint: 1, lineU: -44, parts: { lamps: 2, brakes: 1 } },
-  { name: 'Ferreira', policy: 'racing', pace: 0.96, paint: 6, lineU: 48, parts: { engine: 1 } },
-  { name: 'Pike', policy: 'cautious', pace: 0.97, paint: 4, lineU: 12, parts: { tyres: 1, brakes: 1 } },
-  { name: 'Wren', policy: 'steady', pace: 0.92, paint: 7, lineU: -12, parts: {} },
+  { name: 'Vasey', policy: 'racing', pace: 1.03, paint: 2, lineU: -26, chassis: 'vespid',
+    parts: { engine: 2, tyres: 1, lamps: 1 },
+    bio: 'the one to beat. Commits to the dark harder than sense allows, and has the wedge to survive it.' },
+  { name: 'Ó Broin', policy: 'racing', pace: 1.00, paint: 5, lineU: 30, chassis: 'vespid',
+    parts: { engine: 1, tyres: 2 },
+    bio: 'smooth as poured tar. Never seems fast until you check the gap.' },
+  { name: 'Hale', policy: 'cautious', pace: 1.00, paint: 1, lineU: -44, chassis: 'dray',
+    parts: { lamps: 2, brakes: 1 },
+    bio: 'brakes later than anyone alive, in an estate, with the dog in the back.' },
+  { name: 'Ferreira', policy: 'racing', pace: 0.96, paint: 6, lineU: 48, chassis: 'kestrel',
+    parts: { engine: 1 },
+    bio: 'all elbows in the kei. Will put it somewhere you did not know was a gap.' },
+  { name: 'Pike', policy: 'cautious', pace: 0.97, paint: 4, lineU: 12, chassis: 'dray',
+    parts: { tyres: 1, brakes: 1 },
+    bio: 'careful, patient, and there at the end when you have binned it.' },
+  { name: 'Wren', policy: 'steady', pace: 0.92, paint: 7, lineU: -12, chassis: 'brindle',
+    parts: {},
+    bio: 'the first rung. Everyone beat Wren once; Wren remembers all of them.' },
 ];
+export const runnerByName = (n) => RUNNERS.find(r => r.name === n) || null;
 
 // Slot 0 is the back-left of the grid and belongs to the player; slots count
 // forward, so slot 5 is on pole and is the one you have to catch.
@@ -56,23 +69,29 @@ export function gridSlot(i) {
   return { s: GRID_S + row * ROW, u: (i % 2 ? 1 : -1) * lane };
 }
 
-export function buildField(track, ground, buildCar, { count = FIELD_SIZE, playerPaint = 0 } = {}) {
+export function buildField(track, ground, buildCar,
+  { count = FIELD_SIZE, playerPaint = 0, duel = null, tierBump = 0 } = {}) {
   const cars = [];
-  for (let i = 1; i < count; i++) {
-    const r = RUNNERS[(i - 1) % RUNNERS.length];
-    const slot = gridSlot(i);
+  // A DUEL is a field of exactly one: the named rival, at their own pace,
+  // on the front row — the career ladder's rung made flesh.
+  const roster = duel
+    ? [runnerByName(duel) || RUNNERS[RUNNERS.length - 1]]
+    : RUNNERS.slice(0, Math.max(1, count - 1));
+  roster.forEach((r, idx) => {
+    const slot = gridSlot(idx + 1);
     // Never the player's own paint: in a mirror at night a car is a colour and
     // two sets of tail lights, and two identical ones is a bug report.
     let paint = r.paint;
     if (paint === playerPaint) paint = (paint + 4) % 8;
     const rival = buildRival(track, ground, buildCar, {
-      paint, policy: r.policy, pace: r.pace, startS: slot.s, startU: slot.u,
-      lineU: r.lineU || 0, parts: r.parts || null,
+      // tierBump: the season tiers make the same drivers commit harder
+      paint, policy: r.policy, pace: r.pace + tierBump, startS: slot.s, startU: slot.u,
+      lineU: r.lineU || 0, parts: r.parts || null, chassis: r.chassis || 'brindle',
     });
     rival.name = r.name;
-    rival.pace = r.pace;
+    rival.pace = r.pace + tierBump;
     cars.push(rival);
-  }
+  });
 
   return {
     cars,

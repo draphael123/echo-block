@@ -30,8 +30,16 @@ export function current(save) {
 }
 
 export function begin(save) {
+  // Seasons run at the career's tier: an entry fee at the gate, harder
+  // rivals on the grid, and a bigger cheque at the end. No fee, no season.
+  const tier = save.career?.tier || 0;
+  const fee = Garage.TIER_FEES[tier] || 0;
+  if (save.money < fee) return null;
+  save.money -= fee;
   save.gp = {
     round: 0,
+    tier,
+    fee,
     table: { you: 0 },
     results: [],            // one entry per completed round
     finished: false,
@@ -79,7 +87,9 @@ export function standings(gp) {
 export function prize(gp) {
   const table = standings(gp);
   const place = table.findIndex(r => r.you);
-  return [4000, 2200, 1400, 800, 500, 300][place] || 200;
+  const base = [4000, 2200, 1400, 800, 500, 300][place] || 200;
+  // higher tiers pay for the harder grid and the fee at the gate
+  return Math.round(base * (1 + 0.6 * (gp.tier || 0)));
 }
 
 export const fieldSize = FIELD_SIZE;
