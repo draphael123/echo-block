@@ -15,9 +15,13 @@ const HALF = 360;
 const H = (f) => Math.round(HALF * f);
 
 export default {
+  // The id stays 'ring' — saves live against it — but the PLACE is heavy
+  // industry now (interview, 2026-09-01): flare stacks, pipe bridges, a
+  // tank farm, slag flats. Sodium was always this circuit's colour; now it
+  // has the town to match. Same geometry, same crests, different world.
   id: 'ring',
-  name: 'The Ring Road',
-  blurb: 'fast, blind crests, two tunnels',
+  name: 'The Works',
+  blurb: 'flare stacks and blind crests — the industry shift',
   heading: 0,
 
   asks: 'crests',
@@ -36,14 +40,14 @@ export default {
   },
 
   legs: [
-    { lit: false, name: 'the bypass', district: 'motorway' },
-    { lit: false, name: 'north sweep', district: 'motorway' },
+    { lit: false, name: 'the pipeline', district: 'pipeline' },
+    { lit: false, name: 'north sweep', district: 'pipeline' },
     { lit: true, name: 'the services', district: 'services' },
-    { lit: false, name: 'the long right', district: 'wood' },
+    { lit: false, name: 'the tank farm', district: 'tankfarm' },
     { lit: true, name: 'hill tunnel', district: 'tunnel' },
     { lit: false, name: 'the viaduct', district: 'viaduct', deck: -240, deckRamp: 260 },
-    { lit: false, name: 'the flats', district: 'farm' },
-    { lit: false, name: 'east sweep', district: 'motorway' },
+    { lit: false, name: 'the slag flats', district: 'slagflats' },
+    { lit: false, name: 'east sweep', district: 'pipeline' },
     { lit: true, name: 'gate tunnel', district: 'tunnel' },
     { lit: false, name: 'the run in', district: 'yard' },
   ],

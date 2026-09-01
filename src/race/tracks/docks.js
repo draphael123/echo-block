@@ -17,9 +17,13 @@ const HALF = 300;
 const H = (f) => Math.round(HALF * f);
 
 export default {
+  // The id stays 'docks' — saves, bests and ghosts live against it — but
+  // the PLACE is the Seafront now (interview, 2026-09-01: all four sameness
+  // boxes ticked; a second harbour was one harbour too many). Esplanade,
+  // pier, funfair, cliff, dunes — same geometry, different world.
   id: 'docks',
-  name: 'The Docks',
-  blurb: 'flat, open and always wet',
+  name: 'The Seafront',
+  blurb: 'esplanade, pier and funfair — rain off the sea',
   heading: 270,
 
   asks: 'grip',
@@ -40,16 +44,16 @@ export default {
   },
 
   legs: [
-    { lit: true, name: 'the long quay', district: 'quay' },
-    { lit: false, name: 'the reach', district: 'containers' },
-    { lit: false, name: 'coal wharf', district: 'containers' },
-    { lit: false, name: 'the swing', district: 'quay' },
-    { lit: true, name: 'the mv arkwright', district: 'ship', deck: -34 },
-    { lit: true, name: 'the basin', district: 'quay' },
+    { lit: true, name: 'the esplanade', district: 'esplanade' },
+    { lit: true, name: 'the pier', district: 'pier' },
+    { lit: true, name: 'the funfair', district: 'funfair' },
+    { lit: false, name: 'the cliff road', district: 'cliff' },
+    { lit: true, name: 'the wreck of the arkwright', district: 'ship', deck: -34 },
+    { lit: true, name: 'the harbour', district: 'quay' },
     { lit: false, name: 'the cut', district: 'yard' },
-    { lit: false, name: 'scrubland', district: 'wood' },
+    { lit: false, name: 'the dunes', district: 'dunes' },
     { lit: true, name: 'the mill road', district: 'mill' },
-    { lit: false, name: 'dock gate', district: 'sheds' },
+    { lit: false, name: 'the boatyard', district: 'sheds' },
   ],
 
   // Almost flat. A dock is built on silt, and the one rise is the bridge.
@@ -63,10 +67,10 @@ export default {
   ],
 
   hazards: [
-    { s: 620, u: H(0.5), r: 30, kind: 'crate' },
+    { s: 620, u: H(0.5), r: 30, kind: 'stall' },      // a chip stand on the prom
     { s: 1500, u: H(-0.42), r: 30, kind: 'barrels' },
     { s: 2300, u: H(0.44), r: 34, kind: 'broken' },
-    { s: 3050, u: H(-0.48), r: 30, kind: 'works' },
+    { s: 3050, u: H(-0.48), r: 30, kind: 'stall' },   // candy floss, mid-funfair
     { s: 4100, u: H(0.4), r: 32, kind: 'crate' },
     { s: 4900, u: H(-0.44), r: 34, kind: 'broken' },
     { s: 5700, u: H(0.46), r: 30, kind: 'crate' },
@@ -116,19 +120,22 @@ export default {
 
   landmarks: { gasholder: [-40, 90, 52, 150], waterTower: [-220, -140], pylons: 5 },
 
-  // THE WORKING HARBOUR: a crane load swings across the quay road on its
-  // cables. Time it or wear it — the only moving hazard on the circuit, and
-  // it belongs to the one leg with cranes on it.
-  moving: [{ kind: 'craneload', s: 350 }, { kind: 'boat', s: 900, u: 620 }],
-  // Dawn at the river, an hour before anyone else is up. The wet road is this
-  // circuit's one mechanic and at midnight it was reflecting almost nothing --
-  // a wet surface needs a BRIGHT sky to be worth having.
-  sky: 'dawn',
+  // THE FERRIS WHEEL turns all night beside the pier, a sailboat works the
+  // bay, and the harbour keeps one crane load swinging over the road.
+  moving: [
+    { kind: 'ferris', s: 2650, u: -400 },
+    { kind: 'boat', s: 900, u: 620 },
+    { kind: 'craneload', s: 5050 },
+  ],
+  // A clear night over the sea, moon on the water — see skies.js 'pier'.
+  // The wet stays: rain off the sea is the circuit's grip identity, and the
+  // funfair's neon has a dark sky to burn against.
+  sky: 'pier',
   laps: 3,
   // the measured clean racing-policy lap, which the purse pays pace against
   // the road's own face and the streetlight's own colour -- see ribbon()
   surface: 'concrete',
-  lampColor: '#cfe2ff',
+  lampColor: '#ffd9a0',
   // boost pads — one of them on the ship's deck, because of course it is
   pads: [{ s: 1850 }, { s: 4400 }, { s: 6350 }],
   // the second ramp lands you almost on the basin pad: chain them and the

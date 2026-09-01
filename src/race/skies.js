@@ -89,6 +89,19 @@ export const SKIES = {
     exposure: 1.85, threshold: 0.72,
   },
 
+  // A clear night over the sea — the Seafront's hour. Deep blue-black, a
+  // low bright moon laying a path on the water, and just enough violet
+  // bleed in the haze for the funfair's neon to feel at home. Thin fog:
+  // the sea is the horizon and you should see it.
+  pier: {
+    top: '#0b1322', horizon: '#31456e', haze: '#6a5a8a', below: '#131b2c', ridge: '#0e1524',
+    fog: '#1a2438', fogD: 0.00052, clear: '#0b1322',
+    hemiSky: '#42588a', hemiGround: '#2b241d', hemi: 1.24,
+    key: '#d8e4ff', keyI: 1.85, sun: [-420, 300, 160],
+    disc: [0.9, 0.94, 1.0], stars: 1.1,
+    exposure: 1.78, threshold: 0.74,
+  },
+
   // The small hours on the bypass, under sodium. Everything is orange except
   // the sky, the fog is thicker than anywhere else in the city, and that thick
   // warm murk is doing the same job as the crests: it takes the distance away.

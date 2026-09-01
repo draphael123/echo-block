@@ -1374,6 +1374,59 @@ function buildMover(m) {
     };
   }
 
+  if (m.kind === 'ferris') {
+    // THE FERRIS WHEEL: the funfair's crown, turning all night. Broadside
+    // to the road so every pass reads the whole circle — twelve lit
+    // gondolas that stay upright while the wheel carries them over.
+    const R2 = 84;
+    const pfF = pathFrame();
+    track.path.place(m.s, m.u || -400, pfF);
+    const fx = pfF.x, fz = pfF.z;
+    const hubY = roadY + R2 + 26;
+    const wheelAng = Math.atan2(tx, tz);       // face the road broadside
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x3a4152, roughness: 0.85 });
+    // A-frame legs and the hub
+    for (const off of [-30, 30]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(6, R2 + 26, 8), frameMat);
+      leg.position.set(fx + tx * off * 0.4, roadY + (R2 + 26) / 2, fz + tz * off * 0.4);
+      leg.rotation.y = wheelAng;
+      leg.rotation.z = off > 0 ? -0.18 : 0.18;
+      g.add(leg);
+    }
+    const wheel = new THREE.Group();
+    wheel.position.set(fx, hubY, fz);
+    wheel.rotation.y = wheelAng;
+    const hub = new THREE.Mesh(new THREE.BoxGeometry(10, 10, 12), frameMat);
+    wheel.add(hub);
+    const rimMat = new THREE.MeshBasicMaterial({ color: 0xffb04c, toneMapped: false });
+    const GOND_COLS = [0xff8a6a, 0x7fd4ff, 0xffd9a0, 0x7fe08a, 0xd182ff, 0xffffff];
+    const gondolas = [];
+    for (let i2 = 0; i2 < 12; i2++) {
+      const a2 = (i2 / 12) * Math.PI * 2;
+      const spoke = new THREE.Mesh(new THREE.BoxGeometry(2, R2, 2), frameMat);
+      spoke.position.set(Math.sin(a2) * R2 / 2, Math.cos(a2) * R2 / 2, 0);
+      spoke.rotation.z = -a2;
+      wheel.add(spoke);
+      const rim = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.5, 2.5), rimMat);
+      rim.position.set(Math.sin(a2) * R2, Math.cos(a2) * R2, 0);
+      wheel.add(rim);
+      const gond = new THREE.Mesh(new THREE.BoxGeometry(10, 9, 8),
+        new THREE.MeshBasicMaterial({ color: GOND_COLS[i2 % 6], toneMapped: false }));
+      gond.position.set(Math.sin(a2) * R2, Math.cos(a2) * R2 - 8, 0);
+      wheel.add(gond);
+      gondolas.push({ gond, a: a2 });
+    }
+    g.add(wheel);
+    return {
+      g,
+      update(dt, t) {
+        wheel.rotation.z = t * 0.14;           // a slow, patient turn
+        // gondolas hang: counter-rotate so they stay upright while carried
+        for (const gd of gondolas) gd.gond.rotation.z = -wheel.rotation.z;
+      },
+    };
+  }
+
   if (m.kind === 'boat') {
     // A sailboat working along the harbour beyond the quay edge. Pure
     // spectacle — no collision — but a horizon that MOVES is what makes the

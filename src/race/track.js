@@ -1461,6 +1461,264 @@ const DISTRICT = {
     // lit thing on the dark last leg, and a marker for the lap's end
     c.blit(sec.to - 140, SET + 44, c.pr.petrol);
   },
+
+  // ========================================================== THE SEAFRONT
+  // The docks reborn as a coast: esplanade, pier, funfair, cliff, dunes.
+  // The one rule: the SEA is always on the positive-u side, so the whole
+  // lap keeps its geography — you never have to wonder which way the water
+  // is. Sea level sits 6 below the prom; the beach shelves down to it.
+  esplanade(c, sec) {
+    // the beach and the sea, cross-sectioned per point of road
+    c.run(sec.from, sec.to, SET + 20, 2, (x, z, ff, gy, s) => {
+      for (let du = 0; du <= 300; du += 2) {
+        const px = Math.round(x + ff.nx * du), pz = Math.round(z + ff.nz * du);
+        if (du < 80) {
+          // sand, shelving down a voxel every 20
+          c.w.set(px, gy - 1 - (du >> 5), pz,
+            hash3(px, 4, pz) > 0.6 ? 'grassDry' : 'dirt');
+        } else if (du < 88) {
+          c.w.set(px, gy - 4, pz, 'paper');           // the foam line
+        } else {
+          // the sea: flat, dark, and the odd moonlit glint
+          c.w.set(px, gy - 5, pz,
+            hash3(px, 5, pz) > 0.985 ? 'moonGlass' : 'doorBlue');
+        }
+      }
+    });
+    // the prom railing at the top of the beach
+    c.run(sec.from, sec.to, SET + 16, 1, (x, z, ff, gy, s) => {
+      const i = Math.round(s);
+      if (i % 14 === 0) c.w.box(x, gy, z, 1, 9, 1, 'metalDark');
+      c.w.set(x, gy + 9, z, 'paper');
+      c.w.set(x, gy + 5, z, 'metalDark');
+    });
+    // beach huts inland, every colour the palette will give
+    const HUT_COLS = ['plasticRed', 'doorBlue', 'doorYellow', 'doorGreen', 'shirtCream'];
+    for (let s = sec.from + 80, i = 0; s < sec.to - 60; s += 64, i++)
+      c.put(s, -(SET + 26), (x, z, ff, gy) => {
+        const col = HUT_COLS[i % 5];
+        c.w.box(x - 8, gy, z - 7, 16, 12, 14, col);
+        c.w.box(x - 8, gy + 12, z - 7, 16, 3, 14, 'paper');
+        c.w.box(x - 2, gy, z + 6, 5, 9, 1, 'paper');       // the door
+        if (i % 3 === 0) c.w.set(x, gy + 10, z + 7, 'winWarmDim');
+      });
+    c.run(sec.from + 40, sec.to, -(SET + 70), 180, (x, z, ff, gy) => P.tree(c.w, x, gy, z, 38, 13));
+  },
+
+  pier(c, sec) {
+    // THE PIER: the road becomes boardwalk — plank surface, white rails,
+    // festoon lights, and the sea visibly below on both margins
+    const from = sec.from + 30, to = sec.to - 30;
+    for (let s = from; s < to; s += 0.8)
+      for (let u = -ROAD_HALF; u <= ROAD_HALF; u += 0.8)
+        c.put(s, u, (x, z, ff, gy) => {
+          // planks: long boards with seams, laid across the old surface
+          const seam = (Math.round(u) % 9 === 0) || (Math.round(s) % 46 < 1);
+          c.w.set(x, gy - 1, z, seam ? 'trunk' : ((Math.round(s) >> 5) % 2 ? 'wood' : 'woodPale'));
+        });
+    for (const side of [-1, 1])
+      c.run(from, to, side * (ROAD_HALF + 4), 1, (x, z, ff, gy, s) => {
+        const i = Math.round(s);
+        if (i % 12 === 0) {
+          c.w.box(x, gy, z, 1, 10, 1, 'paper');
+          c.w.set(x, gy + 11, z, 'porchBulb');            // festoon posts
+        }
+        c.w.set(x, gy + 6, z, 'paper');
+        // the water, out past the rail
+        for (let du = 6; du <= 120; du += 3) {
+          const px = Math.round(x + ff.nx * du * side), pz = Math.round(z + ff.nz * du * side);
+          c.w.set(px, gy - 8, pz, hash3(px, 6, pz) > 0.98 ? 'moonGlass' : 'doorBlue');
+        }
+      });
+  },
+
+  funfair(c, sec) {
+    const mid = (sec.from + sec.to) / 2;
+    // the arch that names the place
+    for (const side of [-1, 1])
+      c.put(sec.from + 60, side * (ROAD_HALF + 10), (x, z, ff, gy) =>
+        c.w.box(x - 2, gy, z - 2, 4, 60, 4, 'plasticRed'));
+    for (let u = -(ROAD_HALF + 10); u <= ROAD_HALF + 10; u += 0.8)
+      c.put(sec.from + 60, u, (x, z, ff, gy) => {
+        for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++)
+          if (!c.w.get(x + dx, gy - 1, z + dz) && !c.w.get(x + dx, gy - 2, z + dz))
+            c.w.set(x + dx, gy - 1, z + dz, 'asphaltPatch');
+        c.w.box(x - 1, gy + 60, z - 1, 3, 4, 3, 'plasticRed');
+        if (Math.abs(Math.round(u)) % 6 < 2) c.w.set(x, gy + 58, z, 'neonSign');
+      });
+    // THE CAROUSEL: striped cone roof, ring of bulbs, lit core
+    c.put(mid - 120, -(SET + 60), (x, z, ff, gy) => {
+      for (let r2 = 0; r2 <= 26; r2++) for (let a2 = 0; a2 < 360; a2 += 4) {
+        const px = Math.round(x + Math.cos(a2 * Math.PI / 180) * r2);
+        const pz = Math.round(z + Math.sin(a2 * Math.PI / 180) * r2);
+        c.w.set(px, gy, pz, 'woodPale');
+        const rh = 26 - r2;
+        c.w.set(px, gy + 18 + (rh >> 1), pz, ((a2 / 24) | 0) % 2 ? 'plasticRed' : 'paper');
+        if (r2 === 26 && a2 % 16 === 0) c.w.set(px, gy + 17, pz, 'porchBulb');
+      }
+      c.w.box(x - 2, gy, z - 2, 4, 20, 4, 'doorYellow');
+      c.w.box(x - 4, gy + 8, z - 4, 8, 4, 8, 'winWarm');
+    });
+    // the helter-skelter: striped tower, shingle cone, bulb spiral
+    c.put(mid + 140, -(SET + 70), (x, z, ff, gy) => {
+      for (let k = 0; k < 64; k++) {
+        const r2 = k > 50 ? 9 - Math.round((k - 50) * 0.6) : 9;
+        for (let dx = -r2; dx <= r2; dx++) for (let dz = -r2; dz <= r2; dz++)
+          if (dx * dx + dz * dz <= r2 * r2)
+            c.w.set(x + dx, gy + k, z + dz, ((k / 8) | 0) % 2 ? 'plasticRed' : 'shirtCream');
+      }
+      for (let a2 = 0; a2 < 720; a2 += 24) {
+        const rr = 11, kk = Math.round(a2 / 720 * 48);
+        c.w.set(x + Math.round(Math.cos(a2 * Math.PI / 180) * rr), gy + 6 + kk,
+          z + Math.round(Math.sin(a2 * Math.PI / 180) * rr), 'porchBulb');
+      }
+    });
+    // stalls facing the road, and strings of lights over it
+    for (const side of [-1, 1])
+      c.run(sec.from + 140, sec.to - 60, side * (PAVE_BACK + 14), 110, (x, z, ff, gy) => {
+        const [sx, sz] = c.back(ff, x, z, 40);
+        D2.marketStalls(c.w, sx, gy, sz, 2, Math.round(x));
+      });
+    for (let bs = sec.from + 150; bs < sec.to - 60; bs += 200)
+      for (let u = -(ROAD_HALF + KERB); u <= ROAD_HALF + KERB; u += 3)
+        c.put(bs, u, (x, z, ff, gy) => {
+          const k2 = u / (ROAD_HALF + KERB);
+          const yy = gy + 88 - 8 + Math.round(k2 * k2 * 8);
+          c.w.set(x, yy, z,
+            (Math.abs(Math.round(u)) % 9 < 2)
+              ? ['neonSign', 'porchBulb', 'chillGlow'][((bs + u) >> 3) % 3] : 'metalDark');
+        });
+  },
+
+  cliff(c, sec) {
+    // the road pinched between a rock face and the sea
+    c.run(sec.from, sec.to, -(PAVE_BACK + 8), 2, (x, z, ff, gy, s) => {
+      const h = 44 + Math.round(hash3(Math.round(s), 8, 3) * 18);
+      for (let d = 0; d < h; d++) {
+        const lean = Math.round(d * 0.35);
+        c.w.set(Math.round(x - ff.nx * lean), gy + d, Math.round(z - ff.nz * lean),
+          hash3(x + d, d, z) > 0.82 ? 'brickDark' : 'concreteOld');
+      }
+    });
+    c.run(sec.from, sec.to, SET + 8, 1, (x, z, ff, gy, s) => {
+      const i = Math.round(s);
+      if (i % 14 === 0) c.w.box(x, gy, z, 1, 9, 1, 'metalDark');
+      c.w.set(x, gy + 9, z, 'paper');
+      for (let du = 4; du <= 160; du += 3) {
+        const px = Math.round(x + ff.nx * du), pz = Math.round(z + ff.nz * du);
+        c.w.set(px, gy - 26, pz, hash3(px, 9, pz) > 0.985 ? 'moonGlass' : 'doorBlue');
+      }
+    });
+  },
+
+  dunes(c, sec) {
+    // marram grass on low mounds — the dark, windy stretch between lights
+    for (const side of [-1, 1])
+      c.run(sec.from, sec.to, side * (SET + 20), 26, (x, z, ff, gy, s) => {
+        const r2 = hash3(Math.round(s), side, 11);
+        const mx = x + Math.round((r2 - 0.5) * 40);
+        const mz = z + Math.round((hash3(Math.round(s), side, 12) - 0.5) * 40);
+        const rad = 6 + Math.round(r2 * 8);
+        for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
+          const dd = dx * dx + dz * dz;
+          if (dd <= rad * rad)
+            c.w.set(mx + dx, gy + (dd < rad * rad / 3 ? 1 : 0), mz + dz, 'dirt');
+        }
+        for (let t2 = 0; t2 < 5; t2++)
+          c.w.box(mx + Math.round((hash3(t2, mx, mz) - 0.5) * rad * 2), gy + 2,
+            mz + Math.round((hash3(mx, t2, mz) - 0.5) * rad * 2), 1, 3, 1, 'grassDry');
+      });
+  },
+
+  // ============================================================= THE WORKS
+  // The ring reborn as heavy industry: pipe racks beside the road, pipe
+  // bridges over it, flare stacks burning against the sky, a tank farm,
+  // slag flats. Sodium was always this place's colour; now it has the town
+  // to match.
+  pipeline(c, sec) {
+    bankRun(c, sec, 30);
+    // the rack: three pipes riding cradles along the off side
+    c.run(sec.from, sec.to, -(SET + 36), 2, (x, z, ff, gy, s) => {
+      const i = Math.round(s);
+      for (const [ph, pc] of [[10, 'metal'], [15, 'metalDark'], [20, 'rust']])
+        c.w.box(x, gy + ph, z, 2, 3, 2, pc);
+      if (i % 40 < 2) c.w.box(x - 1, gy, z - 1, 4, 24, 4, 'metalDark');
+    });
+    // pipe bridges instead of sign gantries
+    for (let s = sec.from + 300; s < sec.to - 200; s += 700) {
+      for (const side of [-1, 1])
+        c.put(s, side * (ROAD_HALF + 24), (x, z, ff, gy) =>
+          c.w.box(x - 2, gy, z - 2, 5, GANTRY_H + 8, 5, 'metalDark'));
+      for (let u = -(ROAD_HALF + 24); u <= ROAD_HALF + 24; u += 0.8)
+        c.put(s, u, (x, z, ff, gy) => {
+          for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++)
+            if (!c.w.get(x + dx, gy - 1, z + dz) && !c.w.get(x + dx, gy - 2, z + dz))
+              c.w.set(x + dx, gy - 1, z + dz, 'asphaltPatch');
+          for (const [ph, pc] of [[GANTRY_H, 'metal'], [GANTRY_H + 5, 'rust'], [GANTRY_H + 10, 'metalDark']])
+            c.w.box(x, gy + ph, z, 1, 3, 1, pc);
+          if (Math.abs(Math.round(u)) % 30 < 2)
+            c.w.box(x, gy + GANTRY_H - 6, z, 1, 6, 1, 'metalDark');
+        });
+    }
+    // A FLARE STACK, burning. The flame is glow voxels; the smoke anchor
+    // gives it a plume; together they are the works' lighthouse.
+    const fs = sec.from + (sec.to - sec.from) * 0.55;
+    c.put(fs, -(SET + 130), (x, z, ff, gy) => {
+      for (let k = 0; k < 130; k++) {
+        const r2 = k < 8 ? 4 : 3;
+        for (let dx = -r2; dx <= r2; dx++) for (let dz = -r2; dz <= r2; dz++)
+          if (dx * dx + dz * dz <= r2 * r2) c.w.set(x + dx, gy + k, z + dz, 'metalDark');
+      }
+      for (let k = 0; k < 10; k++) {
+        const r2 = k < 4 ? 3 : 2;
+        for (let dx = -r2; dx <= r2; dx++) for (let dz = -r2; dz <= r2; dz++)
+          if (dx * dx + dz * dz <= r2 * r2)
+            c.w.set(x + dx, gy + 130 + k, z + dz, k < 4 ? 'sodium' : (k < 7 ? 'coneOrange' : 'tailLight'));
+      }
+      c.anchors.stacks.push([x, gy + 142, z]);
+    });
+  },
+
+  tankfarm(c, sec) {
+    for (const side of [-1, 1])
+      for (let s = sec.from + 100, i = 0; s < sec.to - 100; s += 170, i++)
+        c.put(s, side * (SET + 70 + (i % 2) * 60), (x, z, ff, gy) => {
+          D.silo(c.w, x, gy, z, 20 + (i % 3) * 4, 54 + (i % 2) * 22);
+          c.w.set(x, gy + 78, z, 'tailLight');            // tank-top beacon
+        });
+    // bund walls between the tanks and the road
+    c.run(sec.from, sec.to, SET + 26, 24, (x, z, ff, gy) => {
+      const a2 = c.along(ff);
+      c.w.box(a2 === 'x' ? x - 12 : x, gy, a2 === 'x' ? z : z - 12,
+        a2 === 'x' ? 25 : 3, 7, a2 === 'x' ? 3 : 25, 'concreteOld');
+    });
+    c.run(sec.from + 50, sec.to, -(SET + 30), 130, (x, z, ff, gy) =>
+      D.oilDrums(c.w, x, gy, z, 6));
+  },
+
+  slagflats(c, sec) {
+    // dark spoil mounds, and the odd conveyor head lit against the sky
+    for (const side of [-1, 1])
+      c.run(sec.from, sec.to, side * (SET + 50), 90, (x, z, ff, gy, s) => {
+        const r2 = 10 + Math.round(hash3(Math.round(s), side, 13) * 16);
+        for (let dx = -r2; dx <= r2; dx++) for (let dz = -r2; dz <= r2; dz++) {
+          const dd = Math.hypot(dx, dz);
+          if (dd <= r2) {
+            const h = Math.round((1 - dd / r2) * (r2 * 0.5));
+            for (let k = 0; k <= h; k++)
+              c.w.set(x + dx, gy + k, z + dz,
+                hash3(dx, k, dz) > 0.9 ? 'asphaltWorn' : 'metalDark');
+          }
+        }
+      });
+    for (let s = sec.from + 260; s < sec.to - 200; s += 560)
+      c.put(s, -(SET + 100), (x, z, ff, gy) => {
+        c.w.box(x - 2, gy, z - 2, 5, 66, 5, 'metalDark');
+        c.w.box(x - 14, gy + 60, z - 2, 28, 4, 5, 'rust');
+        c.w.set(x, gy + 66, z, 'sodium');
+        c.anchors.stacks.push([x, gy + 66, z]);
+      });
+  },
 };
 
 function dress(w, path, anchors, houses) {
@@ -1955,7 +2213,8 @@ export function initTrackState(trackSpec) {
   // dropped, and every beat is clamped so it ends 40 short of the nearest
   // no-walk boundary in each direction.
   const NO_WALK = new Set(['tunnel', 'motorway', 'viaduct', 'wood', 'yard',
-    'containers', 'ship', 'sheds', 'mill', 'millyard']);
+    'containers', 'ship', 'sheds', 'mill', 'millyard',
+    'pipeline', 'tankfarm', 'slagflats', 'cliff', 'dunes']);
   const T = path.total;
   const wrapS = (s) => ((s % T) + T) % T;
   const walkable = (s) => { const sec = sectionAt(wrapS(s)); return sec && !NO_WALK.has(sec.district); };
