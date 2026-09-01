@@ -521,6 +521,25 @@ const DISTRICT = {
   // continuous run — the party walls are the whole difference between a high
   // street and a row of detached boxes.
   parade(c, sec) {
+    // BUNTING strung across the high street every 240 — the parade route
+    // dressed for its own parade, and one more thing flashing overhead at
+    // speed. Strung at 86–96: above the chase camera, below the gantries.
+    // Safe from the per-column floor rule because every column under it
+    // already has road or kerb at the bottom.
+    const FLAG_COLS = ['plasticRed', 'doorYellow', 'doorBlue', 'signWhite'];
+    for (let bs = sec.from + 120; bs < sec.to - 60; bs += 240) {
+      for (let u = -(ROAD_HALF + KERB); u <= ROAD_HALF + KERB; u += 2) {
+        c.put(bs, u, (x, z, ff, gy) => {
+          const k2 = u / (ROAD_HALF + KERB);
+          const yy = gy + 96 - 10 + Math.round(k2 * k2 * 10);
+          c.w.set(x, yy, z, 'metalDark');                    // the line
+          if (((Math.round(u) % 16) + 16) % 16 < 3) {        // a flag
+            const col = FLAG_COLS[(Math.round(bs + u) >> 4) % 4];
+            c.w.box(x, yy - 4, z, 1, 4, 1, col);
+          }
+        });
+      }
+    }
     for (const side of [-1, 1]) {
       // A gap every third block. It used to be just absence, which reads as a
       // missing tooth; now the gap is a SIDE STREET -- a strip of tarmac

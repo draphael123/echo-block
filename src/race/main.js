@@ -13,6 +13,7 @@ import { buildTrack, hydrateTrack, sectionAt, safeSpot, lifeSpots, ROAD_HALF } f
 import { TRACKS, pickTrack, chooseTrack, byId } from './tracks/index.js';
 import { buildCar, V_MAX, BODIES } from './car.js';
 import { buildLife, buildTraffic } from './life.js';
+import { buildPerson } from '../people.js';
 import { buildField, gridSlot, fieldSizeOf } from './field.js';
 import * as GP from './gp.js';
 import { createAudio } from './audio.js';
@@ -1052,6 +1053,111 @@ function buildMover(m) {
           const st = rv.car.state;
           const dd = (st.x - cx) * tx + (st.z - cz) * tz;
           if (dd > -220 && dd < -16) st.speed *= Math.max(0, 1 - 2.4 * dt);
+        }
+      },
+    };
+  }
+
+  if (m.kind === 'parade') {
+    // THE PARADE HAS A PARADE. Three lit floats crawl the high street in the
+    // outside lane with marchers alongside, looping the length of the leg —
+    // the circuit's name made literal, and a rolling squeeze on the racing
+    // line once a lap. The floats are solid; the marchers go down like any
+    // pedestrian, and the same mercy rule applies: hitting one costs speed
+    // and conscience, not the race.
+    const u0 = m.u || 195;
+    const from = m.from !== undefined ? m.from : -80;
+    const to = m.to !== undefined ? m.to : 1580;
+    const len = to - from;
+    const pfP = pathFrame();
+    const FLOAT_COLS = [0x8d2b26, 0x33507e, 0x2f6440];
+    const GLOW_COLS = [0xffc98a, 0x7fd4ff, 0xd182ff];
+    const floats = [];
+    for (let i2 = 0; i2 < 3; i2++) {
+      const fg = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(30, 8, 66),
+        new THREE.MeshStandardMaterial({ color: FLOAT_COLS[i2], roughness: 0.85 }));
+      body.position.y = 8;
+      body.castShadow = true;
+      const cab = new THREE.Mesh(new THREE.BoxGeometry(20, 13, 16),
+        new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 0.9 }));
+      cab.position.set(0, 17, -22);
+      const skirt = new THREE.Mesh(new THREE.BoxGeometry(31, 2.5, 67),
+        new THREE.MeshBasicMaterial({ color: GLOW_COLS[i2], toneMapped: false }));
+      skirt.position.y = 4;
+      fg.add(body, cab, skirt);
+      // the arch of lights over the deck — what a float IS at night
+      for (const az of [-16, 0, 16]) {
+        for (let k = 0; k <= 8; k++) {
+          const th2 = (k / 8) * Math.PI;
+          const bulb = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2),
+            new THREE.MeshBasicMaterial({ color: k % 2 ? 0xffd9a0 : GLOW_COLS[i2], toneMapped: false }));
+          bulb.position.set(Math.cos(th2) * 13, 12 + Math.sin(th2) * 16, az);
+          fg.add(bulb);
+        }
+      }
+      fg.userData.off = i2 * 170;
+      floats.push(fg);
+      g.add(fg);
+    }
+    const MARCHER_LOOKS = [
+      { skin: 'skinLight', hair: 'hairBrown', shirt: 'shirtRed', trouser: 'jeans' },
+      { skin: 'skinDeep', hair: 'hairDark', shirt: 'shirtCream', trouser: 'trouserGrey' },
+      { skin: 'skinMid', hair: 'hairGinger', shirt: 'shirtBlue', trouser: 'trouserTan' },
+      { skin: 'skinLight', hair: 'hairGrey', shirt: 'shirtGreen', trouser: 'jeans' },
+      { skin: 'skinDeep', hair: 'hairBrown', shirt: 'shirtPlaid', trouser: 'trouserGrey' },
+      { skin: 'skinMid', hair: 'hairDark', shirt: 'shirtBlue', trouser: 'jeans' },
+    ];
+    const marchers = MARCHER_LOOKS.map((look, j) => {
+      const p = buildPerson({ name: 'marcher' + j, ...look, pos: [0, 2, 0], face: 0, driven: true });
+      g.add(p.root);
+      return { p, off: 40 + j * 52, side: j % 2 ? -30 : 32, cool: 0 };
+    });
+    const SPEED = 16;                          // a walking pace, in voxels/second
+    return {
+      g,
+      update(dt, t) {
+        for (const fg of floats) {
+          const sp = from + (((t * SPEED + fg.userData.off) % len) + len) % len;
+          track.path.place(sp, u0, pfP);
+          fg.position.set(pfP.x, track.elev(sp) + 2, pfP.z);
+          fg.rotation.y = Math.atan2(pfP.tx, pfP.tz);
+          // solid, like traffic: the float is the parade's own hazard
+          if (running && !done && !car.state.crash) {
+            const dx = car.state.x - fg.position.x, dz = car.state.z - fg.position.z;
+            const sh = Math.sin(fg.rotation.y), ch = Math.cos(fg.rotation.y);
+            const lz = -(dx * sh + dz * ch), lx = -(dx * ch - dz * sh);
+            if (Math.abs(lx) < 24 && Math.abs(lz) < 44) {
+              car.impact(0.7, true);
+              audio.impact(0.6);
+              hud.msg.textContent = 'you hit a float!';
+              msgUntil = time + 1.6;
+            }
+          }
+        }
+        for (const mr of marchers) {
+          if (mr.cool > 0) mr.cool -= dt;
+          if (mr.p.downed) { mr.p.update(t, dt); continue; }
+          const sp = from + (((t * SPEED + mr.off) % len) + len) % len;
+          track.path.place(sp, u0 + mr.side, pfP);
+          mr.p.root.position.set(pfP.x, track.elev(sp) + 2, pfP.z);
+          mr.p.root.rotation.y = Math.atan2(pfP.tx, pfP.tz);
+          mr.p.setMotion(0.45);
+          mr.p.update(t, dt);
+          if (running && !done && Math.abs(car.state.speed) > 20 && mr.cool <= 0) {
+            const dx = mr.p.root.position.x - car.state.x, dz = mr.p.root.position.z - car.state.z;
+            if (Math.hypot(dx, dz) < 26) {
+              const l2 = Math.hypot(dx, dz) || 1;
+              if (mr.p.knock(dx / l2, dz / l2, 0.5 + Math.min(1.2, car.state.speed / 200))) {
+                car.impact(0.55, false);
+                audio.thud();
+                struck++;
+                mr.cool = 5;
+                hud.msg.textContent = 'you hit a marcher';
+                msgUntil = time + 1.8;
+              }
+            }
+          }
         }
       },
     };
