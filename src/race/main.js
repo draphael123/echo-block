@@ -10,7 +10,7 @@ import { skyOf } from './skies.js';
 import { Post } from '../post.js';
 import { Ground } from '../walk.js';
 import { buildTrack, hydrateTrack, sectionAt, safeSpot, lifeSpots, ROAD_HALF } from './track.js';
-import { TRACKS, pickTrack, chooseTrack } from './tracks/index.js';
+import { TRACKS, pickTrack, chooseTrack, byId } from './tracks/index.js';
 import { buildCar, V_MAX, BODIES } from './car.js';
 import { buildLife, buildTraffic } from './life.js';
 import { buildField, gridSlot, fieldSizeOf } from './field.js';
@@ -35,9 +35,8 @@ renderer.toneMapping = THREE.NoToneMapping;
 // WHAT TIME IT IS, on this circuit. See skies.js: the sky shader, the fog and
 // both lights are driven from one entry so they cannot disagree with each
 // other, which is what makes a warm sky over cold fog read as a bug.
-const SPEC = pickTrack();
-const SKY = skyOf(SPEC.sky);
-renderer.setClearColor(new THREE.Color(SKY.clear), 1);
+let SPEC = pickTrack();
+let SKY = null;                    // set by applySky
 
 const scene = new THREE.Scene();
 // The sky is lifted; the FOG is not, and the two are different jobs. Fog is
@@ -46,9 +45,8 @@ const scene = new THREE.Scene();
 // kilometre ahead on the one stretch whose entire point is that you cannot. A
 // night sky IS brighter than the ground under it, so: bright backdrop, dark
 // fog, and the dark stays dark.
-scene.fog = new THREE.FogExp2(new THREE.Color(SKY.fog), SKY.fogD);
-const sky = buildSky(SKY);
-scene.add(sky);
+scene.fog = new THREE.FogExp2(new THREE.Color('#000000'), 0.001);
+let sky = null;                    // rebuilt per circuit by applySky
 
 // The boot screen narrates the build phase by phase with a real progress bar
 // — a forty-second synchronous build looked identical to a crash.
@@ -64,20 +62,32 @@ const bootPhase = (label, frac) => {
 // geometry arrives as transferred buffers that hydrateTrack wraps in meshes
 // in well under a second. If the worker cannot start (an ancient browser, a
 // file:// mistake), the same build runs here with yields, exactly as before.
+// The worker has a second job now: while you race a championship round it
+// quietly builds the NEXT one, and pressing N swaps the finished circuit in
+// without a page load. ONE build per worker, though — track.js keeps module
+// state, so a worker reused across builds carries every previous circuit's
+// voxel grids in its heap and the third build dies of an ArrayBuffer
+// allocation failure. A fresh worker costs ~50ms; the fresh heap is the point.
+let workerBusy = false;
+function workerBuild(id, onPhase) {
+  return new Promise((res, rej) => {
+    if (!window.Worker) return rej(new Error('no Worker'));
+    const w = new Worker(new URL('./build-worker.js', import.meta.url), { type: 'module' });
+    workerBusy = true;
+    const settle = (ok, v) => { workerBusy = false; w.terminate(); (ok ? res : rej)(v); };
+    w.onerror = (ev) => settle(false, new Error(ev.message || 'worker error'));
+    w.onmessage = (m) => {
+      if (m.data.type === 'phase') { if (onPhase) onPhase(m.data.label, m.data.frac); }
+      else if (m.data.type === 'done') settle(true, m.data.payload);
+      else if (m.data.type === 'fail') settle(false, new Error(m.data.err));
+    };
+    w.postMessage({ trackId: id });
+  });
+}
 async function buildSomewhere(spec, onPhase) {
   if (window.Worker) {
     try {
-      const w = new Worker(new URL('./build-worker.js', import.meta.url), { type: 'module' });
-      const payload = await new Promise((res, rej) => {
-        w.onerror = (ev) => rej(new Error(ev.message || 'worker error'));
-        w.onmessage = (m) => {
-          if (m.data.type === 'phase') onPhase(m.data.label, m.data.frac);
-          else if (m.data.type === 'done') res(m.data.payload);
-          else if (m.data.type === 'fail') rej(new Error(m.data.err));
-        };
-        w.postMessage({ trackId: spec.id });
-      });
-      w.terminate();
+      const payload = await workerBuild(spec.id, onPhase);
       onPhase('opening the circuit', 0.99);
       return hydrateTrack(spec, payload);
     } catch (err) {
@@ -86,16 +96,14 @@ async function buildSomewhere(spec, onPhase) {
   }
   return buildTrack(spec, onPhase);
 }
-const track = await buildSomewhere(SPEC, bootPhase);
-scene.add(track.group);
-const ground = new Ground(track.field);
+let track = null, ground = null;   // bound by applyTrack
 
 // ------------------------------------------------------------------ light
 // An unlit mass at night was a HOLE IN THE FOG: the chapel, the mill and the
 // barns were black silhouettes with windows floating on them and no volume at
 // all. The reference is path-traced and its shadows carry bounce; this is the
 // cheap version of that.
-const hemi = new THREE.HemisphereLight(new THREE.Color(SKY.hemiSky), new THREE.Color(SKY.hemiGround), SKY.hemi);
+const hemi = new THREE.HemisphereLight(0xffffff, 0x333333, 1);
 scene.add(hemi);
 
 // The important half. A hemisphere lights HORIZONTAL surfaces most, which is
@@ -105,7 +113,7 @@ scene.add(hemi);
 // dark side, and barely touches the tarmac. No shadow, because it is a fill.
 const fill = new THREE.DirectionalLight(0x7d93c4, 0.62);
 scene.add(fill, fill.target);
-const moon = new THREE.DirectionalLight(new THREE.Color(SKY.key), SKY.keyI);
+const moon = new THREE.DirectionalLight(0xffffff, 1);
 moon.castShadow = true;
 moon.shadow.mapSize.set(2048, 2048);
 Object.assign(moon.shadow.camera, { left: -420, right: 420, top: 420, bottom: -420, near: 60, far: 1400 });
@@ -118,15 +126,7 @@ scene.add(moon, moon.target);
 // Each circuit lights its streets in its own colour — warm sodium on the
 // Parade, gas-lamp amber in the Old Town, cold floodlight white at the Docks,
 // deep sodium orange on the bypass. Cheapest atmosphere per byte in the game.
-const LAMP_COL = new THREE.Color(SPEC.lampColor || '#ffa23c');
-const LAMPS = track.anchors.lamps.map(([x, y, z]) => {
-  const l = new THREE.SpotLight(LAMP_COL, 170000, 280, 0.85, 0.75, 2);
-  l.position.set(x, y, z);
-  l.target.position.set(x, 2, z + 8);
-  l.visible = false;
-  scene.add(l, l.target);
-  return { light: l, x, z };
-});
+let LAMPS = [];                    // built per circuit by applyTrack
 const LIVE_LAMPS = 7;
 
 // ------------------------------------------------------------------- cast
@@ -153,40 +153,23 @@ const gridFrame = pathFrame();
 //
 // YOU START AT THE BACK, which is what makes the field worth having: a lap with
 // nothing in front of you is a time trial with scenery.
-const field = buildField(track, ground, buildCar,
-  { count: fieldSizeOf(SPEC), playerPaint: savefile.paint });
-field.addTo(scene);
-const START = gridSlot(0);
-track.path.place(START.s, START.u, gridFrame);
-car.state.x = gridFrame.x;
-car.state.z = gridFrame.z;
-car.state.heading = Math.atan2(gridFrame.tx, gridFrame.tz);
+let field = null, START = null;    // built per circuit by applyTrack
 
 // A town where nothing moves is a model of a town. Smoke off the mill stack and
 // the lit chimneys, and a television flickering in some of the front rooms --
 // both already existed for the hub and neither had ever been switched on out
 // here. Culled hard, because most of them are half a lap behind you.
-const smoke = buildSmoke(track.anchors.stacks.slice(0, 14), 14);
-scene.add(smoke.points);
+let smoke = null;
 
 const tvGeo = new THREE.PlaneGeometry(11, 9);
-const tvs = track.anchors.tvs.slice(0, 26).map(([x, y, z]) => {
-  const m = new THREE.Mesh(tvGeo, new THREE.MeshBasicMaterial({
-    color: 0x79b4ff, transparent: true, opacity: 0.9, toneMapped: false, depthWrite: false,
-  }));
-  m.position.set(x, y, z);
-  scene.add(m);
-  return m;
-});
+let tvs = [];
 
-const life = buildLife(track.path, lifeSpots(), ground, track.elev);
-scene.add(life.group);
+let life = null;
 
 // Somebody else's evening, on the road you happen to be racing on.
 // Six of them now, spread so there is one somewhere on most of the lap, at
 // speeds that differ enough to catch each other up. Nobody is doing 80.
-const traffic = buildTraffic(track.path, buildCar, track.traffic, track.elev);
-scene.add(traffic.group);
+let traffic = null;
 
 // ----------------------------------------------------------------- camera
 // A chase camera on a longish lens: wide enough to read a corner at 80, long
@@ -196,8 +179,6 @@ const post = new Post(renderer, innerWidth, innerHeight);
 // The bright pass and the exposure belong to the HOUR, not to the renderer. A
 // scene that is nearly all black needs a low threshold to have any bloom at
 // all; the same threshold under a dusk sky blooms the entire road.
-if (SKY.exposure) post.params.exposure = SKY.exposure;
-if (SKY.threshold) post.params.threshold = SKY.threshold;
 post.params.range = 260;
 post.params.maxBlur = 7;
 post.params.focus = 190;
@@ -237,7 +218,7 @@ const keys = new Set();
 // Weather belongs to the CIRCUIT, not to a key. It was a toggle while it was
 // being built and that made it a novelty; as a property of the place it is a
 // reason the Docks are the Docks. You do not choose the weather.
-const wet = track.spec.wet || 0;
+let wet = 0;
 
 const audio = createAudio();
 const music = createMusic();
@@ -251,13 +232,16 @@ addEventListener('keydown', (e) => {
   if (k === 'r') reset();
   if (k === 'v') camYawWant = camYawWant ? 0 : Math.PI;   // latched look-back
   if (k === 'h') { hud.help.classList.toggle('hidden'); hud.hint.classList.toggle('hidden'); }
-  // The championship: N takes you to the next round, G starts a season, T
-  // opens the circuit picker mid-session. Navigation is EXPLICIT — the URL
-  // always names the destination, so a stale ?track= can never win.
-  if (k === 'n' && nextRound) { chooseTrack(nextRound); location.href = './race.html?track=' + nextRound; }
+  // The championship: N swaps the next round IN PLACE — the circuit was built
+  // in the worker while you raced this one, so there is no page load and
+  // usually no boot screen either. T picks any circuit the same way. The URL
+  // is kept honest with replaceState, so a reload lands where you are.
+  if (k === 'n' && nextRound) swapTrack(nextRound);
   if (k === 't') pickerShow();
-  if (k === 'g' && done) { GP.begin(savefile); chooseTrack(GP.ROUNDS[0]); location.href = './race.html?track=' + GP.ROUNDS[0]; }
-  if (k === 'g') toggleGarage();
+  if (k === 'g') {
+    if (done) { GP.begin(savefile); swapTrack(GP.ROUNDS[0]); }
+    else toggleGarage();
+  }
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
@@ -299,15 +283,14 @@ const hud = {
   board: document.getElementById('board'),
   hint: document.getElementById('hint'),
 };
-hud.circuit.textContent = track.name;
-
 // ------------------------------------------------------------------ minimap
 // The circuit's true shape with everybody on it. A racer glances at a map for
 // two facts — where does the road go next, and where is everybody — so it is
 // dots on an outline and nothing else.
 const map = document.getElementById('map');
 const mapCtx = map.getContext('2d');
-const MAP = (() => {
+let MAP = null;                    // rebuilt per circuit
+function buildMapModel() {
   const f = pathFrame();
   let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
   const pts = [];
@@ -333,7 +316,7 @@ const MAP = (() => {
   const [sx, sz] = px(f.x, f.z);
   g.fillStyle = '#ffc98a'; g.fillRect(sx - 3, sz - 3, 6, 6);
   return { line, px };
-})();
+}
 function drawMap() {
   mapCtx.clearRect(0, 0, map.width, map.height);
   mapCtx.drawImage(MAP.line, 0, 0);
@@ -352,7 +335,7 @@ function drawMap() {
 // Per circuit. Three laps of the Old Town's 359 metres is over in ninety
 // seconds and two of the Ring Road's 698 is a race with a shape; one number for
 // four tracks of wildly different length was a number chosen for one of them.
-const LAPS = SPEC.laps || 3;
+let LAPS = 3;
 
 // THE GANTRY RUNS THE COUNTDOWN. The start lights lived in the HUD while the
 // steel frame the whole grid is staring at stayed decoration. Three lamps hang
@@ -360,12 +343,11 @@ const LAPS = SPEC.laps || 3;
 // GO, gone two seconds later. Lights only; the voxels are not touched.
 const lampFrame = pathFrame();
 const lampGeo = new THREE.PlaneGeometry(9, 9);
-const startLamps = [-44, 0, 44].map((u) => {
-  track.path.place(30, u, lampFrame);
+const START_LAMP_US = [-44, 0, 44];
+const startLamps = START_LAMP_US.map(() => {
   const m = new THREE.Mesh(lampGeo, new THREE.MeshBasicMaterial({
     color: 0xd83a34, transparent: true, opacity: 0.95, toneMapped: false, depthWrite: false,
   }));
-  m.position.set(lampFrame.x, track.elev(30) + 100, lampFrame.z);
   scene.add(m);
   return m;
 });
@@ -388,8 +370,7 @@ const GRID_HOLD = 3.0;
 let countdown = GRID_HOLD;
 
 // Are we in a championship, and is THIS its current round?
-const gp = GP.current(savefile);
-const inGP = !!gp && GP.roundTrack(gp) === track.id;
+let gp = null, inGP = false;       // recomputed per circuit by applyTrack
 let lapTime = 0, lap = 0, running = false, done = false;
 let s = 80, prevS = 80, crashes = 0, wasDown = false, downAt = 0;
 let struck = 0, msgUntil = 0, wasBoosting = false, lastLight = 99;
@@ -399,15 +380,14 @@ let raceClock = 0;
 // off-the-map grace and the stuck-against-a-wall hint timer
 let offCourse = 0, pinned = 0;
 // boost pads, with a per-pad cooldown so sitting on one is not an engine
-const PADS = SPEC.pads || [];
-const padCool = PADS.map(() => 0);
+let PADS = [], padCool = [];
 
 // ----------------------------------------------------- ghost, delta, sectors
 // THE GHOST is the best lap, embodied: position samples at 10Hz, saved with
 // the save, replayed as a see-through car. It is also the timing reference —
 // the live delta and the sector splits are all "where was the ghost when it
 // was here", which is why one recording serves all three.
-let ghostData = (savefile.ghosts && savefile.ghosts[track.id]) || null;
+let ghostData = null;
 let rec = [], recTimer = 0, gPtr = 0;
 function ghostTimeAt(atS) {
   if (!ghostData) return null;
@@ -436,17 +416,16 @@ function buildGhost() {
   scene.add(g.root);
   ghost = g;
 }
-if (ghostData) buildGhost();
-
 // sector gates at thirds, timed against the ghost
-const SEC_AT = [track.path.total / 3, (track.path.total * 2) / 3];
+let SEC_AT = [1e9, 1e9];
 // racing furniture state
 let lastPlace = null, wrongWay = 0;
 // the pre-race ceremony: a slow reveal of the circuit, any key skips it
 let intro = 0;
 const introCard = document.getElementById('introcard');
 const resultsEl = document.getElementById('results');
-if (introCard) {
+function fillIntroCard() {
+  if (!introCard) return;
   const bst = savefile.bests && savefile.bests[track.id];
   introCard.innerHTML = `<h1>${track.name}</h1><p>${track.spec.blurb}</p>`
     + `<div class="facts">${LAPS} laps &middot; ${Math.round(track.lapLength * 0.08)} m`
@@ -460,7 +439,7 @@ if (introCard) {
 let scored = false;
 // Best laps are PER CIRCUIT, out of the versioned save. The old global
 // dynamo.lap key meant an Old Town time was the Parade's target.
-let best = savefile.bests[track.id] || null;
+let best = null;
 const splits = [];
 
 function reset(ceremony = false) {
@@ -485,7 +464,6 @@ function reset(ceremony = false) {
     ? `<b>round ${gp.round + 1} of ${GP.ROUNDS.length}</b><span class="dim">${track.name}</span>`
     : '';
 }
-reset(true);
 
 // What happened, who scored, and whether the championship is over.
 //
@@ -543,6 +521,7 @@ function finish() {
       gpHtml += `<div class="rnext">next round: ${nt.name}</div>`;
       hint = '<b>N</b> next round &nbsp; <b>R</b> race again';
       nextRound = next;
+      prefetchNext(next);           // in case the race-start prefetch was missed
     }
   }
 
@@ -564,6 +543,196 @@ function finish() {
 }
 let nextRound = null;
 
+// ------------------------------------------- the circuit, swapped in place
+// A change of circuit is a change of STATE, not a page load. applySky and
+// applyTrack bind everything that belongs to a circuit; teardownTrack returns
+// the scene to empty. The first boot is just swap number zero — which is what
+// keeps the two paths from drifting apart.
+function disposeDeep(root, materials = false) {
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    if (o.geometry && o.geometry !== tvGeo && o.geometry !== lampGeo) o.geometry.dispose();
+    if (materials) {
+      const m = o.material;
+      if (Array.isArray(m)) m.forEach(x => x && x.dispose());
+      else if (m) m.dispose();
+    }
+  });
+}
+
+const BASE_EXPOSURE = post.params.exposure, BASE_THRESHOLD = post.params.threshold;
+function applySky(spec) {
+  SKY = skyOf(spec.sky);
+  renderer.setClearColor(new THREE.Color(SKY.clear), 1);
+  scene.fog.color.set(SKY.fog);
+  scene.fog.density = SKY.fogD;
+  if (sky) { scene.remove(sky); disposeDeep(sky, true); }
+  sky = buildSky(SKY);
+  scene.add(sky);
+  hemi.color.set(SKY.hemiSky);
+  hemi.groundColor.set(SKY.hemiGround);
+  hemi.intensity = SKY.hemi;
+  moon.color.set(SKY.key);
+  moon.intensity = SKY.keyI;
+  post.params.exposure = SKY.exposure || BASE_EXPOSURE;
+  post.params.threshold = SKY.threshold || BASE_THRESHOLD;
+}
+
+function applyTrack(spec, trk) {
+  track = trk;
+  scene.add(track.group);
+  ground = new Ground(track.field);
+
+  const lampCol = new THREE.Color(spec.lampColor || '#ffa23c');
+  LAMPS = track.anchors.lamps.map(([x, y, z]) => {
+    const l = new THREE.SpotLight(lampCol, 170000, 280, 0.85, 0.75, 2);
+    l.position.set(x, y, z);
+    l.target.position.set(x, 2, z + 8);
+    l.visible = false;
+    scene.add(l, l.target);
+    return { light: l, x, z };
+  });
+
+  field = buildField(track, ground, buildCar,
+    { count: fieldSizeOf(spec), playerPaint: savefile.paint });
+  field.addTo(scene);
+  START = gridSlot(0);
+  track.path.place(START.s, START.u, gridFrame);
+  car.state.x = gridFrame.x;
+  car.state.z = gridFrame.z;
+  car.state.heading = Math.atan2(gridFrame.tx, gridFrame.tz);
+
+  smoke = buildSmoke(track.anchors.stacks.slice(0, 14), 14);
+  scene.add(smoke.points);
+  tvs = track.anchors.tvs.slice(0, 26).map(([x, y, z]) => {
+    const m = new THREE.Mesh(tvGeo, new THREE.MeshBasicMaterial({
+      color: 0x79b4ff, transparent: true, opacity: 0.9, toneMapped: false, depthWrite: false,
+    }));
+    m.position.set(x, y, z);
+    scene.add(m);
+    return m;
+  });
+  life = buildLife(track.path, lifeSpots(), ground, track.elev);
+  scene.add(life.group);
+  traffic = buildTraffic(track.path, buildCar, track.traffic, track.elev);
+  scene.add(traffic.group);
+
+  wet = track.spec.wet || 0;
+  hud.circuit.textContent = track.name;
+  MAP = buildMapModel();
+  LAPS = spec.laps || 3;
+  START_LAMP_US.forEach((u, i) => {
+    track.path.place(30, u, lampFrame);
+    startLamps[i].position.set(lampFrame.x, track.elev(30) + 100, lampFrame.z);
+  });
+  gp = GP.current(savefile);
+  inGP = !!gp && GP.roundTrack(gp) === track.id;
+  scored = false;
+  nextRound = null;
+  PADS = spec.pads || [];
+  padCool = PADS.map(() => 0);
+  ghostData = (savefile.ghosts && savefile.ghosts[track.id]) || null;
+  gPtr = 0;
+  if (ghostData) buildGhost();
+  else if (ghost) ghost.root.visible = false;
+  SEC_AT = [track.path.total / 3, (track.path.total * 2) / 3];
+  best = savefile.bests[track.id] || null;
+  fillIntroCard();
+  if (window.DYNAMO) Object.assign(window.DYNAMO, {
+    track, car, ground, life, traffic, field,
+    voxels: track.voxels, buildMs: track.buildMs,
+    lapMetres: Math.round(track.lapLength * 0.08),
+  });
+}
+
+function teardownTrack() {
+  if (!track) return;
+  scene.remove(track.group);
+  disposeDeep(track.group, true);
+  for (const L of LAMPS) { scene.remove(L.light, L.light.target); L.light.dispose(); }
+  LAMPS = [];
+  for (const c of field.cars) { scene.remove(c.root); disposeDeep(c.root); }
+  scene.remove(smoke.points);
+  if (smoke.points.geometry) smoke.points.geometry.dispose();
+  if (smoke.points.material) smoke.points.material.dispose();
+  for (const m of tvs) { scene.remove(m); m.material.dispose(); }
+  tvs = [];
+  scene.remove(life.group);
+  disposeDeep(life.group);
+  scene.remove(traffic.group);
+  disposeDeep(traffic.group);
+  if (ghost) { scene.remove(ghost.root); disposeDeep(ghost.root, true); ghost = null; }
+  track = null; ground = null; field = null; START = null;
+  smoke = null; life = null; traffic = null;
+}
+
+// PREFETCH: the worker's idle time is the next circuit's build time. The
+// moment a championship race starts, the worker begins on the next round, so
+// by the time you press N the payload is usually sitting in memory and the
+// swap is just the hydrate — well under a second, no boot screen at all.
+let prefetch = null;               // { id, promise }
+function prefetchNext(id) {
+  if (!id || !window.Worker || workerBusy) return;
+  if (prefetch && prefetch.id === id) return;
+  prefetch = { id, promise: workerBuild(id, null).catch(() => null) };
+}
+
+let swapping = false;
+async function swapTrack(id) {
+  if (swapping) return;
+  if (track && id === track.id) {
+    // same circuit: nothing to build, just put the season state and the grid
+    // back the way a fresh arrival would find them
+    gp = GP.current(savefile);
+    inGP = !!gp && GP.roundTrack(gp) === track.id;
+    scored = false;
+    nextRound = null;
+    reset(true);
+    return;
+  }
+  swapping = true;
+  chooseTrack(id);
+  history.replaceState(null, '', './race.html?track=' + id);
+  const spec2 = byId(id);
+  // The boot screen fronts every swap. With a finished prefetch it is a
+  // sub-second blink; mid-prefetch it is honest cover for the wait — the
+  // alternative was a silently frozen frame.
+  document.body.classList.remove('booted');
+  bootPhase('driving over', 0.5);
+  try {
+    const pf = prefetch;
+    prefetch = null;
+    let payload = null;
+    if (pf && pf.id === id) payload = await pf.promise;
+    let trk;
+    if (payload) {
+      trk = hydrateTrack(spec2, payload);
+    } else {
+      // one build at a time — drain a mismatched prefetch before asking
+      // for the circuit we actually want
+      if (pf) await pf.promise;
+      bootPhase('driving over', 0);
+      trk = await buildSomewhere(spec2, bootPhase);
+    }
+    teardownTrack();
+    SPEC = spec2;
+    applySky(spec2);
+    applyTrack(spec2, trk);
+    reset(true);
+  } finally {
+    swapping = false;
+    document.body.classList.add('booted');
+  }
+}
+
+// swap number zero: the boot build
+{
+  const trk0 = await buildSomewhere(SPEC, bootPhase);
+  applySky(SPEC);
+  applyTrack(SPEC, trk0);
+  reset(true);
+}
+
 // ------------------------------------------------------------------- loop
 const clock = new THREE.Clock();
 let time = 0, frames = 0;
@@ -580,6 +749,7 @@ function frame() {
 }
 
 function tick() {
+  if (swapping || !track) return;    // mid-swap the world does not exist
   const dt = Math.min(clock.getDelta(), 0.05);
   time += dt;
   renderer.shadowMap.needsUpdate = (frames++ % 3) === 0;
@@ -614,6 +784,8 @@ function tick() {
     if (countdown <= 0) {
       running = true;
       field.start();
+      // the worker starts on the NEXT round while you race this one
+      if (inGP && gp && gp.round + 1 < GP.ROUNDS.length) prefetchNext(GP.ROUNDS[gp.round + 1]);
       audio.beep();
       lampsGo(time);
       hud.msg.innerHTML = '<b class="light go">go</b>';
@@ -980,7 +1152,7 @@ const garage = mountGarage({
 // walking back through the hub.
 const picker = mountTrackSelect({
   save: savefile,
-  onGo: (t2) => { location.href = './race.html?track=' + t2.id; },
+  onGo: (t2) => { picker.hide(); swapTrack(t2.id); },
 });
 const pickerShow = () => picker.show();
 const paintGarage = () => garage.paint();
@@ -988,7 +1160,7 @@ const toggleGarage = () => garage.toggle();
 
 window.DYNAMO = {
   scene, camera, renderer, post, track, car, ground, life, traffic, field, gp: GP,
-  reset,
+  reset, swapTrack, prefetchNext,
   sim: (opts) => {
     const r = compare(track, opts);
     console.table(r.rows.map(({ policy, time, crashes, blindHits, avgSpeed, finished }) =>
