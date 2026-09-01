@@ -214,6 +214,14 @@
   }
   #pause .pvol input { flex: 1; accent-color: #ffd9a0; }
   #pause .pdanger { margin-top: 14px; color: #7a4a44 !important; border-color: #3a2a2a !important; font-size: 11px; }
+  /* photo mode: the HUD leaves the frame, one quiet caption stays */
+  body.photo #ui > *:not(#photoHint) { display: none !important; }
+  #photoHint {
+    position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%);
+    color: #8d97ab; font-size: 11px; letter-spacing: .22em; text-transform: uppercase;
+    text-shadow: 0 1px 6px #000;
+  }
+  #photoHint.hidden { display: none; }
   #pause .pdanger:hover { color: #ff8a6a !important; border-color: #6a3a34 !important; }
 
   /* THE PODIUM — a championship should END somewhere. Three plinths, the
@@ -297,9 +305,11 @@
     <b>s</b> at a stop &rarr; reverse<br>
     <b>b</b> horn &mdash; scatter the pavement<br>
     <b>q</b>/<b>e</b> look &nbsp; <b>v</b> behind &nbsp; <b>scroll</b> zoom<br>
-    <b>g</b> garage &nbsp; <b>t</b> circuits &nbsp; <b>m</b> sound &nbsp; <b>r</b> reset
+    <b>g</b> garage &nbsp; <b>t</b> circuits &nbsp; <b>m</b> sound &nbsp; <b>r</b> reset<br>
+    <b>p</b> photo mode &nbsp; <b>gamepad</b> stick + triggers, A drift, X NOS
   </div>
   <div id="hint"><b>h</b> &mdash; controls</div>
+  <div id="photoHint" class="hidden">photo &mdash; a/d orbit &middot; w/s height &middot; q/e distance &middot; p done</div>
   <div id="podium" class="hidden"></div>
   <div id="pause" class="hidden"><div class="pausecard">
     <h2>PAUSED</h2>
@@ -312,7 +322,8 @@
       <button data-set="sfx">sound fx</button>
       <button data-set="shake">cam shake</button>
       <button data-set="streaks">streaks</button>
-      <button data-set="fx" style="grid-column: 1 / -1">impact effects &mdash; hit-stop &amp; fringe</button>
+      <button data-set="fx">impact effects</button>
+      <button data-set="assist">steering assist</button>
     </div>
     <label class="pvol">music <input id="vol-music" type="range" min="0" max="100" value="80"></label>
     <label class="pvol">sound <input id="vol-sfx" type="range" min="0" max="100" value="90"></label>

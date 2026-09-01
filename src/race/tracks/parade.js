@@ -87,16 +87,20 @@ export default {
     { s: 1080, u: H(HALF, 0.42), r: 30, kind: 'chicane' },
     { s: 1440, u: H(HALF, -0.42), r: 30, kind: 'chicane' },
     { s: 2060, u: H(HALF, -0.30), r: 32, kind: 'skip' },
-    { s: 2480, u: H(HALF, 0.34), r: 30, kind: 'works' },
+    // works barriers pushed OUTBOARD (0.34/0.30/0.28 → 0.52+): near-centre
+    // anchors made the AI's crossing geometrically marginal on dark approaches
+    // — half of all field crashes were cars grinding these three lines. The
+    // barrier still takes a lane; it no longer takes the middle of the road.
+    { s: 2480, u: H(HALF, 0.52), r: 30, kind: 'works' },
     { s: 2900, u: H(HALF, -0.34), r: 34, kind: 'broken' },
-    { s: 3320, u: H(HALF, 0.30), r: 30, kind: 'works' },
+    { s: 3320, u: H(HALF, 0.52), r: 30, kind: 'works' },
     { s: 4300, u: H(HALF, -0.55), r: 32, kind: 'skip' },
-    { s: 5430, u: H(HALF, 0.34), r: 30, kind: 'works' },
+    { s: 5430, u: H(HALF, 0.52), r: 30, kind: 'works' },
     { s: 5850, u: H(HALF, -0.34), r: 34, kind: 'broken' },
     // 6180, not 6250: the new lap is 6435 long and a works barrier runs
     // span/2 past its anchor — at 6250 the tail wrapped the seam and lay
     // across the start straight
-    { s: 6180, u: H(HALF, 0.28), r: 30, kind: 'works' },
+    { s: 6180, u: H(HALF, 0.55), r: 30, kind: 'works' },
   ],
 
   // Kept clear of the parking bays, or a crosser baulks mid-road.
@@ -160,6 +164,7 @@ export default {
   // 11pm. This is the circuit the sight mechanic belongs to, so its dark has
   // to be genuinely dark; every other track moved off midnight, this one owns it.
   sky: 'midnight',
+  ambience: 'crowd',
   laps: 3,
 
   landmarks: { gasholder: [60, -40, 46, 132], waterTower: [-210, 190], pylons: 4 },

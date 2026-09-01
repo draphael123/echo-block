@@ -21,7 +21,7 @@ export function buildRival(track, ground, buildCar, opts = {}) {
   // half of what makes each rival a different problem.
   const car = buildCar(paint, {}, parts, chassis);
   car.root.name = 'rival';
-  const driver = createDriver(track, { policy, pace, startS, lineU });
+  const driver = createDriver(track, { policy, pace, startS, lineU, perception: 1.4 });
 
   const f = frame();
   track.path.place(startS, startU, f);
@@ -39,7 +39,7 @@ export function buildRival(track, ground, buildCar, opts = {}) {
   // cars share (they start together and tick together) is the honest key.
   let t = 0, finishedT = null;
 
-  function update(dt, laps, player) {
+  function update(dt, laps, player, obstacles) {
     if (!running || finished !== null) {
       // sit on the line with the engine running
       car.step(dt, 0, 0, ground, false, false);
@@ -75,6 +75,25 @@ export function buildRival(track, ground, buildCar, opts = {}) {
       if (ahead < -20 && ahead > -140 && Math.abs(side) < 40 && st.speed > 120 && t >= errUntil) {
         const press = 1 - (-ahead - 20) / 120;
         d.steer = Math.max(-1, Math.min(1, d.steer + (side > 0 ? 0.28 : -0.28) * press));
+      }
+    }
+    // MOVING OBSTACLES exist too. The same reflex the player gets, for the
+    // slow civilian in your lane, the tram, the wide load — a rival that
+    // rear-ends a hatchback doing 60 every third lap is not a rival, it is
+    // a physics complaint. Brake harder the closer it is, lean around it.
+    if (obstacles) {
+      const st = car.state;
+      const sh = Math.sin(st.heading), ch = Math.cos(st.heading);
+      for (const ob of obstacles) {
+        const dx = ob.x - st.x, dz = ob.z - st.z;
+        const ahead = dx * sh + dz * ch;
+        const side = dx * ch - dz * sh;
+        const reach = 44 + (ob.r || 0);
+        if (ahead > 0 && ahead < 170 && Math.abs(side) < reach) {
+          const press = 1 - ahead / 170;
+          d.steer = Math.max(-1, Math.min(1, d.steer + (side > 0 ? -0.5 : 0.5) * press));
+          if (ahead < 110 && d.throttle > 0.15) d.throttle = ahead < 60 ? -0.6 : 0.15;
+        }
       }
     }
     // allowReverse false: a racing driver does not select reverse, and the

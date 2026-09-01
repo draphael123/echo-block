@@ -194,8 +194,8 @@ export function mountTrackSelect({ save, onGo, onDuel, closeLabel, onClose }) {
         : '';
       row.innerHTML = `<div><div class="nm">Grand Prix &mdash; round ${gp.round + 1}</div>`
         + `<div class="q">${t.name}${gp.round ? ` &middot; you are ${mine}${['st','nd','rd'][mine - 1] || 'th'}` : ''}</div>`
-        + `<div class="rounds">${GP.ROUNDS.map((_, i) =>
-          `<i class="${i < gp.round ? 'done' : i === gp.round ? 'now' : ''}"></i>`).join('')}</div>`
+        + `<div class="rounds">${GP.ROUNDS.map((rid, i) =>
+          `<i class="${i < gp.round ? 'done' : i === gp.round ? 'now' : ''}" title="${(TRACKS.find(x => x.id === rid) || {}).name || rid}"></i>`).join('')}</div>`
         + tbl + `</div>`
         + `<div class="meta"><b>resume</b>${GP.ROUNDS.length - gp.round} to go</div>`;
       row.onclick = () => { chooseTrack(at); onGo(t); };
@@ -241,8 +241,9 @@ export function mountTrackSelect({ save, onGo, onDuel, closeLabel, onClose }) {
       const beaten = (save.career?.duelsWon || []);
       lrow.innerHTML = `<div><div class="nm">The Ladder &mdash; duel ${next}</div>`
         + `<div class="q">${r2 ? r2.bio : ''}</div>`
+        + (r2 && r2.lines ? `<div class="q" style="font-style:italic">${r2.lines.intro}</div>` : '')
         + `<div class="q dim">${beaten.length ? 'beaten: ' + beaten.join(', ') : 'nobody beaten yet'}</div></div>`
-        + `<div class="meta"><b>duel &middot; 1v1</b>first win pays 400</div>`;
+        + `<div class="meta"><b>duel &middot; 1v1</b>400 + paint unlocks</div>`;
       lrow.onclick = () => { if (onDuel) onDuel(next); };
     } else {
       lrow.innerHTML = `<div><div class="nm">The Ladder &mdash; complete</div>`

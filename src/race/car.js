@@ -647,12 +647,21 @@ export function buildCar(paint = 0, tune = {}, parts = null, chassisId = 'brindl
           // grounded: remember the vertical rate the floor is feeding us
           const rate = rise / Math.max(dt, 1e-4);
           if (rise > 2 && Math.abs(state.speed) > 25) {
-            // Riding up over something costs SPEED, in proportion to how big
-            // the thing was. A kerb is nothing, a skip is most of your
-            // momentum, and either way you are still moving.
-            state.speed *= Math.max(0.25, 1 - rise * CLIMB_COST);
-            state.shake = Math.min(1, rise / 18);
-            state.crash = Math.max(state.crash, 0.18);
+            if (rise > 4) {
+              // Riding up over something costs SPEED, in proportion to how
+              // big the thing was. A kerb is nothing, a skip is most of your
+              // momentum, and either way you are still moving.
+              state.speed *= Math.max(0.25, 1 - rise * CLIMB_COST);
+              state.shake = Math.min(1, rise / 18);
+              state.crash = Math.max(state.crash, 0.18);
+            } else {
+              // A STAIR THE ROAD BUILT: steep pitches quantize into 2-3
+              // voxel steps, and flagging those as crashes turned every
+              // fast crest into a phantom pile-up — the whole field
+              // "crashed" on the crescent climb every single lap. A small
+              // step is a bump: a touch of speed, no flag, no jolt.
+              state.speed *= 1 - rise * CLIMB_COST * 0.25;
+            }
             state.y = floorY;
             state.vy = 0;
           } else if (rise < -(6 + 60 * dt) && state.vy > LAUNCH_VY

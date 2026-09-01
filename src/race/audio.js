@@ -76,6 +76,76 @@ export function createAudio() {
 
     noise.start();
     ready = true;
+    if (ambKind) buildAmbience(ambKind);       // a bed requested before the gesture
+  }
+
+  // ---- THE AMBIENT BED: one per circuit, all synthesis, all cheap. Slow
+  // LFOs on filtered noise do most of it — a crowd is mid noise breathing, a
+  // sea is low noise in waves, industry is a detuned drone under hiss. It
+  // rides the master, so the sfx volume and mute own it like everything else.
+  let ambKind = null, ambNodes = [];
+  function ambStopAll() {
+    for (const n of ambNodes) { try { n.stop && n.stop(); } catch { /* already */ } try { n.disconnect(); } catch { /* fine */ } }
+    ambNodes = [];
+  }
+  function buildAmbience(kind) {
+    ambStopAll();
+    if (!ctx || !ready || !kind) return;
+    const mkNoise = () => {
+      const n = ctx.createBufferSource();
+      n.buffer = noiseBuffer(ctx, 3); n.loop = true; n.start();
+      return n;
+    };
+    const lfo = (freq, depth, target, base) => {
+      const o = ctx.createOscillator(); o.frequency.value = freq;
+      const g = ctx.createGain(); g.gain.value = depth;
+      target.value = base;
+      o.connect(g).connect(target); o.start();
+      ambNodes.push(o, g);
+      return o;
+    };
+    if (kind === 'crowd') {
+      // the parade's pavement: a mid murmur that breathes, never repeats
+      const n = mkNoise();
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 420; f.Q.value = 0.6;
+      const g = ctx.createGain();
+      n.connect(f).connect(g).connect(master);
+      lfo(0.07, 0.016, g.gain, 0.035);
+      lfo(0.23, 0.008, g.gain, 0.035);
+      ambNodes.push(n, f, g);
+    } else if (kind === 'surf') {
+      // the sea: low noise arriving in waves, a slower swell underneath
+      const n = mkNoise();
+      const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 340;
+      const g = ctx.createGain();
+      n.connect(f).connect(g).connect(master);
+      lfo(0.09, 0.05, g.gain, 0.075);
+      lfo(0.031, 0.025, g.gain, 0.075);
+      ambNodes.push(n, f, g);
+    } else if (kind === 'wind') {
+      // the old town at night: thin high air between the walls, nearly nothing
+      const n = mkNoise();
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 900; f.Q.value = 0.5;
+      const g = ctx.createGain();
+      n.connect(f).connect(g).connect(master);
+      lfo(0.05, 0.014, g.gain, 0.022);
+      ambNodes.push(n, f, g);
+    } else if (kind === 'industry') {
+      // the works: two saws a few cents apart under a lowpass, plus hiss —
+      // the sound of something enormous idling two streets away
+      const g = ctx.createGain(); g.gain.value = 0.05;
+      const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 180;
+      const o1 = ctx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 54;
+      const o2 = ctx.createOscillator(); o2.type = 'sawtooth'; o2.frequency.value = 54.7;
+      o1.connect(f); o2.connect(f); f.connect(g).connect(master);
+      o1.start(); o2.start();
+      const n = mkNoise();
+      const hf = ctx.createBiquadFilter(); hf.type = 'highpass'; hf.frequency.value = 2600;
+      const hg = ctx.createGain();
+      n.connect(hf).connect(hg).connect(master);
+      lfo(0.11, 0.006, hg.gain, 0.012);
+      ambNodes.push(o1, o2, f, g, n, hf, hg);
+    }
   }
 
   // A short burst: the shape of every one-off in the game. `tone` is the body
@@ -107,7 +177,7 @@ export function createAudio() {
     }
   }
 
-  let vol = 0.9, prevThrottle = 0;
+  let vol = 0.9, prevThrottle = 0, surface = null, lastThunk = 0;
   const applyGain = () => { if (master) master.gain.value = muted ? 0 : 0.5 * vol; };
 
   return {
@@ -121,6 +191,12 @@ export function createAudio() {
     },
     // the volume knob, 0..1 — the settings slider drives this
     setVolume(v) { vol = Math.max(0, Math.min(1, v)); applyGain(); },
+
+    // the circuit's ambient bed — remembered if asked for before the first
+    // gesture, swapped live when the track swaps
+    ambience(kind) { ambKind = kind || null; if (ready) buildAmbience(ambKind); },
+    // what the tyres are ON: 'plank' thunks, 'gravel' hisses, null is tarmac
+    setSurface(kind) { surface = kind || null; },
 
     // pushed once a frame
     update(speed, vmax, throttle, slip, offRoad, nos = false) {
@@ -158,10 +234,18 @@ export function createAudio() {
       }
       prevThrottle = throttle;
 
-      // tyres: scrubbing under slip, rumbling off the tarmac
+      // tyres: scrubbing under slip, rumbling off the tarmac — and the road
+      // SURFACE has a voice: planks thunk under the wheels at pace, gravel
+      // rides a constant hiss. You hear the pier before you read the sign.
       const scrub = clamp(Math.abs(slip) * 1.7, 0, 1) * f;
-      tyreGain.gain.setTargetAtTime(scrub * 0.20 + (offRoad ? f * 0.12 : 0), now, 0.05);
-      tyreFilter.frequency.setTargetAtTime(offRoad ? 620 : 1500 + scrub * 900, now, 0.05);
+      const surfGain = surface === 'gravel' ? f * 0.10 : surface === 'plank' ? f * 0.05 : 0;
+      tyreGain.gain.setTargetAtTime(scrub * 0.20 + (offRoad ? f * 0.12 : 0) + surfGain, now, 0.05);
+      tyreFilter.frequency.setTargetAtTime(
+        offRoad ? 620 : surface === 'gravel' ? 800 : 1500 + scrub * 900, now, 0.05);
+      if (surface === 'plank' && f > 0.12 && now - lastThunk > 0.42 - f * 0.3) {
+        hit(110, 0.5, 0.045, 0.07);
+        lastThunk = now;
+      }
 
       // the wind carries the speed now: nearly triple at the top end, and it
       // keeps rising past where the engine flattens out — the last 20% of

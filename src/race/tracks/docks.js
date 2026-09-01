@@ -145,6 +145,7 @@ export default {
   // The wet stays: rain off the sea is the circuit's grip identity, and the
   // funfair's neon has a dark sky to burn against.
   sky: 'pier',
+  ambience: 'surf',
   laps: 3,
   // the measured clean racing-policy lap, which the purse pays pace against
   // the road's own face and the streetlight's own colour -- see ribbon()

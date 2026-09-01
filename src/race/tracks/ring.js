@@ -148,6 +148,7 @@ export default {
   // thickest fog in the city -- which does the same job as the crests do:
   // it takes the distance away from you.
   sky: 'sodium',
+  ambience: 'industry',
   // The longest lap in the city at 698 metres — but also the fastest: two laps
   // was over in 68 seconds, half the length of any other race. "Three is a
   // slog" was written before there was a field to work through; with five cars

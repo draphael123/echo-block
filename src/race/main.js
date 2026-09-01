@@ -14,7 +14,7 @@ import { TRACKS, pickTrack, chooseTrack, byId } from './tracks/index.js';
 import { buildCar, V_MAX, BODIES } from './car.js';
 import { buildLife, buildTraffic } from './life.js';
 import { buildPerson } from '../people.js';
-import { buildField, gridSlot, fieldSizeOf } from './field.js';
+import { buildField, gridSlot, fieldSizeOf, runnerByName } from './field.js';
 import * as GP from './gp.js';
 import { createAudio } from './audio.js';
 import { createMusic } from '../music.js';
@@ -59,10 +59,34 @@ let sky = null;                    // rebuilt per circuit by applySky
 // — a forty-second synchronous build looked identical to a crash.
 const bootMsg = document.getElementById('bootmsg');
 const bootBar = document.getElementById('bootbar');
+// PIT WALL NOTES while the town builds: the wait is real, so it teaches.
+// Rotated on a clock, not on phases — phases fly past unevenly.
+const BOOT_TIPS = [
+  'hold SPACE through a bend — the longer the slide, the bigger the boost',
+  'SHIFT burns the NOS: drift, graze traffic and jump to fill the tank',
+  'the LAMPS upgrade buys speed in the dark — the unlit legs pay it back',
+  'a clean night (no crashes) pays extra at the line',
+  'B is the horn: the pavement scatters, the traffic flinches',
+  'duel the ladder in the circuits menu — first wins pay 400 and unlock paint',
+  'P is photo mode: orbit the night, the HUD gets out of the way',
+  'plug in a gamepad — left stick steers, triggers drive, A drifts, X burns',
+  'ESC — settings, volume sliders, steering assist for new drivers',
+];
+let bootTipEl = null, bootTipTimer = 0;
 const bootPhase = (label, frac) => {
   window.__BUILD_BEAT = Date.now();          // the boot watchdog's heartbeat
   if (bootMsg) bootMsg.textContent = label;
   if (bootBar) bootBar.style.width = Math.round((frac || 0) * 100) + '%';
+  if (!bootTipEl && bootMsg) {
+    bootTipEl = document.createElement('div');
+    bootTipEl.style.cssText = 'margin-top:14px;color:#6d7688;font-size:11px;letter-spacing:.12em;max-width:340px;line-height:1.7';
+    bootMsg.parentNode.appendChild(bootTipEl);
+  }
+  const now = Date.now();
+  if (bootTipEl && now - bootTipTimer > 4200) {
+    bootTipTimer = now;
+    bootTipEl.textContent = BOOT_TIPS[(Math.random() * BOOT_TIPS.length) | 0];
+  }
 };
 // THE BUILD RUNS IN A WORKER. The main thread stays perfectly responsive —
 // the boot screen animates, the tab never stutters — and the finished
@@ -345,15 +369,8 @@ addEventListener('keydown', (e) => {
   if (k === 'v') camYawWant = camYawWant ? 0 : Math.PI;   // latched look-back
   // THE HORN. Pedestrians scatter, traffic flinches aside, and nothing
   // about the race changes — it is purely for being a menace, as requested.
-  if (k === 'b' && track) {
-    audio.horn();
-    life.scare(car.state.x, car.state.z);
-    for (const t2 of traffic.cars) {
-      const dx = t2.c.root.position.x - car.state.x, dz = t2.c.root.position.z - car.state.z;
-      const ahead = dx * Math.sin(car.state.heading) + dz * Math.cos(car.state.heading);
-      if (ahead > 0 && ahead < 320 && Math.hypot(dx, dz) < 340) traffic.shove(t2);
-    }
-  }
+  if (k === 'b' && track) hornBlast();
+  if (k === 'p' && track && !swapping) { togglePhoto(); return; }
   // the NOS teaches itself the first time it is burned
   if (k === 'shift' && car.state.dyn > 0 && !savefile.dynTaught) {
     savefile.dynTaughtN = (savefile.dynTaughtN || 0) + 1;
@@ -377,6 +394,35 @@ addEventListener('keydown', (e) => {
     } else toggleGarage();
   }
 });
+// The horn, from either input. Pedestrians scatter, traffic flinches aside,
+// and nothing about the race changes — it is purely for being a menace.
+function hornBlast() {
+  audio.horn();
+  life.scare(car.state.x, car.state.z);
+  for (const t2 of traffic.cars) {
+    const dx = t2.c.root.position.x - car.state.x, dz = t2.c.root.position.z - car.state.z;
+    const ahead = dx * Math.sin(car.state.heading) + dz * Math.cos(car.state.heading);
+    if (ahead > 0 && ahead < 320 && Math.hypot(dx, dz) < 340) traffic.shove(t2);
+  }
+}
+
+// PHOTO MODE. P freezes the night and hands you the camera — orbit with
+// A/D, height with W/S, distance with Q/E. The HUD gets out of the shot.
+// The fireworks keep bursting, because that is what the shot is FOR.
+let photoMode = false, photoYaw = 0, photoUp = 44, photoDist = 190;
+const padPrev = { start: false, horn: false };
+function togglePhoto() {
+  photoMode = !photoMode;
+  document.body.classList.toggle('photo', photoMode);
+  const hint = document.getElementById('photoHint');
+  if (hint) hint.classList.toggle('hidden', !photoMode);
+  if (photoMode) {
+    photoYaw = car.state.heading + Math.PI * 0.82;
+    photoUp = 44; photoDist = 190;
+    audio.update(0, V_MAX, 0, 0, false);
+  }
+}
+
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
 addEventListener('wheel', (e) => {
@@ -520,7 +566,7 @@ let hitStop = 0, camPunch = 0, punchDir = 0, aberKick = 0, goPush = 0;
 let wasNos = false;
 // player settings, persisted on the save
 const settings = Object.assign(
-  { music: true, sfx: true, shake: true, streaks: true, fx: true,
+  { music: true, sfx: true, shake: true, streaks: true, fx: true, assist: false,
     musicVol: 0.8, sfxVol: 0.9 },
   savefile.settings || {});
 savefile.settings = settings;
@@ -777,12 +823,23 @@ function fillIntroCard() {
       + `<b>SPACE</b> drift banks a boost &middot; <b>SHIFT</b> burns the NOS &middot; `
       + `<b>ESC</b> pause</div>`
     : '';
+  // A DUEL is personal: the rival gets the card — name, bio, and their line
+  // — because the race you remember is the one somebody talked up first.
+  const duelBlock = (() => {
+    if (mode !== 'duel' || !duelRival) return '';
+    const rn = runnerByName(duelRival);
+    if (!rn) return '';
+    return `<div class="facts" style="margin-top:12px;color:#ffd9a0">DUEL &middot; ${rn.name}</div>`
+      + `<div class="facts" style="color:#8d97ab">${rn.bio}</div>`
+      + (rn.lines ? `<div class="facts" style="margin-top:6px;color:#c8d0de;font-style:italic">${rn.lines.intro}</div>` : '');
+  })();
   introCard.innerHTML = `<h1>${track.name}</h1><p>${track.spec.blurb}</p>`
     + `<div class="facts">${mode === 'tt' ? 'time trial — you and the ghost' : `${LAPS} laps`}`
     + ` &middot; ${Math.round(track.lapLength * 0.08)} m`
     + ` &middot; ${track.spec.wet ? 'rain' : 'clear'}`
     + (mode === 'tt' ? '' : ` &middot; field of ${track.spec.field || 6}`)
     + (bst ? ` &middot; best ${bst.toFixed(2)}s` : '') + `</div>`
+    + duelBlock
     + firstNight;
 }
 // One score per round per page life. finish() used to award GP points every
@@ -870,6 +927,9 @@ function finish() {
       savefile.money += 400;
       payline = `${paid + 400} earned &middot; the ladder moves: ${duelRival} beaten`;
     }
+    // the rival gets the last word either way
+    const rn = runnerByName(duelRival);
+    if (rn && rn.lines) payline += `<br><i style="color:#8d97ab">${rn.name}: ${won ? rn.lines.beaten : rn.lines.won}</i>`;
     hint = '<b>R</b> rematch &nbsp; <b>T</b> circuits';
   }
 
@@ -1069,6 +1129,7 @@ function applyTrack(spec, trk) {
   for (const mv of movers) scene.add(mv.g);
   flair = buildFlair(spec);
   if (flair) scene.add(flair.g);
+  audio.ambience(spec.ambience);
   {
     const zf = pathFrame();
     slickZones = (spec.slicks || []).map(sl => {
@@ -1317,8 +1378,16 @@ function buildMover(m) {
     tram.rotation.y = Math.atan2(nx, nz);
     tram.visible = false;
     g.add(tram);
+    let curHead = null;
     return {
       g,
+      // where the tram IS, for the rivals' obstacle reflex — two points cover
+      // its whole length
+      obstacles() {
+        if (curHead === null) return [];
+        const mk = (lat) => ({ x: cx + nx * lat, z: cz + nz * lat, r: 26 });
+        return [mk(curHead - 20), mk(curHead - TRAM_LEN + 20)];
+      },
       update(dt, t) {
         const P = 21, ph = t % P;
         const warning = ph > 6.5 && ph < 13;
@@ -1331,6 +1400,7 @@ function buildMover(m) {
           tram.visible = true;
           tram.position.set(cx + nx * headLat, roadY, cz + nz * headLat);
         } else tram.visible = false;
+        curHead = tram.visible ? headLat : null;
         if (!running || done) return;
         const d = (car.state.x - cx) * tx + (car.state.z - cz) * tz;
         const lat = (car.state.x - cx) * nx + (car.state.z - cz) * nz;
@@ -1570,6 +1640,9 @@ function buildMover(m) {
     const SPEED = 62;
     return {
       g,
+      obstacles() {
+        return vehicles.map(v => ({ x: v.g.position.x, z: v.g.position.z, r: v.hw + 8 }));
+      },
       update(dt, t) {
         const total = track.path.total;
         const head = (t * SPEED) % total;
@@ -1843,6 +1916,40 @@ function frame() {
 
 function tick() {
   if (swapping || !track) return;    // mid-swap the world does not exist
+  // GAMEPAD EDGES first, so Start can unpause and the horn works anywhere:
+  // held inputs are read in the main input block below
+  {
+    const gp2 = navigator.getGamepads && navigator.getGamepads()[0];
+    if (gp2 && gp2.connected) {
+      const st = !!(gp2.buttons[9] && gp2.buttons[9].pressed);
+      const hn = !!(gp2.buttons[1] && gp2.buttons[1].pressed);
+      if (st && !padPrev.start) setPaused(!paused);
+      if (hn && !padPrev.horn && !paused && !photoMode) hornBlast();
+      padPrev.start = st; padPrev.horn = hn;
+    }
+  }
+  if (photoMode) {                   // the night, held still for the camera
+    const pdt = Math.min(0.05, clock.getDelta());
+    if (keys.has('a') || keys.has('arrowleft')) photoYaw += pdt * 1.7;
+    if (keys.has('d') || keys.has('arrowright')) photoYaw -= pdt * 1.7;
+    if (keys.has('w') || keys.has('arrowup')) photoUp = Math.min(320, photoUp + pdt * 110);
+    if (keys.has('s') || keys.has('arrowdown')) photoUp = Math.max(8, photoUp - pdt * 110);
+    if (keys.has('q')) photoDist = Math.max(70, photoDist - pdt * 200);
+    if (keys.has('e')) photoDist = Math.min(760, photoDist + pdt * 200);
+    camera.position.set(
+      car.state.x + Math.sin(photoYaw) * photoDist,
+      car.state.yView + photoUp,
+      car.state.z + Math.cos(photoYaw) * photoDist);
+    camera.lookAt(car.state.x, car.state.yView + 14, car.state.z);
+    if (flair) flair.update(pdt);    // the fireworks keep bursting — that IS the shot
+    sky.position.copy(camera.position);
+    post.params.focus = Math.hypot(
+      camera.position.x - car.state.x,
+      camera.position.y - car.state.yView,
+      camera.position.z - car.state.z);          // the car is the subject
+    post.render(scene, camera, time);
+    return;
+  }
   if (paused) {                      // frozen, but still painted
     clock.getDelta();                // discard the paused time
     post.render(scene, camera, time);
@@ -1868,6 +1975,27 @@ function tick() {
     if (keys.has('s') || keys.has('arrowdown')) throttle = -1;
     if (keys.has('a') || keys.has('arrowleft')) steer = -1;
     if (keys.has('d') || keys.has('arrowright')) steer = 1;
+    // GAMEPAD, standard mapping: left stick steers ANALOG (finer than any
+    // key can), triggers are analog throttle and brake, A drifts, X or RB
+    // burns the NOS. Merged over the keyboard, never instead of it.
+    const gp2 = navigator.getGamepads && navigator.getGamepads()[0];
+    if (gp2 && gp2.connected) {
+      const ax = gp2.axes[0] || 0;
+      if (Math.abs(ax) > 0.15) steer = Math.sign(ax) * Math.min(1, (Math.abs(ax) - 0.15) / 0.8);
+      const rt = gp2.buttons[7] ? gp2.buttons[7].value : 0;
+      const lt = gp2.buttons[6] ? gp2.buttons[6].value : 0;
+      if (rt > 0.05) throttle = rt;
+      if (lt > 0.05) throttle = -lt;
+      if (gp2.buttons[0] && gp2.buttons[0].pressed) drift = true;
+      if ((gp2.buttons[2] && gp2.buttons[2].pressed) || (gp2.buttons[5] && gp2.buttons[5].pressed)) nosHeld = true;
+    }
+    // STEERING ASSIST: softens the wheel as the slip angle deepens, so
+    // holding full lock cannot spin the car — the newcomer's setting, off
+    // by default, and it costs pace (a capped slide banks less boost).
+    if (settings.assist) {
+      const sl = Math.abs(car.state.slip);
+      if (sl > 0.25) steer *= Math.max(0.45, 1 - (sl - 0.25) * 1.6);
+    }
   } else throttle = -0.6;
   // THE CEREMONY, then the lights. First arrival gets six seconds of the
   // circuit — a high reveal swooping down to the grid while the card says
@@ -2263,6 +2391,11 @@ function tick() {
   post.params.rain = wet * 0.22;
   scene.fog.density = SKY.fogD + wet * 0.00008;
 
+  {
+    const d2 = sectionAt(s).district;
+    audio.setSurface(d2 === 'pier' ? 'plank'
+      : (d2 === 'slagflats' || d2 === 'dunes') ? 'gravel' : null);
+  }
   audio.update(car.state.speed, V_MAX, throttle, car.state.slip, car.state.offRoad, car.state.nos);
   if (car.state.boost > 0 && !wasBoosting) {
     audio.kerb();
@@ -2280,7 +2413,15 @@ function tick() {
   }
   wasNos = car.state.nos;
   car.present(dt);
-  field.update(dt, LAPS, car.state);
+  // everything a rival should not drive through, in one list: the civilian
+  // traffic and whichever movers are on the road right now
+  const rvObstacles = [];
+  for (const tc of traffic.cars) {
+    const p = tc.c.root.position;
+    rvObstacles.push({ x: p.x, z: p.z, r: 24 });
+  }
+  for (const mv of movers) if (mv.obstacles) rvObstacles.push(...mv.obstacles());
+  field.update(dt, LAPS, car.state, rvObstacles);
   traffic.update(dt, track.path.total);
   // Rivals meet the traffic the way you do. They collide with every wall,
   // cone and skip through the same ground field as the player — but they were

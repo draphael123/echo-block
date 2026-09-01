@@ -154,6 +154,7 @@ export default {
   // out of a bright western sky -- which is what an old town at sunset looks
   // like and nothing like the Parade, on the same palette and the same props.
   sky: 'dusk',
+  ambience: 'wind',
   // The shortest lap in the city, so it gets an extra one. Three laps of 359
   // metres is over in ninety seconds; four makes it a race rather than a lap.
   laps: 4,

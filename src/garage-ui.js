@@ -122,17 +122,24 @@ export function mountGarage({ save, onChange, closeHint = 'G to close' } = {}) {
     row.appendChild(document.createElement('span'));
     partsEl.appendChild(row);
 
-    // The livery: a stripe scheme and the colour it is painted in. Free for
-    // the same reason the respray is — this is identity, not power.
+    // The livery: a stripe scheme and the colour it is painted in. The first
+    // scheme is free like the respray; the rest are DUEL PRIZES — beat rungs
+    // of the ladder and the paint shop remembers. Identity you earned beats
+    // identity you clicked.
+    const wins = (save.career && save.career.duelsWon ? save.career.duelsWon : []).length;
+    const LIVERY_REQ = [0, 0, 1, 3];             // duels won to unlock each scheme
+    const ACCENT_REQ = [0, 0, 0, 2, 5];          // gold at 2, neon at 5
     const lrow = document.createElement('div');
     lrow.className = 'row';
-    lrow.innerHTML = '<div><div class="nm">Livery</div><div class="bl">stripes, flashes, a contrast roof</div></div>';
+    lrow.innerHTML = '<div><div class="nm">Livery</div><div class="bl">stripes &amp; flashes — duel prizes past the first</div></div>';
     const lv = document.createElement('div');
     lv.className = 'liveries';
     LIVERIES.forEach((l) => {
       const b2 = document.createElement('button');
+      const locked = wins < (LIVERY_REQ[l.id] || 0);
       b2.className = 'lv' + (l.id === (save.livery || 0) ? ' on' : '');
-      b2.textContent = l.name;
+      b2.textContent = locked ? `${l.name} — ${LIVERY_REQ[l.id]} duel${LIVERY_REQ[l.id] > 1 ? 's' : ''}` : l.name;
+      b2.disabled = locked;
       b2.onclick = () => { save.livery = l.id; Garage.save(save); changed(); };
       lv.appendChild(b2);
     });
@@ -147,10 +154,12 @@ export function mountGarage({ save, onChange, closeHint = 'G to close' } = {}) {
       const asw = document.createElement('div');
       asw.className = 'swatches';
       ACCENTS.forEach((a, i) => {
+        const locked = wins < (ACCENT_REQ[i] || 0);
         const dot = document.createElement('button');
         dot.className = 'sw' + (i === (save.accent || 0) ? ' on' : '');
-        dot.style.background = a.swatch;
-        dot.title = a.name;
+        dot.style.background = locked ? '#1d2635' : a.swatch;
+        dot.title = locked ? `${a.name} — win ${ACCENT_REQ[i]} duels` : a.name;
+        dot.disabled = locked;
         dot.onclick = () => { save.accent = i; Garage.save(save); changed(); };
         asw.appendChild(dot);
       });

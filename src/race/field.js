@@ -39,25 +39,46 @@ const GRID_S = 80;              // where the back row sits
 // so they look different without driving different physics), and a pace
 // spread that finally puts somebody above 1.00: Vasey commits harder than
 // the policy would, and catching him is the game.
+// `lines` is the rival's voice: `intro` on the duel card, `beaten` when you
+// take the rung, `won` when they keep it. One sentence each — enough to make
+// a rematch personal, short enough that nobody skips it.
 const RUNNERS = [
   { name: 'Vasey', policy: 'racing', pace: 1.03, paint: 2, lineU: -26, chassis: 'vespid',
     parts: { engine: 2, tyres: 1, lamps: 1 },
-    bio: 'the one to beat. Commits to the dark harder than sense allows, and has the wedge to survive it.' },
+    bio: 'the one to beat. Commits to the dark harder than sense allows, and has the wedge to survive it.',
+    lines: { intro: '“Top of the ladder. Mind the drop.”',
+      beaten: '“…keep the lamps. You earned the dark.”',
+      won: '“Told you. The drop.”' } },
   { name: 'Ó Broin', policy: 'racing', pace: 1.00, paint: 5, lineU: 30, chassis: 'vespid',
     parts: { engine: 1, tyres: 2 },
-    bio: 'smooth as poured tar. Never seems fast until you check the gap.' },
+    bio: 'smooth as poured tar. Never seems fast until you check the gap.',
+    lines: { intro: '“I won’t touch you. I won’t need to.”',
+      beaten: '“Clean. I can respect clean.”',
+      won: '“Check the gap on the way home.”' } },
   { name: 'Hale', policy: 'cautious', pace: 1.00, paint: 1, lineU: -44, chassis: 'dray',
     parts: { lamps: 2, brakes: 1 },
-    bio: 'brakes later than anyone alive, in an estate, with the dog in the back.' },
+    bio: 'brakes later than anyone alive, in an estate, with the dog in the back.',
+    lines: { intro: '“Dog’s asleep in the back. Keep it tidy.”',
+      beaten: '“Fair. The dog never woke up, mind.”',
+      won: '“You braked first. You always will.”' } },
   { name: 'Ferreira', policy: 'racing', pace: 0.96, paint: 6, lineU: 48, chassis: 'kestrel',
     parts: { engine: 1 },
-    bio: 'all elbows in the kei. Will put it somewhere you did not know was a gap.' },
+    bio: 'all elbows in the kei. Will put it somewhere you did not know was a gap.',
+    lines: { intro: '“Every gap is mine. Even yours.”',
+      beaten: '“Ha! Okay. THAT gap was yours.”',
+      won: '“Saw you hesitate. Gaps don’t wait.”' } },
   { name: 'Pike', policy: 'cautious', pace: 0.97, paint: 4, lineU: 12, chassis: 'dray',
     parts: { tyres: 1, brakes: 1 },
-    bio: 'careful, patient, and there at the end when you have binned it.' },
+    bio: 'careful, patient, and there at the end when you have binned it.',
+    lines: { intro: '“Race your race. I’ll be there at the end.”',
+      beaten: '“There at the end. Just… behind you, this once.”',
+      won: '“You binned it. I was there.”' } },
   { name: 'Wren', policy: 'steady', pace: 0.92, paint: 7, lineU: -12, chassis: 'brindle',
     parts: {},
-    bio: 'the first rung. Everyone beat Wren once; Wren remembers all of them.' },
+    bio: 'the first rung. Everyone beat Wren once; Wren remembers all of them.',
+    lines: { intro: '“Everyone starts with me. Go on, then.”',
+      beaten: '“Added you to the list. It’s a long list.”',
+      won: '“Not tonight. The list stays short one name.”' } },
 ];
 export const runnerByName = (n) => RUNNERS.find(r => r.name === n) || null;
 
@@ -98,8 +119,8 @@ export function buildField(track, ground, buildCar,
     addTo(scene) { for (const c of cars) scene.add(c.root); },
     start() { for (const c of cars) c.start(); },
     reset() { for (const c of cars) c.reset(); },
-    update(dt, laps, player) {
-      for (const c of cars) c.update(dt, laps, player);
+    update(dt, laps, player, obstacles) {
+      for (const c of cars) c.update(dt, laps, player, obstacles);
       // Rivals have no car-vs-car collision and were driving through each
       // other. This is not physics, just manners — and it is RECTANGLE
       // manners now: the old 40-voxel circle matched the car's width but a

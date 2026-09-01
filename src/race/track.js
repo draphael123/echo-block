@@ -2403,6 +2403,8 @@ export async function buildTrack(trackSpec, onPhase) {
     }
   }
 
+  mark('scrub+ramps');
+
   // THE GROUNDING PASS. The relief made every circuit hillier, and a prop
   // anchored at one height on sloping ground floats at its downhill end —
   // which the playtest photographed, twice, from the driver's seat. So this
@@ -2420,32 +2422,51 @@ export async function buildTrack(trackSpec, onPhase) {
       'leafLitter', 'gravel', 'carBody', 'carPanel', 'carGlass', 'rubber', 'chrome']);
     const GLOW = new Set(['winWarm', 'winWarmDim', 'winTV', 'porchBulb', 'neonSign',
       'stripLight', 'sodium', 'tailLight', 'chillGlow', 'phoneGlow', 'headLight']);
+    const nb1 = frame(), nb2 = frame();
+    // TWO DENSITIES. The near band (to SET+80) is what the driver actually
+    // looks at, so it gets every-2-voxel coverage; the far band (to SET+320)
+    // reads at a distance where a 1-wide post is a sub-pixel, so it is swept
+    // at half density. This is most of what makes the pass affordable — the
+    // grounding is Map lookups, and the far band was two thirds of them.
+    const NEAR = SET + 80, FAR = SET + 320;
     for (let s = 0; s < path.total; s += 2) {
       const gy = GROUND_Y + elev(s);
-      // the band runs to SET+320 and samples every 2 voxels of u — the last
-      // pass stepped 3 and stopped at SET+200, so 1-wide posts slipped
-      // between probes and the far scenery line kept floating
-      for (const side of [-1, 1]) for (let u = ROAD_HALF + 4; u <= SET + 320; u += 2) {
-        path.place(s, side * u, gf);
-        const x = Math.round(gf.x), z = Math.round(gf.z);
+      // ONE frame per row, then march the normal by hand: place(s, u) is
+      // exactly centre + normal·u, and calling it per column was 1.4M frame
+      // computations — seconds of the build doing the same trig.
+      path.place(s, 0, gf);
+      path.place(s - 5, 0, nb1);
+      path.place(s + 5, 0, nb2);
+      const gyN1 = GROUND_Y + elev(s - 5), gyN2 = GROUND_Y + elev(s + 5);
+      const farRow = (s % 4) === 0;              // far band: every other row
+      for (const side of [-1, 1]) for (let u = ROAD_HALF + 4; u <= FAR; u += (u > NEAR ? 3 : 2)) {
+        if (u > NEAR && !farRow) break;          // this row only sweeps near
+        const su = side * u;
+        const x = Math.round(gf.x + gf.nx * su), z = Math.round(gf.z + gf.nz * su);
         // Find the REAL local floor, not the road's. The old pass assumed
         // ground at the road's own elevation, which is exactly wrong on
         // relief: a bank puts the floor above road level (the column was
         // skipped entirely), a dip puts it below (legs stopped mid-air,
         // still floating). baseK = the first air cell above the local floor.
-        let baseK;
+        let baseK, lowest = null, mat = null;
         if (w.get(x, gy, z) || w.get(x, gy - 1, z)) {
           baseK = 1;
           while (baseK < 30 && w.get(x, gy + baseK, z)) baseK++;
           if (baseK >= 30) continue;             // solid wall — nothing hangs here
+          for (let k = baseK; k <= baseK + 30; k++) { const v = w.get(x, gy + k, z); if (v) { lowest = k; mat = v; break; } }
+          if (lowest === null || SKIP.has(mat)) continue;
         } else {
+          // FAST PATH ordering: find the prop FIRST (an upward scan that
+          // aborts at the first solid), and only descend for the true floor
+          // when something was actually found — the descent used to run 36
+          // deep on every empty column of every dip, which was most of the
+          // pass's cost on relief circuits.
+          for (let k = 1; k <= 30; k++) { const v = w.get(x, gy + k, z); if (v) { lowest = k; mat = v; break; } }
+          if (lowest === null || SKIP.has(mat)) continue;
           baseK = 0;
           while (baseK > -36 && !w.get(x, gy + baseK - 1, z)) baseK--;
           if (baseK <= -36) continue;            // a true chasm — legs would be towers
         }
-        let lowest = null, mat = null;
-        for (let k = baseK; k <= baseK + 30; k++) { const v = w.get(x, gy + k, z); if (v) { lowest = k; mat = v; break; } }
-        if (lowest === null || SKIP.has(mat)) continue;
         const hang = lowest - baseK;             // true air under the prop
         if (hang < 2) continue;
         // how much MASS sits on this hang: a pipe run is 3 thick, a building
@@ -2458,10 +2479,8 @@ export async function buildTrack(trackSpec, onPhase) {
           // solid at the same height, or this is an isolated floater
           if (thick <= 3 && hang >= 8) {
             let runs = false;
-            for (const ds of [-5, 5]) {
-              path.place(s + ds, side * u, gf);
-              const x2 = Math.round(gf.x), z2 = Math.round(gf.z);
-              const gy2 = GROUND_Y + elev(s + ds);
+            for (const [nb, gy2] of [[nb1, gyN1], [nb2, gyN2]]) {
+              const x2 = Math.round(nb.x + nb.nx * su), z2 = Math.round(nb.z + nb.nz * su);
               for (let k = lowest - 2; k <= lowest + 2; k++) {
                 if (w.get(x2, gy2 + k, z2)) { runs = true; break; }
               }
@@ -2488,6 +2507,7 @@ export async function buildTrack(trackSpec, onPhase) {
     if (floats > 30) console.warn('track: grounding — ' + floats
       + ' columns still hang above the fill window: ' + JSON.stringify(byDist));
   }
+  mark('grounding');
 
 
   const group = new THREE.Group();

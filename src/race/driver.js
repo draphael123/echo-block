@@ -61,7 +61,13 @@ export function createDriver(track, opts = {}) {
   // `lineU` is the driver's own lane preference — the offset it drives when
   // nothing needs dodging. Six rivals all defaulting to the centreline drove
   // nose-to-tail in a train, which is why every mirror looked the same.
-  const { policy = 'racing', frac = 0.8, pace = 1, startS = 80, lineU = 0 } = opts;
+  // `perception` widens hazard SPOTTING only, not speed: a rival has lapped
+  // this circuit a hundred nights and knows where the barriers are, so it
+  // starts its dodge earlier than its lamps alone would allow. The player's
+  // sight economy is untouched — this is the difference between knowing the
+  // road and reading it.
+  const { policy = 'racing', frac = 0.8, pace = 1, startS = 80, lineU = 0,
+    perception = 1 } = opts;
   const path = track.path;
   const pick = policy === 'steady' ? POLICIES.steady(frac) : POLICIES[policy];
 
@@ -89,7 +95,7 @@ export function createDriver(track, opts = {}) {
     prevS = loc.s;
     s = loc.s;
 
-    const sight = Math.max(car.sightRange(), isLit(s) ? LIT_SIGHT : 0);
+    const sight = Math.max(car.sightRange(), isLit(s) ? LIT_SIGHT : 0) * perception;
     for (const h of track.hazards) {
       let ahead = h.s - s;
       if (ahead < -path.total / 2) ahead += path.total;
