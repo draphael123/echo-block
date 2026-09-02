@@ -145,6 +145,9 @@ export default {
   // The wet stays: rain off the sea is the circuit's grip identity, and the
   // funfair's neon has a dark sky to burn against.
   sky: 'pier',
+  // wet teal stock: highs washed toward sea-green, deep blue shadows, and
+  // the bloom up because every light on the front is doubled in the rain
+  grade: { highTint: [0.96, 1.05, 1.02], shadowTint: [0.75, 0.95, 1.15], bloom: 1.06, grain: 0.033 },
   ambience: 'surf',
   music: './music/docks.mp3',       // Floating Cities — K. MacLeod, CC BY 4.0
   laps: 3,

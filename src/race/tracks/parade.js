@@ -159,11 +159,17 @@ export default {
   // the high street in the outside lane, all race long. The name, kept.
   moving: [{ kind: 'tram', s: 4550 }, { kind: 'parade', s: 700, u: 195, from: -80, to: 1580 }],
   // fireworks over the hook and the top — a festival town racing at night
-  flair: { fireworks: [{ s: 3400, u: 340 }, { s: 5170, u: -320 }] },
+  flair: {
+    fireworks: [{ s: 3400, u: 340 }, { s: 5170, u: -320 }],
+    confetti: { from: 20, to: 1580, u: 195 },    // loosed over the procession
+  },
 
   // 11pm. This is the circuit the sight mechanic belongs to, so its dark has
   // to be genuinely dark; every other track moved off midnight, this one owns it.
   sky: 'midnight',
+  // festival stock: amber highs pushed a touch, bloom up for the bunting
+  // and fireworks — the warmest negative in the box
+  grade: { bloom: 0.98, highTint: [1.14, 1.00, 0.84], grain: 0.030 },
   ambience: 'crowd',
   music: './music/parade.mp3',      // Voxel Revolution — K. MacLeod, CC BY 4.0
   laps: 3,

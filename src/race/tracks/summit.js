@@ -101,15 +101,19 @@ export default {
   flair: {
     lighthouse: { s: 4200, u: -340 },
     lanterns: [4680],
+    snow: true,                    // the storm rides with you, all lap long
   },
 
   sky: 'moonhigh',
+  // silver stock: thin-air clarity — cold highs, steel-blue shadows, the
+  // cleanest grain in the game and the least bloom. Altitude looks like this.
+  grade: { exposure: 1.50, highTint: [0.99, 1.03, 1.10], shadowTint: [0.70, 0.87, 1.16], grain: 0.022, bloom: 0.72 },
   ambience: 'wind',
   music: './music/summit.mp3',     // Frozen Star — K. MacLeod, CC BY 4.0
   laps: 2,
 
   landmarks: { waterTower: [-260, 210], pylons: 5 },
-  surface: 'street',
+  surface: 'alpine',
   lampColor: '#bcd2ff',            // cold high-altitude white, not the town's amber
   pads: [{ s: 900 }, { s: 5200 }],
   ramps: [{ s: 6100, u: 60 }],     // the scree's launch — downhill, flat out

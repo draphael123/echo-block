@@ -234,6 +234,14 @@ function ribbon(w, path) {
           if (a > half / 3 - 2 && a < half / 3 + 1 && (s % 96) < 52) c = 'roadLine';
           if (a > (half * 2) / 3 - 2 && a < (half * 2) / 3 + 1 && (s % 96) < 52) c = 'roadLine';
           if (a < 2 && (s % 96) < 52) c = 'roadLine';
+        } else if (surf === 'alpine') {
+          // the mountain's road: frost-patched, pale, no paint to speak of —
+          // and above the snow line the wind drags white spindrift across it,
+          // thicker the higher the road climbs
+          c = r > 0.82 ? 'concreteOld' : (r < 0.12 ? 'asphaltPatch' : 'asphaltWorn');
+          if (a > half - 3) c = 'concreteOld';
+          if (gy > 88 && hash3(x, 7, z) > 0.88 - (gy - 88) * 0.005) c = 'paper';
+          if (a < 2 && (s % 90) < 30) c = 'roadLine';             // sparse dashes
         } else {
           c = r > 0.86 ? 'asphaltWorn' : (r < 0.10 ? 'asphaltPatch' : 'asphalt');
           if (a > half - 3) c = 'asphaltPatch';

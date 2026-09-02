@@ -9,7 +9,7 @@ import { buildSky } from '../lights.js';
 import { skyOf } from './skies.js';
 import { Post } from '../post.js';
 import { Ground } from '../walk.js';
-import { buildTrack, hydrateTrack, sectionAt, safeSpot, lifeSpots, ROAD_HALF, SET } from './track.js';
+import { buildTrack, hydrateTrack, sectionAt, safeSpot, lifeSpots, ROAD_HALF, SET, SECTIONS } from './track.js';
 import { TRACKS, pickTrack, chooseTrack, byId } from './tracks/index.js';
 import { buildCar, V_MAX, BODIES, chassisOf } from './car.js';
 import { buildLife, buildTraffic } from './life.js';
@@ -750,6 +750,141 @@ function flairWelders(list) {
   return { g, update };
 }
 
+// SNOW, for the mountain: a box of flakes that rides with the camera and
+// wraps — the storm is wherever you are, which is what driving in one is.
+function flairSnow() {
+  const N = 320, BOX = 860;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(N * 3);
+  const drift = new Float32Array(N * 2);
+  for (let i = 0; i < N; i++) {
+    pos[i * 3] = (Math.random() - 0.5) * BOX;
+    pos[i * 3 + 1] = Math.random() * 420;
+    pos[i * 3 + 2] = (Math.random() - 0.5) * BOX;
+    drift[i * 2] = 14 + Math.random() * 30;      // fall speed
+    drift[i * 2 + 1] = Math.random() * Math.PI * 2;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+    color: 0xdfe8f4, size: 2.6, transparent: true, opacity: 0.65,
+    depthWrite: false, toneMapped: false }));
+  pts.frustumCulled = false;
+  const g = new THREE.Group();
+  g.add(pts);
+  let t = 0;
+  function update(dt) {
+    t += dt;
+    const cx = camera.position.x, cz = camera.position.z;
+    const baseY = car.state.yView;
+    for (let i = 0; i < N; i++) {
+      let y = pos[i * 3 + 1] - drift[i * 2] * dt;
+      pos[i * 3] += Math.sin(t * 0.8 + drift[i * 2 + 1]) * 9 * dt;   // the wind worries it
+      if (y < baseY - 20) y = baseY + 380 + Math.random() * 40;
+      pos[i * 3 + 1] = y;
+      // wrap the box around the camera so the storm never falls behind
+      let dx = pos[i * 3] - cx; if (dx > BOX / 2) pos[i * 3] -= BOX; else if (dx < -BOX / 2) pos[i * 3] += BOX;
+      let dz = pos[i * 3 + 2] - cz; if (dz > BOX / 2) pos[i * 3 + 2] -= BOX; else if (dz < -BOX / 2) pos[i * 3 + 2] += BOX;
+    }
+    geo.attributes.position.needsUpdate = true;
+  }
+  return { g, update };
+}
+
+// EMBERS, for the works: sparks rising off a named district's legs — find
+// the sections at build time, stand a column of drifting orange over each.
+function flairEmbers(districtName) {
+  const secs = SECTIONS.filter(sc => sc.district === districtName);
+  if (!secs.length) return { g: new THREE.Group(), update: null };
+  const f = pathFrame();
+  const anchors = [];
+  for (const sc of secs) {
+    const mid = (sc.from + sc.to) / 2;
+    for (const side of [-1, 1]) {
+      track.path.place(mid, side * (SET + 60), f);
+      anchors.push({ x: f.x, z: f.z, y: track.elev(mid) + 6 });
+    }
+  }
+  const N_PER = 26;
+  const N = anchors.length * N_PER;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(N * 3);
+  const col = new Float32Array(N * 3);
+  const life = new Float32Array(N);
+  for (let i = 0; i < N; i++) life[i] = Math.random() * 4;
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+    size: 3.2, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending,
+    depthWrite: false, toneMapped: false }));
+  pts.frustumCulled = false;
+  const g = new THREE.Group();
+  g.add(pts);
+  function update(dt) {
+    for (let i = 0; i < N; i++) {
+      life[i] += dt;
+      if (life[i] > 4) {
+        life[i] = 0;
+        const a = anchors[(i / N_PER) | 0];
+        pos[i * 3] = a.x + (Math.random() - 0.5) * 60;
+        pos[i * 3 + 1] = a.y;
+        pos[i * 3 + 2] = a.z + (Math.random() - 0.5) * 60;
+      }
+      pos[i * 3 + 1] += (30 + (i % 7) * 4) * dt;                 // rising heat
+      pos[i * 3] += Math.sin(life[i] * 3 + i) * 6 * dt;
+      const k = Math.max(0, 1 - life[i] / 4);
+      const tw = k * (0.4 + 0.6 * Math.abs(Math.sin(life[i] * 9 + i)));
+      col[i * 3] = 1.0 * tw; col[i * 3 + 1] = 0.45 * tw; col[i * 3 + 2] = 0.08 * tw;
+    }
+    geo.attributes.position.needsUpdate = true;
+    geo.attributes.color.needsUpdate = true;
+  }
+  return { g, update };
+}
+
+// CONFETTI, for the parade: flecks loosed over the procession's corridor,
+// falling slower than anything real falls, because festivals do that.
+function flairConfetti(cfg) {
+  const f = pathFrame();
+  const N = 150;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(N * 3);
+  const col = new Float32Array(N * 3);
+  const seed = new Float32Array(N);
+  const PAL = [[1, 0.75, 0.4], [1, 0.5, 0.5], [0.55, 0.85, 1], [0.8, 1, 0.6]];
+  for (let i = 0; i < N; i++) {
+    const s = cfg.from + Math.random() * (cfg.to - cfg.from);
+    track.path.place(s, cfg.u + (Math.random() - 0.5) * 140, f);
+    pos[i * 3] = f.x;
+    pos[i * 3 + 1] = track.elev(s) + 12 + Math.random() * 80;
+    pos[i * 3 + 2] = f.z;
+    seed[i] = Math.random() * Math.PI * 2;
+    const c = PAL[i % PAL.length];
+    col[i * 3] = c[0]; col[i * 3 + 1] = c[1]; col[i * 3 + 2] = c[2];
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+    size: 2.4, vertexColors: true, transparent: true, opacity: 0.85,
+    depthWrite: false, toneMapped: false }));
+  pts.frustumCulled = false;
+  const g = new THREE.Group();
+  g.add(pts);
+  const floorY = [];
+  for (let i = 0; i < N; i++) floorY.push(pos[i * 3 + 1] - 100);
+  let t = 0;
+  function update(dt) {
+    t += dt;
+    for (let i = 0; i < N; i++) {
+      let y = pos[i * 3 + 1] - (6 + (i % 5)) * dt;               // festival gravity
+      pos[i * 3] += Math.sin(t * 1.4 + seed[i]) * 7 * dt;        // see-sawing down
+      if (y < floorY[i]) y = floorY[i] + 95 + Math.random() * 20;
+      pos[i * 3 + 1] = y;
+    }
+    geo.attributes.position.needsUpdate = true;
+  }
+  return { g, update };
+}
+
 function buildFlair(spec) {
   const fl = spec.flair;
   if (!fl) return null;
@@ -758,6 +893,9 @@ function buildFlair(spec) {
   if (fl.lanterns) parts.push(flairLanterns(fl.lanterns));
   if (fl.lighthouse) parts.push(flairLighthouse(fl.lighthouse));
   if (fl.welders) parts.push(flairWelders(fl.welders));
+  if (fl.snow) parts.push(flairSnow());
+  if (fl.embers) parts.push(flairEmbers(fl.embers));
+  if (fl.confetti) parts.push(flairConfetti(fl.confetti));
   if (!parts.length) return null;
   const g = new THREE.Group();
   g.name = 'flair';
@@ -1053,8 +1191,20 @@ function applySky(spec) {
   hemi.intensity = SKY.hemi;
   moon.color.set(SKY.key);
   moon.intensity = SKY.keyI;
-  post.params.exposure = SKY.exposure || BASE_EXPOSURE;
+  // THE FILM STOCK. Five circuits were being developed on one negative —
+  // same split-tone, same grain, same bloom — which is why different worlds
+  // still shared a face. Each spec may now carry a `grade`; defaults are
+  // restored first so a circuit without one goes back to neutral.
+  const g = spec.grade || {};
+  post.params.exposure = g.exposure ?? (SKY.exposure || BASE_EXPOSURE);
   post.params.threshold = SKY.threshold || BASE_THRESHOLD;
+  post.params.rolloff = g.rolloff ?? 3.4;
+  post.params.grain = g.grain ?? 0.030;
+  post.params.bloom = g.bloom ?? 0.85;
+  if (g.shadowTint) post.params.shadowTint.setRGB(g.shadowTint[0], g.shadowTint[1], g.shadowTint[2]);
+  else post.params.shadowTint.setRGB(0.80, 0.93, 1.10);
+  if (g.highTint) post.params.highTint.setRGB(g.highTint[0], g.highTint[1], g.highTint[2]);
+  else post.params.highTint.setRGB(1.10, 1.00, 0.88);
 }
 
 function applyTrack(spec, trk) {

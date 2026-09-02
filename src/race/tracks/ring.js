@@ -143,11 +143,17 @@ export default {
   // bypass: you catch it every lap somewhere new. The Works' parade.
   moving: [{ kind: 'crossing', s: 5900 }, { kind: 'convoy', s: 0, u: 150 }],
   // arc welders stuttering in the yards — the only cold light on the circuit
-  flair: { welders: [{ s: 2150, u: -230 }, { s: 5050, u: 240 }, { s: 7300, u: -260 }] },
+  flair: {
+    welders: [{ s: 2150, u: -230 }, { s: 5050, u: 240 }, { s: 7300, u: -260 }],
+    embers: 'tankfarm',            // sparks rising off the flare stacks' legs
+  },
   // Sodium, in the small hours. Everything orange except the sky, and the
   // thickest fog in the city -- which does the same job as the crests do:
   // it takes the distance away from you.
   sky: 'sodium',
+  // the sodium bath: everything bright goes orange, the shadows barely stay
+  // blue, hard rolloff, the dirtiest grain — industry's own colour of night
+  grade: { highTint: [1.20, 1.00, 0.70], shadowTint: [0.86, 0.88, 1.00], grain: 0.042, rolloff: 3.0, bloom: 0.92, exposure: 1.36 },
   ambience: 'industry',
   music: './music/ring.mp3',        // Neon Laser Horizon — K. MacLeod, CC BY 4.0
   // The longest lap in the city at 698 metres — but also the fastest: two laps

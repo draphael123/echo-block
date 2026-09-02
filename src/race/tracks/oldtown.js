@@ -154,6 +154,9 @@ export default {
   // out of a bright western sky -- which is what an old town at sunset looks
   // like and nothing like the Parade, on the same palette and the same props.
   sky: 'dusk',
+  // golden-hour stock: gold in the highs, violet-blue in the shadows, and
+  // older grain — the town at sunset shot on expired film
+  grade: { highTint: [1.17, 0.98, 0.78], shadowTint: [0.74, 0.86, 1.10], grain: 0.038, bloom: 0.78 },
   ambience: 'wind',
   music: './music/oldtown.mp3',     // Deep Haze — K. MacLeod, CC BY 4.0
   // The shortest lap in the city, so it gets an extra one. Three laps of 359
