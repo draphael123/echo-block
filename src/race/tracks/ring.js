@@ -28,14 +28,17 @@ export default {
   lapMetres: 698,
   road: { half: HALF, kerb: 6, pave: 22, verge: 26, apron: 8 },
 
+  // STRETCHED (playtest, 2026-09-01): the lap gains ~2.4km of road — a
+  // bypass should be the LONG circuit, and the extra length is where the
+  // new industry lives. Anchors below are re-measured against the rebuild.
   shape: {
     free: [0, 4],
     ops: [
       { straight: 0 }, { arc: -60, r: 900 },
-      { straight: 700 }, { arc: -40, r: 900 },
+      { straight: 1000 }, { arc: -40, r: 900 },
       { straight: 0 }, { arc: -95, r: 520 },
-      { straight: 1500 }, { arc: -75, r: 700 },
-      { straight: 1000 }, { arc: -90, r: 460 },
+      { straight: 1900 }, { arc: -75, r: 700 },
+      { straight: 1300 }, { arc: -90, r: 460 },
     ],
   },
 
@@ -146,6 +149,7 @@ export default {
   flair: {
     welders: [{ s: 2150, u: -230 }, { s: 5050, u: 240 }, { s: 7300, u: -260 }],
     embers: 'tankfarm',            // sparks rising off the flare stacks' legs
+    slagpour: 'slagflats',         // the ladle tips on a cycle — molten light
   },
   // Sodium, in the small hours. Everything orange except the sky, and the
   // thickest fog in the city -- which does the same job as the crests do:

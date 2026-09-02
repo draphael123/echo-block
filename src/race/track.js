@@ -240,7 +240,7 @@ function ribbon(w, path) {
           // thicker the higher the road climbs
           c = r > 0.82 ? 'concreteOld' : (r < 0.12 ? 'asphaltPatch' : 'asphaltWorn');
           if (a > half - 3) c = 'concreteOld';
-          if (gy > 88 && hash3(x, 7, z) > 0.88 - (gy - 88) * 0.005) c = 'paper';
+          if (gy > 150 && hash3(x, 7, z) > 0.9 - (gy - 150) * 0.004) c = 'paper';
           if (a < 2 && (s % 90) < 30) c = 'roadLine';             // sparse dashes
         } else {
           c = r > 0.86 ? 'asphaltWorn' : (r < 0.10 ? 'asphaltPatch' : 'asphalt');
@@ -264,17 +264,32 @@ function ribbon(w, path) {
         for (let y = from; y <= GROUND_Y; y++)
           w.set(x, y + gy, z, y === GROUND_Y ? 'curb' : 'concreteOld');
       } else if (a <= half + KERB + PAVE) {            // pavement
-        const c = ((x >> 3) + (z >> 3)) % 2 ? 'concrete' : 'concreteOld';
+        // THE VERGES WEAR THE WORLD TOO. spec.ground picks the earth the
+        // road sits in: snow has no pavement (packed white with treads of
+        // grit), a seafront runs on shingle, the town keeps its slabs.
+        const gk = SPEC.ground || 'grass';
+        const c = gk === 'snow' ? (hash3(x, 3, z) > 0.8 ? 'concreteOld' : 'paper')
+          : gk === 'sand' ? (hash3(x, 3, z) > 0.6 ? 'grassDry' : 'concreteOld')
+            : (((x >> 3) + (z >> 3)) % 2 ? 'concrete' : 'concreteOld');
         w.set(x, GROUND_Y + gy, z, c);
         if (riser !== null) w.set(x, GROUND_Y + riser, z, c);
       } else if (a <= half + KERB + PAVE + VERGE) {
-        const c = r > 0.84 ? 'grassDry' : 'grass';
+        const gk = SPEC.ground || 'grass';
+        const c = gk === 'snow' ? (r > 0.9 ? 'dirt' : 'paper')
+          : gk === 'sand' ? (r > 0.8 ? 'dirt' : 'grassDry')
+            : gk === 'ice' ? (r > 0.9 ? 'moonGlass' : 'glassDark')
+              : (r > 0.84 ? 'grassDry' : 'grass');
         w.set(x, GROUND_Y + gy, z, c);
         if (riser !== null) w.set(x, GROUND_Y + riser, z, c);
       } else {
         if ((x + z) % 4) continue;
-        w.set(x, GROUND_Y + gy, z, lit ? 'grass' : 'leafDark');
-        if (riser !== null) w.set(x, GROUND_Y + riser, z, lit ? 'grass' : 'leafDark');
+        const gk = SPEC.ground || 'grass';
+        const c = gk === 'snow' ? (r > 0.94 ? 'grassDry' : 'paper')
+          : gk === 'sand' ? (r > 0.9 ? 'dirt' : 'grassDry')
+            : gk === 'ice' ? (r > 0.96 ? 'moonGlass' : 'glassDark')
+              : (lit ? 'grass' : 'leafDark');
+        w.set(x, GROUND_Y + gy, z, c);
+        if (riser !== null) w.set(x, GROUND_Y + riser, z, c);
       }
     }
     gyPrev = gy;
@@ -1620,12 +1635,87 @@ const DISTRICT = {
   },
 
   // ============================================================ THE SUMMIT
+  // The open white: snow the ribbon already painted, plus the things that
+  // live in it — SNOWMEN (somebody climbed up here to build them, which is
+  // the most mountain-town thing there is), blue ice pillars catching the
+  // moon, drift mounds, and fence lines wearing snow caps.
+  snowfield(c, sec) {
+    // EVERY placement asks the whole path first: on stacked switchbacks a
+    // roadside prop of one leg lands square on the leg above it, and 91
+    // wedges in one test lap is what that looks like from a car.
+    // snowmen, in twos and threes, watching the race
+    c.run(sec.from, sec.to, PAVE_BACK + 26, 120, (x, z, ff, gy, s) => {
+      if (nearRoad(c.path, x, z, ROAD_HALF + 14)) return;
+      const n2 = 1 + Math.round(hash3(Math.round(s), 1, 7) * 2);
+      for (let i = 0; i < n2; i++) {
+        const sx = x + Math.round((hash3(i, s, 3) - 0.5) * 26);
+        const sz = z + Math.round((hash3(s, i, 4) - 0.5) * 26);
+        c.w.box(sx - 2, gy, sz - 2, 5, 5, 5, 'paper');           // the body
+        c.w.box(sx - 1, gy + 5, sz - 1, 3, 3, 3, 'paper');       // the head
+        c.w.set(sx, gy + 6, sz + 2, 'coneOrange');               // the nose
+        c.w.box(sx - 1, gy + 8, sz - 1, 3, 1, 3, 'metalDark');   // the hat brim
+        c.w.box(sx, gy + 9, sz, 1, 2, 1, 'metalDark');           // the hat
+      }
+    });
+    // ice pillars: blue-glass teeth the frost grew, lit faintly from inside
+    for (const side of [-1, 1])
+      c.run(sec.from + 40, sec.to, side * (SET + 30), 90, (x, z, ff, gy, s) => {
+        if (nearRoad(c.path, x, z, ROAD_HALF + 20)) return;
+        const h = 8 + Math.round(hash3(Math.round(s), side, 9) * 14);
+        c.w.box(x, gy, z, 3, h, 3, 'glassDark');
+        c.w.box(x + 1, gy + 2, z + 1, 1, h - 4, 1, 'chillGlow');
+        c.w.set(x + 1, gy + h, z + 1, 'moonGlass');
+      });
+    // drift mounds, the wind's own architecture
+    for (const side of [-1, 1])
+      c.run(sec.from, sec.to, side * (SET + 70), 34, (x, z, ff, gy, s) => {
+        if (nearRoad(c.path, x, z, ROAD_HALF + 26)) return;
+        const rad = 5 + Math.round(hash3(Math.round(s), side, 11) * 7);
+        for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
+          const dd = dx * dx + dz * dz;
+          if (dd <= rad * rad)
+            c.w.set(x + dx, gy + (dd < rad * rad / 3 ? 1 : 0), z + dz, 'paper');
+        }
+      });
+    // a fence line wearing its snow cap
+    c.run(sec.from, sec.to, -(PAVE_BACK + 14), 12, (x, z, ff, gy) => {
+      if (nearRoad(c.path, x, z, ROAD_HALF + 8)) return;
+      c.w.box(x, gy, z, 1, 5, 1, 'trunk');
+      c.w.set(x, gy + 5, z, 'paper');
+    });
+  },
+
+  // Snow-capped pines: trunk, dark boughs stepping in, white on every
+  // shoulder — the tree the whole mountain is wearing.
+  firs(c, sec) {
+    for (const side of [-1, 1])
+      c.run(sec.from, sec.to, side * (SET + 26), 44, (x, z, ff, gy, s) => {
+        if (nearRoad(c.path, x, z, ROAD_HALF + 20)) return;
+        const h = 22 + Math.round(hash3(Math.round(s), side, 13) * 14);
+        c.w.box(x, gy, z, 2, 6, 2, 'trunk');
+        let rad = 7;
+        for (let ty = 6; ty < h; ty += 4) {
+          c.w.box(x - rad + 1, gy + ty, z - rad + 1, rad * 2 - 1, 3, rad * 2 - 1, 'leafDark');
+          c.w.box(x - rad + 1, gy + ty + 3, z - rad + 1, rad * 2 - 1, 1, rad * 2 - 1, 'paper');
+          rad = Math.max(2, rad - 2);
+        }
+        c.w.box(x, gy + h, z, 2, 3, 2, 'paper');                 // the white tip
+      });
+    // snow poles pacing the road through the trees
+    c.run(sec.from, sec.to, ROAD_HALF + KERB + 18, 40, (x, z, ff, gy) => {
+      if (nearRoad(c.path, x, z, ROAD_HALF + 6)) return;
+      c.w.box(x, gy, z, 1, 10, 1, 'metalDark');
+      c.w.set(x, gy + 10, z, 'plasticRed');
+    });
+  },
+
   // The mountain road's own wall: a rock face leaning over the inside of
   // the carriageway (the sea-cliff's bones with nobody's sea below it),
   // a crash barrier riding the drop side, and snow poles pacing the verge
   // beyond it — the three things a real mountain road is made of.
   crag(c, sec) {
     c.run(sec.from, sec.to, -(PAVE_BACK + 8), 2, (x, z, ff, gy, s) => {
+      if (nearRoad(c.path, x, z, ROAD_HALF + 8)) return;
       const h = 40 + Math.round(hash3(Math.round(s), 21, 3) * 26);
       for (let d = 0; d < h; d++) {
         const lean = Math.round(d * 0.3);
@@ -1637,6 +1727,7 @@ const DISTRICT = {
     // the barrier: posts every 12, a doubled rail — the one thing between
     // the racing line and the valley's lights
     c.run(sec.from, sec.to, ROAD_HALF + KERB + 6, 1, (x, z, ff, gy, s) => {
+      if (nearRoad(c.path, x, z, ROAD_HALF + 4)) return;
       const i = Math.round(s);
       if (i % 12 === 0) c.w.box(x, gy, z, 1, 6, 1, 'metalDark');
       c.w.set(x, gy + 5, z, 'metal');
@@ -1645,6 +1736,7 @@ const DISTRICT = {
     // snow poles: red-capped, spaced wide, the road's edge when the white
     // comes down — and at night, the rhythm that says how fast you are
     c.run(sec.from, sec.to, ROAD_HALF + KERB + 24, 34, (x, z, ff, gy) => {
+      if (nearRoad(c.path, x, z, ROAD_HALF + 8)) return;
       c.w.box(x, gy, z, 1, 11, 1, 'metalDark');
       c.w.set(x, gy + 11, z, 'plasticRed');
     });
@@ -1676,15 +1768,51 @@ const DISTRICT = {
   // to match.
   pipeline(c, sec) {
     bankRun(c, sec, 30);
-    // the rack: three pipes riding cradles along the off side
-    c.run(sec.from, sec.to, -(SET + 36), 2, (x, z, ff, gy, s) => {
-      const i = Math.round(s);
-      for (const [ph, pc] of [[10, 'metal'], [15, 'metalDark'], [20, 'rust']])
-        c.w.box(x, gy + ph, z, 2, 3, 2, pc);
-      if (i % 40 < 2) c.w.box(x - 1, gy, z - 1, 4, 24, 4, 'metalDark');
-    });
-    // pipe bridges instead of sign gantries
-    for (let s = sec.from + 300; s < sec.to - 200; s += 700) {
+    // the rack: three pipes riding cradles along BOTH sides now — industry
+    // you drive between, not industry on the horizon
+    for (const side of [-1, 1])
+      c.run(sec.from, sec.to, side * (SET + 36), 2, (x, z, ff, gy, s) => {
+        const i = Math.round(s);
+        for (const [ph, pc] of [[10, 'metal'], [15, 'metalDark'], [20, 'rust']])
+          c.w.box(x, gy + ph, z, 2, 3, 2, pc);
+        if (i % 40 < 2) c.w.box(x - 1, gy, z - 1, 4, 24, 4, 'metalDark');
+      });
+    // PROCESS TOWERS at the kerbside: distillation columns with catwalk
+    // rings and a blinking top — the refinery leaning over the racing line
+    for (const side of [-1, 1])
+      for (let s = sec.from + 200; s < sec.to - 150; s += 520)
+        c.put(s + (side > 0 ? 260 : 0), side * (PAVE_BACK + 44), (x, z, ff, gy) => {
+          if (nearRoad(c.path, x, z, ROAD_HALF + 20)) return;
+          const h = 64 + Math.round(hash3(x, 1, z) * 30);
+          for (let k = 0; k < h; k++) {
+            const r2 = 5;
+            for (let dx = -r2; dx <= r2; dx++) for (let dz = -r2; dz <= r2; dz++)
+              if (dx * dx + dz * dz <= r2 * r2)
+                c.w.set(x + dx, gy + k, z + dz, (k % 22) < 2 ? 'rust' : 'metal');
+          }
+          for (const k of [18, 40]) {
+            c.w.box(x - 7, gy + k, z - 7, 15, 1, 15, 'metalDark');   // catwalks
+          }
+          c.w.box(x - 1, gy + h, z - 1, 3, 6, 3, 'metalDark');
+          c.w.set(x, gy + h + 6, z, 'tailLight');
+        });
+    // BRICK CHIMNEYS pushing smoke into the sodium sky (anchors feed the
+    // live plume system) — the skyline the circuit was missing
+    for (let s = sec.from + 420; s < sec.to - 200; s += 860)
+      c.put(s, -(PAVE_BACK + 90), (x, z, ff, gy) => {
+        if (nearRoad(c.path, x, z, ROAD_HALF + 30)) return;
+        const h = 88 + Math.round(hash3(x, 2, z) * 24);
+        for (let k = 0; k < h; k++) {
+          const r2 = k < 10 ? 5 : 4;
+          for (let dx = -r2; dx <= r2; dx++) for (let dz = -r2; dz <= r2; dz++)
+            if (dx * dx + dz * dz <= r2 * r2)
+              c.w.set(x + dx, gy + k, z + dz, hash3(x + dx, k, z + dz) > 0.85 ? 'brickDark' : 'rust');
+        }
+        c.w.box(x - 4, gy + h, z - 4, 9, 2, 9, 'metalDark');
+        c.anchors.stacks.push([x, gy + h + 2, z]);
+      });
+    // pipe bridges instead of sign gantries — twice as often as before
+    for (let s = sec.from + 300; s < sec.to - 200; s += 420) {
       for (const side of [-1, 1])
         c.put(s, side * (ROAD_HALF + 24), (x, z, ff, gy) =>
           c.w.box(x - 2, gy, z - 2, 5, GANTRY_H + 8, 5, 'metalDark'));
@@ -1719,12 +1847,21 @@ const DISTRICT = {
   },
 
   tankfarm(c, sec) {
+    // the first rank of tanks moved IN to the bund line — you drive past
+    // their flanks now, not past a field they stand somewhere inside of
     for (const side of [-1, 1])
-      for (let s = sec.from + 100, i = 0; s < sec.to - 100; s += 170, i++)
-        c.put(s, side * (SET + 70 + (i % 2) * 60), (x, z, ff, gy) => {
+      for (let s = sec.from + 100, i = 0; s < sec.to - 100; s += 150, i++)
+        c.put(s, side * (SET + 38 + (i % 2) * 70), (x, z, ff, gy) => {
+          if (nearRoad(c.path, x, z, ROAD_HALF + 26)) return;
           D.silo(c.w, x, gy, z, 20 + (i % 3) * 4, 54 + (i % 2) * 22);
           c.w.set(x, gy + 78, z, 'tailLight');            // tank-top beacon
         });
+    // inter-tank pipework riding low frames along the bund
+    c.run(sec.from + 60, sec.to - 60, SET + 24, 3, (x, z, ff, gy, s) => {
+      if (nearRoad(c.path, x, z, ROAD_HALF + 10)) return;
+      c.w.box(x, gy + 8, z, 2, 2, 2, 'metal');
+      if (Math.round(s) % 34 < 2) c.w.box(x, gy, z, 2, 9, 2, 'metalDark');
+    });
     // bund walls between the tanks and the road
     c.run(sec.from, sec.to, SET + 26, 24, (x, z, ff, gy) => {
       const a2 = c.along(ff);
@@ -1757,6 +1894,31 @@ const DISTRICT = {
         c.w.set(x, gy + 66, z, 'sodium');
         c.anchors.stacks.push([x, gy + 66, z]);
       });
+    // CONVEYOR GANTRIES crossing the road: an enclosed belt on trestles,
+    // hoppers riding its back — the slag has somewhere to be
+    for (let s = sec.from + 400; s < sec.to - 250; s += 780) {
+      for (const side of [-1, 1])
+        c.put(s, side * (ROAD_HALF + 26), (x, z, ff, gy) =>
+          c.w.box(x - 2, gy, z - 2, 5, GANTRY_H + 14, 5, 'metalDark'));
+      for (let u = -(ROAD_HALF + 26); u <= ROAD_HALF + 26; u += 0.8)
+        c.put(s, u, (x, z, ff, gy) => {
+          c.w.box(x, gy + GANTRY_H + 4, z, 1, 8, 1, 'rust');       // the housing
+          c.w.box(x, gy + GANTRY_H + 12, z, 1, 1, 1, 'metalDark');
+          if (Math.abs(Math.round(u)) % 46 < 3)
+            c.w.box(x - 1, gy + GANTRY_H + 13, z - 1, 3, 4, 3, 'metalDark');  // hoppers
+          if (Math.abs(Math.round(u)) % 60 < 2)
+            c.w.set(x, gy + GANTRY_H + 3, z, 'sodium');            // belt lights
+        });
+    }
+    // THE POUR GANTRY: the frame the slag ladle tips from (the glow and the
+    // falling embers are live — flair 'slagpour' points here)
+    const ps = sec.from + (sec.to - sec.from) * 0.5;
+    c.put(ps, SET + 60, (x, z, ff, gy) => {
+      c.w.box(x - 3, gy, z - 3, 7, 74, 7, 'metalDark');
+      c.w.box(x - 20, gy + 66, z - 3, 40, 6, 7, 'rust');
+      c.w.box(x - 24, gy + 58, z - 4, 10, 10, 9, 'metalDark');     // the ladle
+      c.w.set(x - 20, gy + 62, z, 'coneOrange');
+    });
   },
 };
 
@@ -1965,10 +2127,21 @@ function hazards(w, path) {
       // fraction left a four-car gap and the sim called the dark decorative
       // again; 1.45 keeps the gap a genuine aim at every width.
       const span = Math.round(ROAD_HALF * 1.45);
-      for (let i = -4; i <= 4; i++) cone(h.s, h.u + i * (span / 8));
+      // CLIPPED TO THE CARRIAGEWAY. When the parade's anchors moved outboard
+      // for the AI, the same span put cones over the kerb, onto the pavement
+      // and into the walkers' path — the playtest photographed the mismatch
+      // and the stuck pedestrians both. Roadworks end at the kerb.
+      const onRoad = (u) => Math.abs(u) <= ROAD_HALF - 8;
+      for (let i = -4; i <= 4; i++) {
+        const cu = h.u + i * (span / 8);
+        if (onRoad(cu)) cone(h.s, cu);
+      }
       // a tapering run of cones leading in, so it reads as roadworks and gives
       // the gap a shape rather than appearing as a wall
-      for (let i = 1; i <= 5; i++) cone(h.s + i * 26, h.u + (span / 2 - i * 9));
+      for (let i = 1; i <= 5; i++) {
+        const cu = h.u + (span / 2 - i * 9);
+        if (onRoad(cu)) cone(h.s + i * 26, cu);
+      }
       // The barrier fences the dig lengthwise: posts at the ends, rail
       // segments marched along s at each point's own elevation, so it follows
       // the road over a grade and round a bend instead of chording across it.
@@ -2265,20 +2438,37 @@ function surround(path) {
   }
   const mid = push(cx, GROUND_Y + elev(0) - 2, cz);
 
+  // apron triangles first, infield after — contiguous runs so the two
+  // material groups (sea/land, snow/snow…) can address them
+  const infieldIdx = [];
   for (let i = 0; i < steps; i++) {
     const j = (i + 1) % steps;
     idx.push(inner[i], outer[i], outer[j], inner[i], outer[j], inner[j]);   // the apron
-    idx.push(infield[i], mid, infield[j]);                                  // the middle
+    infieldIdx.push(infield[i], mid, infield[j]);                           // the middle
   }
+  for (const v of infieldIdx) idx.push(v);
 
+  // THE GROUND WEARS THE WORLD. One dark-green plane under every circuit is
+  // why a seafront read as parkland and a mountain read as a lawn — the spec
+  // now names its earth (and, separately, what lies BEYOND the road: the
+  // seafront's outer apron is the sea itself).
+  const GROUND_COLS = {
+    grass: 0x232a20, sand: 0x353023, snow: 0x77808f, ice: 0x1c2836, sea: 0x13202e,
+  };
+  const inCol = GROUND_COLS[SPEC.ground] || GROUND_COLS.grass;
+  const outCol = GROUND_COLS[SPEC.groundOuter || SPEC.ground] || inCol;
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setIndex(idx);
+  // two material groups: the apron (outside the loop) and the infield
+  const apronCount = steps * 6, infieldCount = steps * 3;
+  g.addGroup(0, apronCount, 0);
+  g.addGroup(apronCount, infieldCount, 1);
   g.computeVertexNormals();
-  const m = new THREE.MeshStandardMaterial({
-    color: 0x232a20, roughness: 1, metalness: 0, side: THREE.DoubleSide, flatShading: true,
+  const mkMat = (c) => new THREE.MeshStandardMaterial({
+    color: c, roughness: 1, metalness: 0, side: THREE.DoubleSide, flatShading: true,
   });
-  const mesh = new THREE.Mesh(g, m);
+  const mesh = new THREE.Mesh(g, [mkMat(outCol), mkMat(inCol)]);
   mesh.name = 'surround';
   mesh.receiveShadow = false;
   mesh.castShadow = false;
@@ -2318,7 +2508,8 @@ export function initTrackState(trackSpec) {
   // no-walk boundary in each direction.
   const NO_WALK = new Set(['tunnel', 'motorway', 'viaduct', 'wood', 'yard',
     'containers', 'ship', 'sheds', 'mill', 'millyard',
-    'pipeline', 'tankfarm', 'slagflats', 'cliff', 'dunes', 'crag']);
+    'pipeline', 'tankfarm', 'slagflats', 'cliff', 'dunes', 'crag',
+    'snowfield', 'firs']);
   const T = path.total;
   const wrapS = (s) => ((s % T) + T) % T;
   const walkable = (s) => { const sec = sectionAt(wrapS(s)); return sec && !NO_WALK.has(sec.district); };
@@ -2452,6 +2643,38 @@ export async function buildTrack(trackSpec, onPhase) {
       // in the 14–16 band of the landing columns, which the head rule reads
       // as a wall — the car climbed the ramp and stopped dead at the top.
       // The lip's own stripLight rows are the warning.
+    }
+  }
+
+  // THE LINE. A lap has always ended at an invisible coordinate; now it ends
+  // at a PLACE — a chequered band painted flush into the road and a gantry
+  // over it wearing the same chequer with a lit underside. Flush paint is
+  // scrub-safe and audit-safe; the beam rides at 58, far over the head rule.
+  {
+    const lf = frame();
+    for (let ds = 2; ds <= 13; ds++) {
+      for (let u = -ROAD_HALF + 1; u <= ROAD_HALF - 1; u++) {
+        path.place(ds, u, lf);
+        const check = (((ds - 2) >> 2) + ((u + 2048) >> 2)) % 2 === 0;
+        w.set(Math.round(lf.x), elev(ds) - 1, Math.round(lf.z), check ? 'paper' : 'metalDark');
+      }
+    }
+    const GY = 58;
+    for (const side of [-1, 1]) {
+      path.place(8, side * (ROAD_HALF + KERB + 10), lf);
+      const px = Math.round(lf.x), pz = Math.round(lf.z), py = GROUND_Y + elev(8);
+      w.box(px - 1, py, pz - 1, 3, GY, 3, 'metalDark');
+      // a chequered flag on each post top, frozen mid-wave
+      w.box(px - 1, py + GY, pz - 1, 2, 8, 2, 'metalDark');
+      for (let fy = 0; fy < 5; fy++) for (let fx = 1; fx <= 6; fx++)
+        w.set(px + fx * -side, py + GY + 3 + fy, pz,
+          ((fx >> 1) + (fy >> 1)) % 2 ? 'paper' : 'metalDark');
+    }
+    for (let u = -(ROAD_HALF + KERB + 10); u <= ROAD_HALF + KERB + 10; u++) {
+      path.place(8, u, lf);
+      const bx = Math.round(lf.x), bz = Math.round(lf.z), by = GROUND_Y + elev(8) + GY;
+      w.box(bx, by, bz, 1, 4, 1, (((u + 2048) >> 2) % 2) ? 'paper' : 'metalDark');
+      if (((u % 3) + 3) % 3 === 0) w.set(bx, by - 1, bz, 'stripLight');
     }
   }
 

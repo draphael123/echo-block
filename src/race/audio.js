@@ -287,6 +287,24 @@ export function createAudio() {
     // the chapel bell: a strike is two inharmonic partials dying at
     // different rates — that beat between them IS the bronze
     bell() { hit(392, 0.15, 1.6, 0.10); hit(587, 0.3, 0.7, 0.05); hit(988, 0.5, 0.28, 0.03); },
+    // THE CROWD at the line: a swell of mid noise that rises fast and dies
+    // slow, with two air-horn parps riding it — the sound of a finish
+    cheer() {
+      if (!ctx || !ready || muted) return;
+      const now = ctx.currentTime;
+      const n = ctx.createBufferSource();
+      n.buffer = noiseBuffer(ctx, 3); n.loop = true;
+      const f2 = ctx.createBiquadFilter();
+      f2.type = 'bandpass'; f2.frequency.value = 950; f2.Q.value = 0.4;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.001, now);
+      g.gain.exponentialRampToValueAtTime(0.22, now + 0.25);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 2.6);
+      n.connect(f2).connect(g).connect(master);
+      n.start(now); n.stop(now + 2.8);
+      hit(310, 0.2, 0.5, 0.10);
+      hit(392, 0.2, 0.7, 0.08);
+    },
     thud() { hit(70, 0.45, 0.3, 0.4); },          // somebody on the bonnet
     kerb() { hit(150, 0.7, 0.11, 0.16); },        // riding over something
     beep(f) { hit(f || 520, 0.05, 0.09, 0.12); }, // lap / countdown / chirps

@@ -946,10 +946,87 @@ function flairBell() {
   return { g: new THREE.Group(), update };
 }
 
+// THE WEATHER MAST: a lattice tower on the crown with a red aviation lamp
+// blinking its slow one-second heartbeat — the thing a real summit has
+// instead of a lighthouse.
+function flairMast(spot) {
+  const g = new THREE.Group();
+  const f = pathFrame();
+  track.path.place(spot.s, spot.u, f);
+  let base = ground ? ground.floorAt(Math.round(f.x), Math.round(f.z)) : NaN;
+  if (!Number.isFinite(base) || Math.abs(base) > 500) base = track.elev(spot.s) + 2;
+  const lattice = new THREE.MeshStandardMaterial({ color: 0x2a2f38, roughness: 0.6, metalness: 0.4 });
+  const t1 = new THREE.Mesh(new THREE.BoxGeometry(8, 60, 8), lattice); t1.position.y = 30;
+  const t2 = new THREE.Mesh(new THREE.BoxGeometry(5, 50, 5), lattice); t2.position.y = 82;
+  const t3 = new THREE.Mesh(new THREE.BoxGeometry(3, 40, 3), lattice); t3.position.y = 126;
+  const dish = new THREE.Mesh(new THREE.BoxGeometry(14, 10, 3), lattice); dish.position.set(6, 70, 0);
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(3, 8, 6),
+    new THREE.MeshBasicMaterial({ color: 0xff4a3c, toneMapped: false }));
+  lamp.position.y = 149;
+  g.add(t1, t2, t3, dish, lamp);
+  g.position.set(f.x, base, f.z);
+  let t = 0;
+  return { g, update(dt) { t += dt; lamp.visible = (t % 2) < 1.1; } };
+}
+
+// THE SLAG POUR: on a cycle, the ladle on the pour gantry tips and a
+// cascade of molten orange falls glowing to the flats — the works' own
+// firework, and the only light out there that MOVES downward.
+function flairSlagpour(districtName) {
+  const secs = SECTIONS.filter(sc => sc.district === districtName);
+  if (!secs.length) return { g: new THREE.Group(), update: null };
+  const sc = secs[0];
+  const mid = sc.from + (sc.to - sc.from) * 0.5;
+  const f = pathFrame();
+  track.path.place(mid, SET + 60, f);
+  const baseY = track.elev(mid) + 2;
+  const ladle = { x: f.x - f.nx * -20, z: f.z - f.nz * -20, y: baseY + 60 };
+  const N = 44;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(N * 3);
+  const col = new Float32Array(N * 3);
+  const ph = new Float32Array(N);
+  for (let i = 0; i < N; i++) ph[i] = Math.random();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+    size: 3.6, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending,
+    depthWrite: false, toneMapped: false }));
+  pts.frustumCulled = false;
+  const glow = new THREE.Mesh(new THREE.PlaneGeometry(70, 70),
+    new THREE.MeshBasicMaterial({ color: 0xff7a30, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+  glow.rotation.x = -Math.PI / 2;
+  glow.position.set(ladle.x, baseY + 2, ladle.z);
+  const g = new THREE.Group();
+  g.add(pts, glow);
+  let t = 0;
+  function update(dt) {
+    t += dt;
+    const cyc = t % 13;
+    const pouring = cyc > 2 && cyc < 6.2;
+    glow.material.opacity += ((pouring ? 0.5 : 0) - glow.material.opacity) * Math.min(1, dt * 2.2);
+    for (let i = 0; i < N; i++) {
+      if (!pouring) { col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = 0; continue; }
+      const k = (ph[i] + t * 0.9) % 1;
+      pos[i * 3] = ladle.x + (Math.random() - 0.5) * 5;
+      pos[i * 3 + 1] = ladle.y - k * (ladle.y - baseY - 2);
+      pos[i * 3 + 2] = ladle.z + (Math.random() - 0.5) * 5;
+      const heat = 1 - k * 0.55;
+      col[i * 3] = 1.1 * heat; col[i * 3 + 1] = 0.42 * heat; col[i * 3 + 2] = 0.06 * heat;
+    }
+    geo.attributes.position.needsUpdate = true;
+    geo.attributes.color.needsUpdate = true;
+  }
+  return { g, update };
+}
+
 function buildFlair(spec) {
   const fl = spec.flair;
   if (!fl) return null;
   const parts = [];
+  if (fl.mast) parts.push(flairMast(fl.mast));
+  if (fl.slagpour) parts.push(flairSlagpour(fl.slagpour));
   if (fl.fireworks) parts.push(flairFireworks(fl.fireworks));
   if (fl.lanterns) parts.push(flairLanterns(fl.lanterns));
   if (fl.lighthouse) parts.push(flairLighthouse(fl.lighthouse));
@@ -1096,6 +1173,22 @@ function reset(ceremony = false) {
 // (pay the purse, award the points, close the season) and the version that did
 // them inline inside an `if` nested in the lap check was where a bug would live.
 function finish() {
+  // THE FLAG. Crossing the line is the whole point of the last ten minutes —
+  // it gets a crowd, a lens lunge, a fringe, and chequered confetti off the
+  // gantry. The board can wait one beat.
+  audio.cheer();
+  goPush = Math.max(goPush, 1.0);
+  aberKick = Math.max(aberKick, 1.2);
+  for (let ci = 0; ci < 12; ci++) {
+    const p2 = puffs[puffIdx++ % PUFF_N];
+    p2.m.position.set(
+      car.state.x + (Math.random() - 0.5) * 90,
+      car.state.yView + 26 + Math.random() * 40,
+      car.state.z + (Math.random() - 0.5) * 90);
+    p2.m.material.color.setHex(ci % 2 ? 0xf6ecda : 0x22262e);
+    p2.life = 0.6 + Math.random() * 0.5;
+    p2.m.visible = true;
+  }
   const mine = lap * track.path.total + s;
   const table = field.standings(mine, raceClock);
   const place = table.findIndex(r => r.you);
@@ -1679,9 +1772,14 @@ function buildMover(m) {
     // the face first, so the warning is readable at racing speed, and the
     // rivals get it in their obstacle list like anything else that moves.
     const half = track.roadHalf || ROAD_HALF;
+    // m.ice: the boulder is ICE — bigger, paler, faintly lit from inside,
+    // and the dust it kicks is snow
     const rock = new THREE.Mesh(
-      new THREE.DodecahedronGeometry(11, 0),
-      new THREE.MeshStandardMaterial({ color: 0x4a4440, roughness: 0.95, flatShading: true }));
+      new THREE.DodecahedronGeometry(m.ice ? 13 : 11, 0),
+      m.ice
+        ? new THREE.MeshStandardMaterial({ color: 0xbfdcec, roughness: 0.35,
+            emissive: 0x224455, emissiveIntensity: 0.4, flatShading: true })
+        : new THREE.MeshStandardMaterial({ color: 0x4a4440, roughness: 0.95, flatShading: true }));
     rock.visible = false;
     g.add(rock);
     const P = 23;
@@ -1696,7 +1794,7 @@ function buildMover(m) {
           const p2 = puffs[puffIdx++ % PUFF_N];
           const lat = -(half + 40);
           p2.m.position.set(cx + nx * lat, roadY + 26 + Math.random() * 18, cz + nz * lat);
-          p2.m.material.color.setHex(0x8a7f72);
+          p2.m.material.color.setHex(m.ice ? 0xe8f2fa : 0x8a7f72);
           p2.life = 0.6;
           p2.m.visible = true;
         }
@@ -1713,7 +1811,7 @@ function buildMover(m) {
           if (bounce < 4 && Math.random() < 0.5) {
             const p2 = puffs[puffIdx++ % PUFF_N];
             p2.m.position.set(rockX, roadY + 4, rockZ);
-            p2.m.material.color.setHex(0x8a7f72);
+            p2.m.material.color.setHex(m.ice ? 0xe8f2fa : 0x8a7f72);
             p2.life = 0.5;
             p2.m.visible = true;
           }
