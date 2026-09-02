@@ -65,8 +65,34 @@ function unknown(name) {
     + 'collide but not render. Check the name against palette.js.');
 }
 
+// A Map that does not stop at 16.7 million voxels. JS Maps have a hard
+// ~2^24 entry ceiling and the stretched Works hit it mid-build ("Map
+// maximum size exceeded") — the world was simply bigger than one Map is
+// allowed to be. Sixteen shards picked by key % 16 raise the ceiling to
+// ~268M for the price of one modulo; keys are positive integers well under
+// 2^53, so the modulo is exact. It walks and talks like a Map everywhere
+// the codebase actually uses one (set/get/has/delete/size/keys/entries/
+// iteration/forEach/clear) — including the raw-key set() that block.js
+// uses to recolour a template world.
+class ShardMap {
+  constructor(n = 16) {
+    this.n = n;
+    this.ms = Array.from({ length: n }, () => new Map());
+  }
+  get(k) { return this.ms[k % this.n].get(k); }
+  set(k, v) { this.ms[k % this.n].set(k, v); return this; }
+  has(k) { return this.ms[k % this.n].has(k); }
+  delete(k) { return this.ms[k % this.n].delete(k); }
+  get size() { let t = 0; for (const m of this.ms) t += m.size; return t; }
+  *keys() { for (const m of this.ms) yield* m.keys(); }
+  *entries() { for (const m of this.ms) yield* m.entries(); }
+  [Symbol.iterator]() { return this.entries(); }
+  forEach(fn, thisArg) { for (const m of this.ms) m.forEach(fn, thisArg); }
+  clear() { for (const m of this.ms) m.clear(); }
+}
+
 export class VoxWorld {
-  constructor() { this.v = new Map(); }
+  constructor() { this.v = new ShardMap(); }
 
   set(x, y, z, c) { if (c) this.v.set(key(x | 0, y | 0, z | 0), c); }
   get(x, y, z) { return this.v.get(key(x | 0, y | 0, z | 0)); }
