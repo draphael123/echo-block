@@ -87,6 +87,15 @@ export default {
     { s: 6900, u: 0, r: 40 },
   ],
 
+  // THE COL PINCHES: rock retaining walls close the road to a lane and a
+  // half right where the mountain is highest — the held-breath moment every
+  // pass road actually has
+  narrows: [{ from: 4560, to: 4790, width: 150, style: 'rock' }],
+  // THE WHITEOUT: on a cycle, the crown disappears — fog closes in, the
+  // snow goes solid, the wind shoves. You hear it coming before you lose
+  // the road. Runtime lives in main.js.
+  whiteout: { from: 3500, to: 4550 },
+
   crossings: [],
   parked: [],
   life: [],                        // nobody walks the mountain at midnight
@@ -94,7 +103,9 @@ export default {
     { s: 2400, u: -90, speed: 70, dir: -1 },           // one lonely descent
   ],
 
-  moving: [],
+  // THE ROCKFALL: the mountain's own level crossing — on a cycle, a boulder
+  // comes down the ramparts' face and bounces across the carriageway
+  moving: [{ kind: 'rockfall', s: 2900 }],
   // the AVIATION BEACON on the crown — the lighthouse builder wearing its
   // mountain uniform, twin beams sweeping the whole valley — and the col's
   // little viewpoint strings

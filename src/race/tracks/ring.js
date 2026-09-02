@@ -150,6 +150,9 @@ export default {
   // Sodium, in the small hours. Everything orange except the sky, and the
   // thickest fog in the city -- which does the same job as the crests do:
   // it takes the distance away from you.
+  // the field carries lamps worth having here — without them the cautious
+  // half finished 45 seconds back and the race had four cars, not six
+  rivalBeam: 1.5,
   sky: 'sodium',
   // the sodium bath: everything bright goes orange, the shadows barely stay
   // blue, hard rolloff, the dirtiest grain — industry's own colour of night

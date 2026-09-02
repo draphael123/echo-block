@@ -284,6 +284,9 @@ export function createAudio() {
       o.start(now); o.stop(now + 0.32);           // the drop under it
     },
     horn() { hit(330, 0.12, 0.16, 0.22); hit(415, 0.12, 0.22, 0.22); },   // the two-note menace
+    // the chapel bell: a strike is two inharmonic partials dying at
+    // different rates — that beat between them IS the bronze
+    bell() { hit(392, 0.15, 1.6, 0.10); hit(587, 0.3, 0.7, 0.05); hit(988, 0.5, 0.28, 0.03); },
     thud() { hit(70, 0.45, 0.3, 0.4); },          // somebody on the bonnet
     kerb() { hit(150, 0.7, 0.11, 0.16); },        // riding over something
     beep(f) { hit(f || 520, 0.05, 0.09, 0.12); }, // lap / countdown / chirps

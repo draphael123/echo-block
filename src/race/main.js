@@ -885,6 +885,57 @@ function flairConfetti(cfg) {
   return { g, update };
 }
 
+// WASHING LINES, for the old town: cloth strung between the houses at
+// first-floor height, swaying just enough to prove there is wind. The line
+// sags like the lanterns' does; the clothes are the town living upstairs.
+function flairWashing(list) {
+  const g = new THREE.Group();
+  const f = pathFrame();
+  const CLOTH = [0xcbbfa4, 0xb0403a, 0x33507e, 0xd8d4c8, 0x5d6f5a];
+  const cloths = [];
+  const span = SET + 4;
+  for (const s of list) {
+    const y0 = track.elev(s) + 2;
+    const n = 6;
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n, u = -span + t * span * 2;
+      track.path.place(s, u, f);
+      const sag = Math.sin(Math.PI * t) * 9;
+      const m = new THREE.Mesh(
+        new THREE.PlaneGeometry(6, 8),
+        new THREE.MeshBasicMaterial({ color: CLOTH[(i + s) % CLOTH.length],
+          side: THREE.DoubleSide, toneMapped: false }));
+      m.material.color.multiplyScalar(0.55);     // dusk-lit cloth, not neon
+      m.position.set(f.x, y0 + 40 - sag - 4, f.z);
+      g.add(m);
+      cloths.push({ m, seed: (s + i) * 1.7 });
+    }
+  }
+  let t2 = 0;
+  function update(dt) {
+    t2 += dt;
+    for (const c of cloths) c.m.rotation.y = Math.sin(t2 * 1.1 + c.seed) * 0.35;
+  }
+  return { g, update };
+}
+
+// THE BELL: the chapel tolling somewhere above the street, on its own
+// unhurried clock. Three strikes, then the town is quiet again.
+function flairBell() {
+  let next = 24 + Math.random() * 30, strikes = 0, gap = 0;
+  function update(dt) {
+    next -= dt;
+    if (next > 0) return;
+    gap -= dt;
+    if (gap > 0) return;
+    if (audio.bell) audio.bell();
+    strikes++;
+    gap = 1.35;
+    if (strikes >= 3) { strikes = 0; next = 42 + Math.random() * 33; }
+  }
+  return { g: new THREE.Group(), update };
+}
+
 function buildFlair(spec) {
   const fl = spec.flair;
   if (!fl) return null;
@@ -896,6 +947,8 @@ function buildFlair(spec) {
   if (fl.snow) parts.push(flairSnow());
   if (fl.embers) parts.push(flairEmbers(fl.embers));
   if (fl.confetti) parts.push(flairConfetti(fl.confetti));
+  if (fl.washing) parts.push(flairWashing(fl.washing));
+  if (fl.bell) parts.push(flairBell());
   if (!parts.length) return null;
   const g = new THREE.Group();
   g.name = 'flair';
@@ -905,6 +958,11 @@ function buildFlair(spec) {
 // per-world hazard mechanics: slick zones (grip drops for a beat) and
 // steam vents (a plume on a cycle that shoves the car)
 let slickZones = [], ventZones = [];
+// THE WAVE (seafront) and THE WHITEOUT (summit): each circuit's weather
+// growing teeth. Both are cycles the player learns to read, both are
+// player-facing like the slicks — the AI keeps its honest race.
+let waveState = null, whiteoutZone = null, whiteoutK = 0;
+const wScratch = pathFrame();
 // near-miss cooldowns (per hazard / per traffic car) and the race's stats —
 // the results board reads these, and so will anyone bragging
 let hazCool = [], trafCool = [];
@@ -1296,6 +1354,28 @@ function applyTrack(spec, trk) {
       return { x: zf.x, z: zf.z, y: track.elev(vt.s) + 1, phase: i * 1.9, cool: 0 };
     });
   }
+  whiteoutZone = spec.whiteout || null;
+  whiteoutK = 0;
+  if (spec.wave) {
+    const wf = pathFrame();
+    const mid = (spec.wave.from + spec.wave.to) / 2;
+    track.path.place(mid, 0, wf);
+    const len = spec.wave.to - spec.wave.from;
+    const wg = new THREE.Group();
+    wg.position.set(wf.x, track.elev(mid) + 2.5, wf.z);
+    wg.rotation.y = Math.atan2(wf.tx, wf.tz);
+    const plane = new THREE.Mesh(
+      new THREE.PlaneGeometry(110, len),
+      new THREE.MeshBasicMaterial({ color: 0xa8d8e8, transparent: true, opacity: 0,
+        depthWrite: false, toneMapped: false }));
+    plane.rotation.x = -Math.PI / 2;
+    plane.visible = false;
+    wg.add(plane);
+    scene.add(wg);
+    const half2 = track.roadHalf || ROAD_HALF;
+    waveState = { g: wg, plane, from: spec.wave.from, to: spec.wave.to,
+      nx: wf.nx, nz: wf.nz, half: half2 };
+  }
   ghostData = (savefile.ghosts && savefile.ghosts[track.id]) || null;
   gPtr = 0;
   if (ghostData) buildGhost();
@@ -1443,8 +1523,12 @@ function buildMover(m) {
     return {
       g,
       update(dt, t) {
-        const P = 26, ph = t % P;
-        const wantDown = ph > 9 && ph < 16.5;
+        // 33, not 26: the Works lap runs ~38s, and a 26s cycle let some laps
+        // never meet the barrier at all. Just off the lap time, the phase
+        // walks a few seconds each lap — EVERY lap now gets the judgment
+        // call, and never at quite the same corner of the cycle.
+        const P = 33, ph = t % P;
+        const wantDown = ph > 11 && ph < 19.5;
         const target = wantDown ? 0 : 1.35;
         angle += (target - angle) * Math.min(1, dt * 2.2);
         for (const a of arms) a.rotation.x = -angle;
@@ -1570,6 +1654,63 @@ function buildMover(m) {
           const st = rv.car.state;
           const dd = (st.x - cx) * tx + (st.z - cz) * tz;
           if (dd > -240 && dd < -20) st.speed *= Math.max(0, 1 - 2.2 * dt);
+        }
+      },
+    };
+  }
+
+  if (m.kind === 'rockfall') {
+    // THE MOUNTAIN'S LEVEL CROSSING. On a cycle, a boulder comes off the
+    // ramparts' face and bounces across the carriageway — dust trickles at
+    // the face first, so the warning is readable at racing speed, and the
+    // rivals get it in their obstacle list like anything else that moves.
+    const half = track.roadHalf || ROAD_HALF;
+    const rock = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(11, 0),
+      new THREE.MeshStandardMaterial({ color: 0x4a4440, roughness: 0.95, flatShading: true }));
+    rock.visible = false;
+    g.add(rock);
+    const P = 23;
+    let active = false, rockX = 0, rockZ = 0;
+    return {
+      g,
+      obstacles() { return active ? [{ x: rockX, z: rockZ, r: 30 }] : []; },
+      update(dt, t) {
+        const ph = t % P;
+        // dust off the face, two seconds of warning before it lets go
+        if (ph > 6 && ph < 8 && Math.random() < 0.25) {
+          const p2 = puffs[puffIdx++ % PUFF_N];
+          const lat = -(half + 40);
+          p2.m.position.set(cx + nx * lat, roadY + 26 + Math.random() * 18, cz + nz * lat);
+          p2.m.material.color.setHex(0x8a7f72);
+          p2.life = 0.6;
+          p2.m.visible = true;
+        }
+        if (ph > 8 && ph < 10.4) {
+          const k = (ph - 8) / 2.4;
+          const lat = -(half + 60) + k * (half * 2 + 140);
+          const bounce = Math.abs(Math.sin(k * Math.PI * 3)) * 34 * (1 - k * 0.5);
+          rock.visible = true;
+          rockX = cx + nx * lat; rockZ = cz + nz * lat;
+          rock.position.set(rockX, roadY + 9 + bounce, rockZ);
+          rock.rotation.x += dt * 9;
+          rock.rotation.z += dt * 7;
+          active = true;
+          if (bounce < 4 && Math.random() < 0.5) {
+            const p2 = puffs[puffIdx++ % PUFF_N];
+            p2.m.position.set(rockX, roadY + 4, rockZ);
+            p2.m.material.color.setHex(0x8a7f72);
+            p2.life = 0.5;
+            p2.m.visible = true;
+          }
+        } else { rock.visible = false; active = false; }
+        if (!running || done || !active || car.state.crash) return;
+        const dx = car.state.x - rockX, dz = car.state.z - rockZ;
+        if (Math.hypot(dx, dz) < 27) {
+          car.impact(0.8, true);
+          audio.impact(0.7);
+          hud.msg.textContent = 'rockfall!';
+          msgUntil = time + 1.8;
         }
       },
     };
@@ -1935,6 +2076,8 @@ function teardownTrack() {
   movers = [];
   if (flair) { scene.remove(flair.g); disposeDeep(flair.g, true); flair = null; }
   slickZones = []; ventZones = [];
+  whiteoutZone = null; whiteoutK = 0;
+  if (waveState) { scene.remove(waveState.g); disposeDeep(waveState.g, true); waveState = null; }
   track = null; ground = null; field = null; START = null;
   smoke = null; life = null; traffic = null;
   // and the last places a dead circuit's arrays can hide: the console API's
@@ -2446,6 +2589,71 @@ function tick() {
       }
     }
   }
+  // THE WAVE: on a cycle the sea takes its stretch of the esplanade back —
+  // foam gathers at the edge as the warning, a sheet of water sweeps the
+  // full width of the road, and the tarmac it leaves behind is greased for
+  // the next few seconds. The sea always wins; the trick is not being there.
+  if (waveState) {
+    const W_P = 17;
+    const ph = raceClock % W_P;
+    const ws = waveState;
+    const wash = ph > 3 && ph < 5.6;
+    if (ph > 1.2 && ph <= 3 && Math.random() < 0.3) {
+      const s2 = ws.from + Math.random() * (ws.to - ws.from);
+      track.path.place(s2, ws.half + 30, wScratch);
+      const p2 = puffs[puffIdx++ % PUFF_N];
+      p2.m.position.set(wScratch.x, track.elev(s2) + 5, wScratch.z);
+      p2.m.material.color.setHex(0xeaf4f8);
+      p2.life = 0.5;
+      p2.m.visible = true;
+    }
+    ws.plane.visible = wash;
+    if (wash) {
+      const k = (ph - 3) / 2.6;
+      const lat = (ws.half + 90) - k * (ws.half * 2 + 160);
+      ws.plane.position.x = -lat;                // group X is the -normal side
+      ws.plane.material.opacity = 0.5 * Math.sin(Math.PI * Math.min(1, k * 1.08));
+      if (Math.random() < 0.55) {
+        const s2 = ws.from + Math.random() * (ws.to - ws.from);
+        track.path.place(s2, lat, wScratch);
+        const p2 = puffs[puffIdx++ % PUFF_N];
+        p2.m.position.set(wScratch.x, track.elev(s2) + 6, wScratch.z);
+        p2.m.material.color.setHex(0xeaf4f8);
+        p2.life = 0.45;
+        p2.m.visible = true;
+      }
+      if (running && !done && s > ws.from && s < ws.to) {
+        car.state.slickT = Math.max(car.state.slickT || 0, 0.5);
+        car.state.x -= ws.nx * 60 * dt;          // the water carries you inland
+        car.state.z -= ws.nz * 60 * dt;
+        if (!msgUntil) { hud.msg.innerHTML = '<b style="color:#7fd4ff">the wave!</b>'; msgUntil = time + 1.0; }
+      }
+    }
+    // the greased aftermath
+    if (ph >= 5.6 && ph < 11 && running && !done && s > ws.from && s < ws.to)
+      car.state.slickT = Math.max(car.state.slickT || 0, 0.3);
+  }
+
+  // THE WHITEOUT: the crown disappears on a cycle — fog closes to a wall,
+  // the wind leans on the car. It telegraphs through the HUD once, and the
+  // fog envelope eases in rather than snapping, because losing the road
+  // should feel like weather, not a light switch.
+  if (whiteoutZone) {
+    const ph = raceClock % 26;
+    const inZone = s > whiteoutZone.from && s < whiteoutZone.to;
+    const want = (ph > 9 && ph < 14 && inZone) ? 1 : 0;
+    if (want > 0 && whiteoutK < 0.05 && !msgUntil) {
+      hud.msg.innerHTML = '<b style="color:#dfe8f4">whiteout!</b>';
+      msgUntil = time + 1.2;
+    }
+    whiteoutK += (want - whiteoutK) * Math.min(1, dt * (want ? 1.7 : 1.1));
+    if (whiteoutK > 0.03 && running && !done) {
+      track.path.place(s, 0, wScratch);
+      car.state.x += wScratch.nx * whiteoutK * 52 * dt;   // the wind's shoulder
+      car.state.z += wScratch.nz * whiteoutK * 52 * dt;
+    }
+  } else if (whiteoutK > 0) whiteoutK = 0;
+
   // STEAM VENTS blow on a cycle: a white plume, a real shove, a whited
   // frame. The rhythm is readable — the grate hisses before it blows.
   for (const vt of ventZones) {
@@ -2563,7 +2771,7 @@ function tick() {
   // top of a grip mechanic now, not a veil. The wet costs you in the TYRES.
   post.params.wet = wet * 0.45;
   post.params.rain = wet * 0.22;
-  scene.fog.density = SKY.fogD + wet * 0.00008;
+  scene.fog.density = (SKY.fogD + wet * 0.00008) * (1 + whiteoutK * 3.4);
 
   {
     const d2 = sectionAt(s).district;

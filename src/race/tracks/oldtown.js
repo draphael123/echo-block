@@ -77,9 +77,14 @@ export default {
   ],
 
   // Twice the Parade's relief over a third of the distance. A hill town.
+  // VERTICALITY PUSH (playtest note, long deferred): the descent off chapel
+  // hill was a polite 7% average — "steep" in name only. The drop now
+  // concentrates through the steps: 66 down to -22 in 650 voxels, segment
+  // averages 10-12% (cosine peaks ~19%, inside the 22% audit), so the town
+  // finally FALLS past the windows the way the name promised.
   profile: [
     [0, 0], [420, 30], [860, 60], [1300, 78],
-    [1800, 62], [2300, 26], [2800, -14], [3250, -30],
+    [1800, 66], [2150, 30], [2450, -6], [2800, -22], [3250, -30],
     [3700, -12], [4050, 10], [4330, 6],
   ],
 
@@ -149,7 +154,14 @@ export default {
   moving: [{ kind: 'portcullis', s: 3880 }],
   // festival bulbs sagging across the narrow streets — never in the roofed
   // legs (market hall, gatehouse, tunnel), where they would hang in a ceiling
-  flair: { lanterns: [650, 1750, 2450, 3350] },
+  flair: {
+    lanterns: [650, 1750, 2450, 3350],
+    // washing strung between the houses where the street is narrowest, and
+    // the chapel bell tolling somewhere above it all — the two sounds and
+    // sights of a town that lives upstairs from its own street
+    washing: [900, 2350, 3450],
+    bell: true,
+  },
   // Dusk over the medieval quarter. The narrow streets read as silhouettes cut
   // out of a bright western sky -- which is what an old town at sunset looks
   // like and nothing like the Parade, on the same palette and the same props.

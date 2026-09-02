@@ -15,11 +15,14 @@ import { frame } from './path.js';
 
 export function buildRival(track, ground, buildCar, opts = {}) {
   const { paint = 1, policy = 'racing', pace = 1, startS = 80, startU = 34,
-    lineU = 0, parts = null, chassis = 'brindle' } = opts;
+    lineU = 0, parts = null, chassis = 'brindle', beam = 1 } = opts;
   // parts are VISUAL here — no tune — but the CHASSIS is real: Vasey's
   // wedge is genuinely faster and more nervous than Wren's hatch, which is
-  // half of what makes each rival a different problem.
-  const car = buildCar(paint, {}, parts, chassis);
+  // half of what makes each rival a different problem. `beam` is the one
+  // exception: a circuit may hand its rivals better lamps (the Works does),
+  // because a cautious driver whose sight caps them at half pace is not a
+  // rival, it is a bollard with a bio.
+  const car = buildCar(paint, beam !== 1 ? { beam } : {}, parts, chassis);
   car.root.name = 'rival';
   const driver = createDriver(track, { policy, pace, startS, lineU, perception: 1.4 });
 

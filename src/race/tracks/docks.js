@@ -159,6 +159,10 @@ export default {
   pads: [{ s: 1850 }, { s: 4400 }, { s: 6350 }],
   // the lighthouse on the cliff run, beams sweeping the whole bay
   flair: { lighthouse: { s: 3560, u: 340 } },
+  // THE WAVE: the sea takes the low stretch of the esplanade back on a
+  // 17-second cycle — foam warns, water sweeps the road, grease follows.
+  // Runtime lives in main.js; the zone is the lap's lowest ground.
+  wave: { from: 980, to: 1260 },
   // the second ramp lands you almost on the basin pad: chain them and the
   // quay is a flight path
   ramps: [{ s: 1000, u: -80 }, { s: 4250, u: 60 }],

@@ -2113,6 +2113,19 @@ function narrowsAndSlicks(w, path) {
         path.place(s, side * nr.width, f);
         const x = Math.round(f.x), z = Math.round(f.z), gy = GROUND_Y + elev(s);
         const dEnd = Math.min(s - nr.from, nr.to - s);
+        if (nr.style === 'rock') {
+          // THE COL: rock retaining walls pinching the mountain road — the
+          // ships' geometry wearing the crag's clothes. Lower, rougher, no
+          // portholes; a red warning lamp caps each end.
+          const h = 22 + Math.round(hash3(Math.round(s * 2), side, 5) * 8)
+            + Math.round(Math.max(0, 1 - dEnd / 70) * -8);
+          for (let k = 0; k < Math.max(10, h); k++) {
+            w.set(x, gy + k, z, hash3(x + k, k, z) > 0.86 ? 'paper'
+              : hash3(x, k, z + k) > 0.5 ? 'concreteOld' : 'brickDark');
+          }
+          if (dEnd < 3) w.box(x, gy + Math.max(10, h) + 1, z, 1, 3, 1, 'tailLight');
+          continue;
+        }
         const bow = Math.max(0, 1 - dEnd / 90);
         const h = 38 + Math.round(bow * bow * 10);
         for (let k = 0; k < h; k++) {

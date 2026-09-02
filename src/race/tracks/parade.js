@@ -95,7 +95,10 @@ export default {
     { s: 2900, u: H(HALF, -0.34), r: 34, kind: 'broken' },
     { s: 3320, u: H(HALF, 0.52), r: 30, kind: 'works' },
     { s: 4300, u: H(HALF, -0.55), r: 32, kind: 'skip' },
-    { s: 5430, u: H(HALF, 0.52), r: 30, kind: 'works' },
+    // barrels, not a fourth works barrier: their tail-light flares are the
+    // only warning the cut's darkness allows, and four identical barriers
+    // read as one hazard photocopied
+    { s: 5430, u: H(HALF, 0.52), r: 30, kind: 'barrels' },
     { s: 5850, u: H(HALF, -0.34), r: 34, kind: 'broken' },
     // 6180, not 6250: the new lap is 6435 long and a works barrier runs
     // span/2 past its anchor — at 6250 the tail wrapped the seam and lay
