@@ -1,0 +1,13 @@
+{
+  "name": "DYNAMO — night racing",
+  "short_name": "DYNAMO",
+  "description": "Voxel night racing in the town of Echo Block: four circuits, a rival ladder, and a garage worth earning.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#0a0e18",
+  "theme_color": "#0a0e18",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

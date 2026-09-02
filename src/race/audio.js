@@ -23,7 +23,7 @@ function noiseBuffer(ctx, seconds = 2) {
 
 export function createAudio() {
   let ctx = null, ready = false, muted = false, lastGear = 0;
-  let master, engineGain, engineFilter, oscA, oscB, sub;
+  let master, engineGain, engineFilter, oscA, oscB, sub, subG;
   let tyreGain, tyreFilter, windGain, windFilter, noise;
 
   function start() {
@@ -48,9 +48,10 @@ export function createAudio() {
     engineFilter.connect(engineGain).connect(master);
 
     oscA = ctx.createOscillator(); oscA.type = 'sawtooth';
-    oscB = ctx.createOscillator(); oscB.type = 'sawtooth'; oscB.detune.value = 14;
+    oscB = ctx.createOscillator(); oscB.type = 'sawtooth'; oscB.detune.value = voice.detune;
     sub = ctx.createOscillator(); sub.type = 'square';
-    const subG = ctx.createGain(); subG.gain.value = 0.35;
+    subG = ctx.createGain(); subG.gain.value = voice.sub;
+    engineFilter.Q.value = voice.q;            // a voice set before the gesture lands here
     oscA.connect(engineFilter); oscB.connect(engineFilter);
     sub.connect(subG).connect(engineFilter);
     oscA.start(); oscB.start(); sub.start();
@@ -178,6 +179,7 @@ export function createAudio() {
   }
 
   let vol = 0.9, prevThrottle = 0, surface = null, lastThunk = 0;
+  let voice = { note: 1, detune: 14, sub: 0.35, q: 3 };
   const applyGain = () => { if (master) master.gain.value = muted ? 0 : 0.5 * vol; };
 
   return {
@@ -197,6 +199,15 @@ export function createAudio() {
     ambience(kind) { ambKind = kind || null; if (ready) buildAmbience(ambKind); },
     // what the tyres are ON: 'plank' thunks, 'gravel' hisses, null is tarmac
     setSurface(kind) { surface = kind || null; },
+    // the chassis speaks: note scale, saw spread, sub-square chest, filter bite
+    setVoice(v) {
+      voice = { note: 1, detune: 14, sub: 0.35, q: 3, ...(v || {}) };
+      if (ready) {
+        oscB.detune.value = voice.detune;
+        subG.gain.value = voice.sub;
+        engineFilter.Q.value = voice.q;
+      }
+    },
 
     // pushed once a frame
     update(speed, vmax, throttle, slip, offRoad, nos = false) {
@@ -208,7 +219,7 @@ export function createAudio() {
       // constant smeared a gear change into a glide, which is a siren again.
       const gear = Math.min(4, Math.floor(f * 5));
       const withinGear = f * 5 - gear;
-      const note = 40 + withinGear * 128 + gear * 8;
+      const note = (40 + withinGear * 128 + gear * 8) * voice.note;
       const now = ctx.currentTime;
       const shifted = gear !== lastGear;
       const k = shifted ? 0.015 : 0.08;

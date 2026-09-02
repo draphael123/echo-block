@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>DYNAMO — the circuit</title>
+<meta name="theme-color" content="#0a0e18">
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
+<link rel="manifest" href="./manifest.webmanifest">
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -81,13 +84,32 @@
   #delta.down { color: #ff8a6a; }
   /* the pre-race card */
   #introcard {
-    position: fixed; left: 50%; bottom: 12%; transform: translateX(-50%);
+    position: fixed; left: 50%; bottom: 14%; transform: translateX(-50%);
     text-align: center; color: #b9c3d4; pointer-events: none;
     font: 500 13px/1.6 "Helvetica Neue", sans-serif;
   }
-  #introcard h1 { margin: 0; font-size: 34px; font-weight: 400; color: #f6ecda; letter-spacing: .04em; }
+  /* the card ARRIVES: name first, then the details breathe in under it */
+  #introcard h1 {
+    margin: 0; font-size: 44px; font-weight: 300; color: #f6ecda; letter-spacing: .1em;
+    text-shadow: 0 2px 24px rgba(0,0,0,.7), 0 0 40px rgba(255,201,138,.18);
+    animation: cardin .7s cubic-bezier(.2,.8,.2,1) both;
+  }
+  #introcard p, #introcard .facts { animation: cardin .7s cubic-bezier(.2,.8,.2,1) .25s both; }
+  @keyframes cardin {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: none; }
+  }
   #introcard p { margin: 2px 0 8px; color: #8d97ab; }
   #introcard .facts { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: #6d7688; }
+  /* LETTERBOX for the flyover: two bars ease in, the ceremony reads as
+     cinema, and they leave the moment the countdown owns the screen */
+  #letterbox .bar {
+    position: fixed; left: 0; right: 0; height: 9vh; background: #05070c; z-index: 30;
+    transition: transform .6s cubic-bezier(.4,0,.2,1); pointer-events: none;
+  }
+  #letterbox .bar.top { top: 0; transform: translateY(-100%); }
+  #letterbox .bar.bot { bottom: 0; transform: translateY(100%); }
+  body.ceremony #letterbox .bar { transform: none; }
   /* the results board */
   #results {
     position: fixed; inset: 0; display: grid; place-content: center;
@@ -290,6 +312,7 @@
   <canvas id="map" width="190" height="190"></canvas>
   <div id="msg"></div>
   <div id="introcard" class="hidden"></div>
+  <div id="letterbox"><div class="bar top"></div><div class="bar bot"></div></div>
   <div id="results" class="hidden"></div>
   <div id="cam">
     <button id="camL" title="look left (q)">&#9668;</button>
@@ -306,10 +329,11 @@
     <b>b</b> horn &mdash; scatter the pavement<br>
     <b>q</b>/<b>e</b> look &nbsp; <b>v</b> behind &nbsp; <b>scroll</b> zoom<br>
     <b>g</b> garage &nbsp; <b>t</b> circuits &nbsp; <b>m</b> sound &nbsp; <b>r</b> reset<br>
-    <b>p</b> photo mode &nbsp; <b>gamepad</b> stick + triggers, A drift, X NOS
+    <b>p</b> photo mode &nbsp; <b>gamepad</b> stick + triggers, A drift, X NOS<br>
+    <span style="color:#5b657a;font-size:10px">music: Kevin MacLeod &middot; incompetech.com &middot; CC BY 4.0</span>
   </div>
   <div id="hint"><b>h</b> &mdash; controls</div>
-  <div id="photoHint" class="hidden">photo &mdash; a/d orbit &middot; w/s height &middot; q/e distance &middot; p done</div>
+  <div id="photoHint" class="hidden">photo &mdash; a/d orbit &middot; w/s height &middot; q/e distance &middot; c save &middot; p done</div>
   <div id="podium" class="hidden"></div>
   <div id="pause" class="hidden"><div class="pausecard">
     <h2>PAUSED</h2>

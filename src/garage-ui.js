@@ -13,13 +13,28 @@ import { BODIES, CHASSIS, LIVERIES, ACCENTS } from './race/car.js';
 const CSS = `
 #garage {
   position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  width: min(560px, 90vw); padding: 26px 30px 20px; pointer-events: auto;
-  background: rgba(9, 13, 22, .93); border: 1px solid #2b3547; border-radius: 8px;
-  color: #c8d0de; z-index: 60; font: 12px/1.5 ui-monospace, monospace;
+  width: min(620px, 92vw); max-height: 88vh; overflow-y: auto;
+  padding: 26px 30px 20px; pointer-events: auto;
+  background: rgba(9, 13, 22, .95); border: 1px solid #2b3547; border-radius: 8px;
+  color: #c8d0de; z-index: 90; font: 12px/1.5 ui-monospace, monospace;
+  scrollbar-width: thin; scrollbar-color: #2b3547 transparent;
 }
 #garage.hidden { display: none; }
-#garage h2 { margin: 0 0 18px; font-size: 13px; letter-spacing: .3em; color: #8d97ab; font-weight: 600; }
+#garage h2 { margin: 0 0 6px; font-size: 13px; letter-spacing: .3em; color: #8d97ab; font-weight: 600; }
 #garage h2 span { float: right; color: #ffd9a0; letter-spacing: .12em; }
+#garage .sect {
+  margin: 18px 0 4px; font-size: 10px; letter-spacing: .32em; color: #5b657a;
+  border-bottom: 1px solid #1d2635; padding-bottom: 5px;
+}
+#garage .stats { display: flex; gap: 10px; margin-top: 3px; }
+#garage .stat { font-size: 9px; letter-spacing: .08em; color: #5b657a; }
+#garage .stat i {
+  display: inline-block; width: 26px; height: 4px; border-radius: 2px;
+  background: #1d2635; margin-left: 4px; vertical-align: 2px; position: relative; overflow: hidden;
+}
+#garage .stat i b {
+  position: absolute; left: 0; top: 0; bottom: 0; background: #ffb45c; border-radius: 2px;
+}
 #garage .row {
   display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center;
   padding: 9px 0; border-top: 1px solid #1d2635;
@@ -59,9 +74,26 @@ export function mountGarage({ save, onChange, closeHint = 'G to close' } = {}) {
 
   const changed = () => { paint(); if (onChange) onChange(); };
 
+  const section = (label) => {
+    const s = document.createElement('div');
+    s.className = 'sect';
+    s.textContent = label;
+    partsEl.appendChild(s);
+  };
+  // a chassis's character at a glance: four bars off its base multipliers,
+  // scaled so the differences actually show (the spread is 0.93-1.16)
+  const statBars = (t) => {
+    const bar = (label, v) => {
+      const pct = Math.round(Math.max(0, Math.min(1, (v - 0.88) / 0.3)) * 100);
+      return `<span class="stat">${label}<i><b style="width:${pct}%"></b></i></span>`;
+    };
+    return `<div class="stats">${bar('spd', t.vmax)}${bar('acc', t.accel)}${bar('brk', t.brake)}${bar('grp', t.grip)}</div>`;
+  };
+
   function paint() {
     moneyEl.textContent = save.money.toLocaleString() + ' cr';
     partsEl.innerHTML = '';
+    section('tuning — bolts on, carries across cars');
     for (const p of Garage.PARTS) {
       const lvl = save.parts[p.id] || 0;
       const cost = Garage.nextCost(save, p.id);
@@ -81,14 +113,15 @@ export function mountGarage({ save, onChange, closeHint = 'G to close' } = {}) {
     // THE SHOWROOM: cars, plural — the career's first pillar. Each chassis
     // is a real shape and a real character; parts carry across. Locked cars
     // name the tier that opens them, priced cars name the price, and your
-    // current car says DRIVING.
+    // current car says DRIVING. The stat bars are the honest brochure.
+    section('showroom — the cars');
     for (const ch of CHASSIS) {
       const owned = Garage.ownsCar(save, ch.id);
       const locked = Garage.carLocked(save, ch.id);
       const active = save.chassis === ch.id;
       const row = document.createElement('div');
       row.className = 'row';
-      row.innerHTML = `<div><div class="nm">${ch.name}</div><div class="bl">${ch.blurb}</div></div>`
+      row.innerHTML = `<div><div class="nm">${ch.name}</div><div class="bl">${ch.blurb}</div>${statBars(ch.t)}</div>`
         + `<div class="pips">${active ? 'DRIVING' : owned ? 'OWNED' : ''}</div>`;
       const b = document.createElement('button');
       if (active) { b.textContent = 'YOURS'; b.disabled = true; }
@@ -105,6 +138,7 @@ export function mountGarage({ save, onChange, closeHint = 'G to close' } = {}) {
 
     // Respray, free — charging for it would make people drive a car they do not
     // like, and the point of a garage is that it is YOUR car.
+    section('paint shop');
     const row = document.createElement('div');
     row.className = 'row';
     row.innerHTML = '<div><div class="nm">Paint</div><div class="bl">free, as often as you like</div></div>';

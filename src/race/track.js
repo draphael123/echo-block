@@ -1611,6 +1611,37 @@ const DISTRICT = {
     });
   },
 
+  // ============================================================ THE SUMMIT
+  // The mountain road's own wall: a rock face leaning over the inside of
+  // the carriageway (the sea-cliff's bones with nobody's sea below it),
+  // a crash barrier riding the drop side, and snow poles pacing the verge
+  // beyond it — the three things a real mountain road is made of.
+  crag(c, sec) {
+    c.run(sec.from, sec.to, -(PAVE_BACK + 8), 2, (x, z, ff, gy, s) => {
+      const h = 40 + Math.round(hash3(Math.round(s), 21, 3) * 26);
+      for (let d = 0; d < h; d++) {
+        const lean = Math.round(d * 0.3);
+        c.w.set(Math.round(x - ff.nx * lean), gy + d, Math.round(z - ff.nz * lean),
+          hash3(x + d, d, z) > 0.88 ? 'paper'
+            : hash3(x, d, z + d) > 0.5 ? 'concreteOld' : 'brickDark');
+      }
+    });
+    // the barrier: posts every 12, a doubled rail — the one thing between
+    // the racing line and the valley's lights
+    c.run(sec.from, sec.to, ROAD_HALF + KERB + 6, 1, (x, z, ff, gy, s) => {
+      const i = Math.round(s);
+      if (i % 12 === 0) c.w.box(x, gy, z, 1, 6, 1, 'metalDark');
+      c.w.set(x, gy + 5, z, 'metal');
+      c.w.set(x, gy + 4, z, 'metal');
+    });
+    // snow poles: red-capped, spaced wide, the road's edge when the white
+    // comes down — and at night, the rhythm that says how fast you are
+    c.run(sec.from, sec.to, ROAD_HALF + KERB + 24, 34, (x, z, ff, gy) => {
+      c.w.box(x, gy, z, 1, 11, 1, 'metalDark');
+      c.w.set(x, gy + 11, z, 'plasticRed');
+    });
+  },
+
   dunes(c, sec) {
     // marram grass on low mounds — the dark, windy stretch between lights
     for (const side of [-1, 1])
@@ -2266,7 +2297,7 @@ export function initTrackState(trackSpec) {
   // no-walk boundary in each direction.
   const NO_WALK = new Set(['tunnel', 'motorway', 'viaduct', 'wood', 'yard',
     'containers', 'ship', 'sheds', 'mill', 'millyard',
-    'pipeline', 'tankfarm', 'slagflats', 'cliff', 'dunes']);
+    'pipeline', 'tankfarm', 'slagflats', 'cliff', 'dunes', 'crag']);
   const T = path.total;
   const wrapS = (s) => ((s % T) + T) % T;
   const walkable = (s) => { const sec = sectionAt(wrapS(s)); return sec && !NO_WALK.has(sec.district); };

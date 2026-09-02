@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- DYNAMO: the night, a road, and one pair of lamps -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="42%" r="60%">
+      <stop offset="0%" stop-color="#ffd9a0" stop-opacity=".9"/>
+      <stop offset="45%" stop-color="#ffb45c" stop-opacity=".25"/>
+      <stop offset="100%" stop-color="#ffb45c" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d1322"/>
+      <stop offset="100%" stop-color="#0a0e18"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#sky)"/>
+  <!-- the road, running to a vanishing point -->
+  <path d="M226 512 L250 210 L262 210 L286 512 Z" fill="#131b2c"/>
+  <path d="M253 480 L255 300 L257 300 L259 480 Z" fill="#ffc98a" opacity=".5"/>
+  <!-- the lamps -->
+  <circle cx="256" cy="214" r="150" fill="url(#glow)"/>
+  <rect x="205" y="196" width="40" height="26" rx="7" fill="#ffe9c4"/>
+  <rect x="267" y="196" width="40" height="26" rx="7" fill="#ffe9c4"/>
+  <!-- the roofline of the town, black on the night -->
+  <path d="M0 168 L64 168 L64 140 L98 140 L98 168 L150 168 L150 120 L172 108 L194 120 L194 168 L512 168 L512 120 L470 120 L470 96 L430 96 L430 152 L380 152 L380 128 L340 128 L340 168 L0 168 Z"
+        fill="#05070c" opacity="0" />
+  <text x="256" y="128" text-anchor="middle" font-family="Helvetica, Arial, sans-serif"
+        font-size="64" font-weight="700" letter-spacing="18" fill="#f6ecda">DYNAMO</text>
+</svg>

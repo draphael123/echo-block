@@ -14,15 +14,18 @@
 //
 // grand.js sits unregistered (playtest, 2026-09-01): a mega-lap stitched
 // from the other circuits' districts amplified the same-city feeling instead
-// of curing it. If a fifth circuit comes back it should be a genuinely
-// different SETTING, not a remix. GP.ROUNDS maps this array, so the season
-// is four rounds again by construction.
+// of curing it. The fifth circuit that came back instead is THE SUMMIT — a
+// genuinely different setting (the mountain above the town), locked behind
+// the midnight league (reqTier: 2) and excluded from GP.ROUNDS by that same
+// flag: seasons stay a four-round tour of the town, the mountain is the
+// destination past it.
 import parade from './parade.js';
 import oldtown from './oldtown.js';
 import docks from './docks.js';
 import ring from './ring.js';
+import summit from './summit.js';
 
-export const TRACKS = [parade, oldtown, docks, ring];
+export const TRACKS = [parade, oldtown, docks, ring, summit];
 export const byId = (id) => TRACKS.find(t => t.id === id) || TRACKS[0];
 
 // Which one to build. The hub writes the choice here before sending you out;

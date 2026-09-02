@@ -222,16 +222,19 @@ export class VoxWorld {
   // Sort every voxel into a square column of the world, once. Chunking has to
   // start here: meshing each chunk by scanning the whole map would be O(chunks
   // x voxels) and slower than the single mesh it is meant to replace.
+  // The lists carry [key, material, key, material, ...] pairs: the mesher used
+  // to look every name back up with Map.get — five million 161ns hashes that
+  // the bucketing pass had already paid for once.
   bucket(size) {
     const cells = new Map();
-    for (const k of this.v.keys()) {
+    for (const [k, name] of this.v) {
       const z = (k % SPAN) - OFF;
       const x = Math.floor(k / (SPAN * SPAN)) - OFF;
       // packed so a neighbour's id is +/-1 and +/-CHUNK_SPAN away
       const id = (Math.floor(x / size) + 2048) * CHUNK_SPAN + (Math.floor(z / size) + 2048);
       let list = cells.get(id);
       if (!list) cells.set(id, (list = []));
-      list.push(k);
+      list.push(k, name);
     }
     return cells;
   }
@@ -279,14 +282,13 @@ export class VoxWorld {
     const d = opts && opts.dense;
     let solid;
     if (d) {
-      const { grid, x0, y0, z0, sx, sy, sz } = d;
+      const { grid, x0, y0, z0, sy, sz } = d;
       const strideX = sy * sz;
-      solid = (x, y, z) => {
-        if (y < solidBelow) return true;
-        const lx = x - x0, ly = y - y0, lz = z - z0;
-        if (lx < 0 || ly < 0 || lz < 0 || lx >= sx || ly >= sy || lz >= sz) return false;
-        return grid[lx * strideX + ly * sz + lz] !== 0;
-      };
+      // No bounds checks: the grid carries a one-voxel margin, and one voxel
+      // per axis is provably the furthest any probe here reaches from a voxel
+      // in `only` — the six comparisons were a quarter of the mesher's time.
+      solid = (x, y, z) => y < solidBelow
+        || grid[(x - x0) * strideX + (y - y0) * sz + (z - z0)] !== 0;
     } else {
       const has = (x, y, z) => V.has(((x + OFF) * SPAN + (y + OFF)) * SPAN + (z + OFF));
       solid = (x, y, z) => y < solidBelow || has(x, y, z);
@@ -322,9 +324,23 @@ export class VoxWorld {
     const ao = [3, 3, 3, 3];
     const off = [0, 0, 0];
 
-    for (const k of (only || V.keys())) {
-      const name = V.get(k);
-      if (name === undefined) continue;
+    // `only` is [key, material] pairs from bucket() — the name rides along so
+    // five million Map.gets never happen. The no-`only` path (props, the hub)
+    // walks the map's own entries for the same reason.
+    const src = only || null;
+    const srcN = src ? src.length : 0;
+    let si = 0;
+    const entries = src ? null : V.entries()[Symbol.iterator]();
+    for (;;) {
+      let k, name;
+      if (src) {
+        if (si >= srcN) break;
+        k = src[si]; name = src[si + 1]; si += 2;
+      } else {
+        const nx2 = entries.next();
+        if (nx2.done) break;
+        k = nx2.value[0]; name = nx2.value[1];
+      }
       const z = (k % SPAN) - OFF;
       const y = (Math.floor(k / SPAN) % SPAN) - OFF;
       const x = Math.floor(k / (SPAN * SPAN)) - OFF;
@@ -434,8 +450,9 @@ export function meshChunks(world, palette, opts) {
     // Decoded inline, not through a helper returning [x, y, z]: this runs about
     // forty-six million times across the build and an array per call is forty-six
     // million allocations, which cost more than the work they carry.
+    // keys is [key, material] PAIRS — stride 2 everywhere here.
     let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
-    for (let i = 0; i < keys.length; i++) {
+    for (let i = 0; i < keys.length; i += 2) {
       const k = keys[i];
       const x = Math.floor(k / (SPAN * SPAN)) - OFF;
       const y = (Math.floor(k / SPAN) % SPAN) - OFF;
@@ -456,7 +473,7 @@ export function meshChunks(world, palette, opts) {
       for (let dz = -1; dz <= 1; dz++) {
         const src = cells.get(id + dx * CHUNK_SPAN + dz);
         if (!src) continue;
-        for (let i = 0; i < src.length; i++) {
+        for (let i = 0; i < src.length; i += 2) {
           const k = src[i];
           const lx = Math.floor(k / (SPAN * SPAN)) - OFF - x0;
           if (lx < 0 || lx >= sx) continue;
@@ -491,8 +508,9 @@ export async function meshChunksAsync(world, palette, opts, onStep) {
   const total = cells.size;
   let done = 0;
   for (const [id, keys] of cells) {
+    // keys is [key, material] PAIRS — stride 2, same as meshChunks
     let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
-    for (let i = 0; i < keys.length; i++) {
+    for (let i = 0; i < keys.length; i += 2) {
       const k = keys[i];
       const x = Math.floor(k / (SPAN * SPAN)) - OFF;
       const y = (Math.floor(k / SPAN) % SPAN) - OFF;
@@ -509,7 +527,7 @@ export async function meshChunksAsync(world, palette, opts, onStep) {
       for (let dz = -1; dz <= 1; dz++) {
         const src = cells.get(id + dx * CHUNK_SPAN + dz);
         if (!src) continue;
-        for (let i = 0; i < src.length; i++) {
+        for (let i = 0; i < src.length; i += 2) {
           const k = src[i];
           const lx = Math.floor(k / (SPAN * SPAN)) - OFF - x0;
           if (lx < 0 || lx >= sx) continue;

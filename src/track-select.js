@@ -141,6 +141,19 @@ export function mountTrackSelect({ save, onGo, onDuel, closeLabel, onClose }) {
     const here = pickTrack().id;
     list.innerHTML = '';
     for (const t of TRACKS) {
+      // TIER-LOCKED circuits show their face and name their price: the
+      // Summit sits in the list from night one, greyed, saying what it
+      // costs to see it — that is what a destination looks like in a menu.
+      if ((t.reqTier || 0) > (save.career?.tier || 0)) {
+        const lrow2 = document.createElement('div');
+        lrow2.className = 't locked';
+        lrow2.style.opacity = '0.55';
+        lrow2.innerHTML = `<div><div class="nm">&#128274; ${t.name}</div>`
+          + `<div class="q">${t.blurb}</div></div>`
+          + `<div class="meta"><b>${Garage.TIER_NAMES[t.reqTier]}</b>win the ${Garage.TIER_NAMES[t.reqTier - 1]} title</div>`;
+        list.appendChild(lrow2);
+        continue;
+      }
       const best = save.bests && save.bests[t.id];
       // Medal against the circuit's own reference lap — the same number the
       // purse pays pace against, so the target and the money agree.

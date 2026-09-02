@@ -146,6 +146,7 @@ export default {
   // funfair's neon has a dark sky to burn against.
   sky: 'pier',
   ambience: 'surf',
+  music: './music/docks.mp3',       // Floating Cities — K. MacLeod, CC BY 4.0
   laps: 3,
   // the measured clean racing-policy lap, which the purse pays pace against
   // the road's own face and the streetlight's own colour -- see ribbon()

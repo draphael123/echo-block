@@ -11,7 +11,7 @@ import { Post } from '../post.js';
 import { Ground } from '../walk.js';
 import { buildTrack, hydrateTrack, sectionAt, safeSpot, lifeSpots, ROAD_HALF, SET } from './track.js';
 import { TRACKS, pickTrack, chooseTrack, byId } from './tracks/index.js';
-import { buildCar, V_MAX, BODIES } from './car.js';
+import { buildCar, V_MAX, BODIES, chassisOf } from './car.js';
 import { buildLife, buildTraffic } from './life.js';
 import { buildPerson } from '../people.js';
 import { buildField, gridSlot, fieldSizeOf, runnerByName } from './field.js';
@@ -177,6 +177,7 @@ function rebuildCar() {
   car = buildCar(savefile.paint, Garage.tuneOf(savefile), savefile.parts, savefile.chassis, carStyle());
   scene.add(car.root);
   Object.assign(car.state, keep);
+  audio.setVoice(chassisOf(savefile.chassis).voice);
 }
 scene.add(car.root);
 const gridFrame = pathFrame();
@@ -327,6 +328,7 @@ const keys = new Set();
 let wet = 0;
 
 const audio = createAudio();
+audio.setVoice(chassisOf(savefile.chassis).voice);   // the chassis chooses the engine note
 const music = createMusic();
 // THE PAUSE. Esc halts the sim dead — the loop still paints, nothing moves.
 let paused = false;
@@ -371,6 +373,7 @@ addEventListener('keydown', (e) => {
   // about the race changes — it is purely for being a menace, as requested.
   if (k === 'b' && track) hornBlast();
   if (k === 'p' && track && !swapping) { togglePhoto(); return; }
+  if (k === 'c' && photoMode) { photoSnap = true; return; }
   // the NOS teaches itself the first time it is burned
   if (k === 'shift' && car.state.dyn > 0 && !savefile.dynTaught) {
     savefile.dynTaughtN = (savefile.dynTaughtN || 0) + 1;
@@ -409,7 +412,7 @@ function hornBlast() {
 // PHOTO MODE. P freezes the night and hands you the camera — orbit with
 // A/D, height with W/S, distance with Q/E. The HUD gets out of the shot.
 // The fireworks keep bursting, because that is what the shot is FOR.
-let photoMode = false, photoYaw = 0, photoUp = 44, photoDist = 190;
+let photoMode = false, photoYaw = 0, photoUp = 44, photoDist = 190, photoSnap = false;
 const padPrev = { start: false, horn: false };
 function togglePhoto() {
   photoMode = !photoMode;
@@ -855,6 +858,7 @@ function reset(ceremony = false) {
   // The first arrival gets the flyover; R gets straight back on the grid.
   intro = ceremony ? 6.0 : 0;
   if (introCard) introCard.classList.toggle('hidden', !ceremony);
+  document.body.classList.toggle('ceremony', !!ceremony);
   if (resultsEl) resultsEl.classList.add('hidden');
   const pod2 = document.getElementById('podium');
   if (pod2) pod2.classList.add('hidden');
@@ -1130,6 +1134,7 @@ function applyTrack(spec, trk) {
   flair = buildFlair(spec);
   if (flair) scene.add(flair.g);
   audio.ambience(spec.ambience);
+  music.setTrackFile(spec.music || null);
   {
     const zf = pathFrame();
     slickZones = (spec.slicks || []).map(sl => {
@@ -1948,6 +1953,22 @@ function tick() {
       camera.position.y - car.state.yView,
       camera.position.z - car.state.z);          // the car is the subject
     post.render(scene, camera, time);
+    // C saves the frame — read back in the SAME task as the render, because
+    // the drawing buffer is not preserved between frames
+    if (photoSnap) {
+      photoSnap = false;
+      const a = document.createElement('a');
+      a.href = renderer.domElement.toDataURL('image/png');
+      a.download = 'dynamo-' + track.id + '.png';
+      a.click();
+      const hint = document.getElementById('photoHint');
+      if (hint) {
+        hint.textContent = 'saved';
+        setTimeout(() => {
+          hint.textContent = 'photo — a/d orbit · w/s height · q/e distance · c save · p done';
+        }, 900);
+      }
+    }
     return;
   }
   if (paused) {                      // frozen, but still painted
@@ -2003,7 +2024,10 @@ function tick() {
   if (intro > 0) {
     intro -= dt;
     if (keys.size) intro = 0;
-    if (intro <= 0 && introCard) introCard.classList.add('hidden');
+    if (intro <= 0) {
+      if (introCard) introCard.classList.add('hidden');
+      document.body.classList.remove('ceremony');
+    }
     throttle = 0; steer = 0; drift = false;
   } else
   // THE LIGHTS. Nobody moves until they go out — including you, which is why

@@ -21,7 +21,9 @@ import { FIELD_SIZE } from './field.js';
 // all the way down, so a bad round is a setback rather than the end of it.
 export const POINTS = [10, 8, 6, 4, 2, 1];
 
-export const ROUNDS = TRACKS.map(t => t.id);
+// The season tours the TOWN. Tier-locked circuits (the Summit) are not GP
+// rounds — they are what the ladder unlocks, not laps four-of-five.
+export const ROUNDS = TRACKS.filter(t => !t.reqTier).map(t => t.id);
 
 // A championship in progress, or null. `table` is name -> points, and it holds
 // the AI drivers too, because a table with one row in it is a scoreboard.

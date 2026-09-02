@@ -160,23 +160,31 @@ const BEAM_REACH = 280;
 // tune: the wedge is fast and nervous, the estate is planted and slow to
 // wind up, the kei is all elbows. The rivals drive them too (with no parts
 // tune), which finally makes the mirror full of different silhouettes.
+// `voice` is the engine's character in the synth: `note` scales the whole
+// rev range, `detune` is the cents between the two saws (wider = angrier),
+// `sub` how much square-wave chest it has, `q` the filter's bite. Four cars
+// that drive differently should not be one engine wearing four bodies.
 export const CHASSIS = [
   { id: 'brindle', name: 'Brindle 3-Door', price: 0, reqTier: 0,
     blurb: 'the hatch you started with — honest everywhere',
     dims: { L: 58, W: 26, roofH: 22, rear: 'hatch' },
-    t: { vmax: 1.00, accel: 1.00, brake: 1.00, grip: 1.00 } },
+    t: { vmax: 1.00, accel: 1.00, brake: 1.00, grip: 1.00 },
+    voice: { note: 1.0, detune: 14, sub: 0.35, q: 3 } },
   { id: 'kestrel', name: 'Kestrel Kei', price: 2400, reqTier: 0,
     blurb: 'tiny, darty, brakes like a thought',
     dims: { L: 48, W: 22, roofH: 21, rear: 'kei' },
-    t: { vmax: 0.93, accel: 1.16, brake: 1.05, grip: 1.08 } },
+    t: { vmax: 0.93, accel: 1.16, brake: 1.05, grip: 1.08 },
+    voice: { note: 1.38, detune: 9, sub: 0.18, q: 4.5 } },   // the angry sewing machine
   { id: 'dray', name: 'Dray Estate', price: 3600, reqTier: 1,
     blurb: 'heavy, planted, unbothered by rain',
     dims: { L: 62, W: 27, roofH: 23, rear: 'estate' },
-    t: { vmax: 0.97, accel: 0.93, brake: 1.10, grip: 1.12 } },
+    t: { vmax: 0.97, accel: 0.93, brake: 1.10, grip: 1.12 },
+    voice: { note: 0.78, detune: 10, sub: 0.55, q: 2.2 } },  // all chest, no bark
   { id: 'vespid', name: 'Vespid GT', price: 5200, reqTier: 2,
     blurb: 'wedge nose, glass back — fast and nervous',
     dims: { L: 64, W: 26, roofH: 19, rear: 'wedge' },
-    t: { vmax: 1.09, accel: 1.10, brake: 0.97, grip: 0.94 } },
+    t: { vmax: 1.09, accel: 1.10, brake: 0.97, grip: 0.94 },
+    voice: { note: 1.12, detune: 22, sub: 0.30, q: 3.8 } },  // wide, sharp, rev-happy
 ];
 export const chassisOf = (id) => CHASSIS.find(c => c.id === id) || CHASSIS[0];
 

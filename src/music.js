@@ -190,9 +190,30 @@ export function createMusic() {
     }
   }
 
+  // ---- THE RECORD PLAYER. Each circuit can bring its own track (licensed,
+  // shipped in /music) — when one is loaded, it plays instead of the synth
+  // engine, on the same volume knob and the same mute. The synth remains the
+  // menu's radio and the fallback for any circuit without a record.
+  let fileUrl = null, fileEl = null, filePlaying = false;
+  function fileGain() { return muted ? 0 : vol * 0.55; }
+  function tryPlayFile() {
+    if (!fileUrl) return;
+    if (!fileEl) { fileEl = new Audio(); fileEl.loop = true; }
+    if (fileEl.src !== new URL(fileUrl, location.href).href) fileEl.src = fileUrl;
+    fileEl.volume = fileGain();
+    const p = fileEl.play();
+    if (p) p.then(() => { filePlaying = true; }).catch(() => { /* no gesture yet — start() retries */ });
+  }
+  function stopFile() {
+    if (fileEl) { fileEl.pause(); filePlaying = false; }
+  }
+
   return {
     start(m) {
       if (m) mode = m;
+      // A circuit with its own record plays the record; the synth stays quiet
+      if (mode === 'race' && fileUrl) { tryPlayFile(); this.stop(); return; }
+      stopFile();
       if (!ctx) boot();
       if (ctx.state === 'suspended') ctx.resume();
       if (running) return;
@@ -208,17 +229,32 @@ export function createMusic() {
       clearInterval(timer);
       if (master) master.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.3);
     },
+    // hand the player this circuit's record (or null to go back to the synth).
+    // If music is already going, the change happens on the spot.
+    setTrackFile(url) {
+      if (url === fileUrl) return;
+      fileUrl = url || null;
+      if (filePlaying || running) {
+        if (fileUrl && mode === 'race') { tryPlayFile(); this.stop(); }
+        else if (!fileUrl) { stopFile(); if (!running && ctx) this.start(mode); }
+      }
+    },
     mute(v) {
       muted = !!v;
       if (master && ctx) master.gain.setTargetAtTime(baseGain(), ctx.currentTime, 0.15);
+      if (fileEl) fileEl.volume = fileGain();
     },
     // the volume knob, 0..1 — the settings slider drives this
     setVolume(v) {
       vol = Math.max(0, Math.min(1, v));
       if (master && ctx && running) master.gain.setTargetAtTime(baseGain(), ctx.currentTime, 0.15);
+      if (fileEl) fileEl.volume = fileGain();
     },
     // the heat, 0..1 — the final lap turns it up: denser hats, open filters,
-    // the arp everywhere, the lead louder
-    intensity(v) { heat = Math.max(0, Math.min(1, v)); },
+    // the arp everywhere, the lead louder. On a record it leans the volume in.
+    intensity(v) {
+      heat = Math.max(0, Math.min(1, v));
+      if (fileEl && filePlaying) fileEl.volume = Math.min(1, fileGain() * (1 + heat * 0.25));
+    },
   };
 }

@@ -155,6 +155,7 @@ export default {
   // like and nothing like the Parade, on the same palette and the same props.
   sky: 'dusk',
   ambience: 'wind',
+  music: './music/oldtown.mp3',     // Deep Haze — K. MacLeod, CC BY 4.0
   // The shortest lap in the city, so it gets an extra one. Three laps of 359
   // metres is over in ninety seconds; four makes it a race rather than a lap.
   laps: 4,

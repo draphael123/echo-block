@@ -149,6 +149,7 @@ export default {
   // it takes the distance away from you.
   sky: 'sodium',
   ambience: 'industry',
+  music: './music/ring.mp3',        // Neon Laser Horizon — K. MacLeod, CC BY 4.0
   // The longest lap in the city at 698 metres — but also the fastest: two laps
   // was over in 68 seconds, half the length of any other race. "Three is a
   // slog" was written before there was a field to work through; with five cars

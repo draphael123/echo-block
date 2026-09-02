@@ -165,6 +165,7 @@ export default {
   // to be genuinely dark; every other track moved off midnight, this one owns it.
   sky: 'midnight',
   ambience: 'crowd',
+  music: './music/parade.mp3',      // Voxel Revolution — K. MacLeod, CC BY 4.0
   laps: 3,
 
   landmarks: { gasholder: [60, -40, 46, 132], waterTower: [-210, 190], pylons: 4 },
