@@ -24,8 +24,14 @@ import oldtown from './oldtown.js';
 import docks from './docks.js';
 import ring from './ring.js';
 import summit from './summit.js';
+import frostfair from './frostfair.js';
+import plowroad from './plowroad.js';
+import blackmere from './blackmere.js';
 
-export const TRACKS = [parade, oldtown, docks, ring, summit];
+// THE FROST CUP: the Summit plus the three winter circuits — all reqTier 2,
+// all excluded from GP.ROUNDS by that flag. The town tour stays four rounds;
+// winter is what the career opens INTO.
+export const TRACKS = [parade, oldtown, docks, ring, summit, frostfair, plowroad, blackmere];
 export const byId = (id) => TRACKS.find(t => t.id === id) || TRACKS[0];
 
 // Which one to build. The hub writes the choice here before sending you out;

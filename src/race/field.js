@@ -107,7 +107,13 @@ export function buildField(track, ground, buildCar,
     const rival = buildRival(track, ground, buildCar, {
       // tierBump: the season tiers make the same drivers commit harder
       paint, policy: r.policy, pace: r.pace + tierBump, startS: slot.s, startU: slot.u,
-      lineU: r.lineU || 0, parts: r.parts || null, chassis: r.chassis || 'brindle',
+      // a circuit may dictate the lanes (spec.lineUs) — on the plow road the
+      // only roads are the two carved channels, and a rival on its usual
+      // lineU would spend the whole race wading the deep snow
+      lineU: (track.spec && track.spec.lineUs)
+        ? track.spec.lineUs[idx % track.spec.lineUs.length]
+        : (r.lineU || 0),
+      parts: r.parts || null, chassis: r.chassis || 'brindle',
       // a circuit may issue its rivals better lamps (spec.rivalBeam) — on
       // the sight circuits, cautious drivers without them fell 45s back
       beam: (track.spec && track.spec.rivalBeam) || 1,

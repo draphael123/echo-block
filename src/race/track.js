@@ -234,6 +234,27 @@ function ribbon(w, path) {
           if (a > half / 3 - 2 && a < half / 3 + 1 && (s % 96) < 52) c = 'roadLine';
           if (a > (half * 2) / 3 - 2 && a < (half * 2) / 3 + 1 && (s % 96) < 52) c = 'roadLine';
           if (a < 2 && (s % 96) < 52) c = 'roadLine';
+        } else if (surf === 'rink') {
+          // THE FROST FAIR's river: grey-green ice, rutted where the fair
+          // walks it, with a GRITTED LINE of ash down the middle — the one
+          // strip of honest grip, and leaving it is the whole gamble
+          const q = hash3(x >> 1, 5, z >> 1);
+          c = q > 0.94 ? 'moonGlass' : (q > 0.5 ? 'glassDark' : (q > 0.2 ? 'concreteOld' : 'glassDark'));
+          if (a <= 50) c = r > 0.75 ? 'metalDark' : 'asphaltWorn';   // the grit
+          if (a > 50 && a <= 54 && (s % 8) < 5) c = 'asphaltPatch';  // its ragged edge
+        } else if (surf === 'plowed') {
+          // THE PLOW ROAD: deep snow, except where the plows have been —
+          // two carved channels of wet tarmac at ±80. The drag off-channel
+          // is runtime; this is what your eyes use to find the fast road.
+          const inCh = Math.abs(a - 80) <= 38;
+          if (inCh) c = r > 0.9 ? 'asphaltWorn' : 'asphalt';
+          else if (Math.abs(a - 80) <= 46) c = 'concreteOld';        // the dirty berm
+          else c = r > 0.92 ? 'concreteOld' : 'paper';               // the deep white
+        } else if (surf === 'blackice') {
+          // BLACKMERE: the lake itself, near-black and glossy, moonlight
+          // catching the odd polish. No paint — a lake has no lanes.
+          c = r > 0.965 ? 'moonGlass' : (r > 0.45 ? 'glassDark' : 'asphalt');
+          if (a > half - 4) c = 'concreteOld';                       // the shore grit
         } else if (surf === 'alpine') {
           // the mountain's road: frost-patched, pale, no paint to speak of —
           // and above the snow line the wind drags white spindrift across it,
@@ -1761,6 +1782,175 @@ const DISTRICT = {
       });
   },
 
+  // ========================================================= THE FROST FAIR
+  // The river through the town, frozen, with the fair moved onto the banks:
+  // embankment walls with the town's lit windows above them, stall rows and
+  // braziers, and stone bridges carrying the streets overhead.
+  quayside(c, sec) {
+    for (const side of [-1, 1]) {
+      // the embankment: a stone wall rising off the ice, the town above it —
+      // with a car-width of run-off before it, so leaving the road costs a
+      // scrape and a recovery rather than a wedge
+      c.run(sec.from, sec.to, side * (ROAD_HALF + KERB + 24), 2, (x, z, ff, gy, s) => {
+        if (nearRoad(c.path, x, z, ROAD_HALF + 10)) return;
+        const h = 26 + Math.round(hash3(Math.round(s), side, 3) * 6);
+        for (let k = 0; k < h; k++)
+          c.w.set(x, gy + k, z, hash3(x, k, z) > 0.85 ? 'concreteOld' : 'brickDark');
+        c.w.set(x, gy + h, z, 'paper');                  // snow on the parapet
+        // the town's windows, glowing above the wall
+        if (Math.round(s) % 9 < 2 && hash3(x, 7, z) > 0.4)
+          c.w.set(x, gy + h + 4 + Math.round(hash3(x, 8, z) * 14), z,
+            hash3(x, 9, z) > 0.3 ? 'winWarm' : 'winWarmDim');
+      });
+      // mooring rings and frozen-in rowboats at the wall's foot — clear of
+      // the kerb line: a two-wheels-off moment should cost a scrape, not a
+      // wedge on a rowboat
+      c.run(sec.from + 60, sec.to, side * (ROAD_HALF + KERB + 16), 170, (x, z, ff, gy, s) => {
+        if (nearRoad(c.path, x, z, ROAD_HALF + 8)) return;
+        c.w.box(x, gy, z, 8, 4, 4, 'trunk');
+        c.w.box(x + 1, gy + 4, z + 1, 6, 1, 2, 'paper');
+      });
+    }
+  },
+
+  fairstalls(c, sec) {
+    // the fair itself: striped stalls in rows along both banks, braziers
+    // burning between them — the reason the town came out in the cold
+    const COLS = ['plasticRed', 'doorBlue', 'doorGreen', 'doorYellow'];
+    for (const side of [-1, 1])
+      for (let s = sec.from + 80, i = 0; s < sec.to - 60; s += 130, i++)
+        c.put(s, side * (ROAD_HALF + KERB + 30), (x, z, ff, gy) => {
+          if (nearRoad(c.path, x, z, ROAD_HALF + 12)) return;
+          const col = COLS[i % 4];
+          c.w.box(x - 7, gy, z - 5, 15, 9, 11, 'trunk');           // the counter
+          for (let k = 0; k < 4; k++)
+            c.w.box(x - 8 + k * 4, gy + 9, z - 6, 3, 1, 13, k % 2 ? col : 'paper');
+          c.w.box(x - 6, gy + 3, z - 6, 13, 4, 1, 'winWarm');      // the lit front
+        });
+    // braziers: iron baskets with fire in them, ember glow banked high
+    for (const side of [-1, 1])
+      c.run(sec.from + 140, sec.to, side * (ROAD_HALF + KERB + 12), 260, (x, z, ff, gy) => {
+        if (nearRoad(c.path, x, z, ROAD_HALF + 4)) return;
+        c.w.box(x, gy, z, 3, 4, 3, 'metalDark');
+        c.w.set(x + 1, gy + 4, z + 1, 'sodium');
+        c.w.set(x + 1, gy + 5, z + 1, 'coneOrange');
+      });
+  },
+
+  span(c, sec) {
+    // a stone bridge carrying a town street over the river: two piers off
+    // the carriageway, an arch of deck overhead, lanterns on the parapet
+    const mid = sec.from + (sec.to - sec.from) * 0.5;
+    for (const side of [-1, 1])
+      c.put(mid, side * (ROAD_HALF + KERB + 8), (x, z, ff, gy) =>
+        c.w.box(x - 4, gy, z - 4, 9, 44, 9, 'brickDark'));
+    for (let u = -(ROAD_HALF + KERB + 8); u <= ROAD_HALF + KERB + 8; u += 0.8)
+      c.put(mid, u, (x, z, ff, gy) => {
+        for (let d = -8; d <= 8; d++) {
+          // deck marched along s so the bridge has real width
+          c.w.set(x + Math.round(ff.tx * d), gy + 44, z + Math.round(ff.tz * d), 'concreteOld');
+          if (Math.abs(d) === 8)
+            c.w.set(x + Math.round(ff.tx * d), gy + 45, z + Math.round(ff.tz * d), 'brickDark');
+        }
+        if (Math.abs(Math.round(u)) % 40 < 2)
+          c.w.set(x, gy + 47, z, 'winWarm');               // parapet lanterns
+      });
+  },
+
+  // ========================================================= THE PLOW ROAD
+  drifts(c, sec) {
+    // the blizzard's own country: drift mounds, buried fences, nothing else
+    for (const side of [-1, 1])
+      c.run(sec.from, sec.to, side * (SET + 30), 30, (x, z, ff, gy, s) => {
+        if (nearRoad(c.path, x, z, ROAD_HALF + 20)) return;
+        const rad = 6 + Math.round(hash3(Math.round(s), side, 17) * 9);
+        for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
+          const dd = dx * dx + dz * dz;
+          if (dd <= rad * rad)
+            c.w.set(x + dx, gy + (dd < rad * rad / 3 ? 2 : dd < rad * rad * 0.7 ? 1 : 0), z + dz, 'paper');
+        }
+      });
+    c.run(sec.from, sec.to, -(PAVE_BACK + 12), 14, (x, z, ff, gy) => {
+      if (nearRoad(c.path, x, z, ROAD_HALF + 6)) return;
+      c.w.box(x, gy, z, 1, 4, 1, 'trunk');
+      c.w.set(x, gy + 4, z, 'paper');
+    });
+  },
+
+  depot(c, sec) {
+    // the grit depot: a salt dome, plow spares, sodium masts — the one lit
+    // place on the road, and the blizzard's answer to the services
+    const mid = sec.from + (sec.to - sec.from) * 0.5;
+    c.put(mid, SET + 90, (x, z, ff, gy) => {
+      if (nearRoad(c.path, x, z, ROAD_HALF + 40)) return;
+      for (let k = 0; k < 26; k++) {
+        const r2 = Math.round(Math.sqrt(Math.max(0, 26 * 26 - (k * 2.4) ** 2)) * 0.9);
+        for (let dx = -r2; dx <= r2; dx++) for (let dz = -r2; dz <= r2; dz++)
+          if (dx * dx + dz * dz <= r2 * r2)
+            c.w.set(x + dx, gy + k, z + dz, hash3(x + dx, k, z + dz) > 0.9 ? 'concreteOld' : 'paper');
+      }
+    });
+    for (const off of [-160, 60, 220])
+      c.put(mid + off, SET + 34, (x, z, ff, gy) => {
+        if (nearRoad(c.path, x, z, ROAD_HALF + 12)) return;
+        c.w.box(x, gy, z, 2, 40, 2, 'metalDark');
+        c.w.box(x - 2, gy + 40, z - 1, 6, 2, 3, 'metalDark');
+        c.w.set(x, gy + 41, z, 'sodium');
+      });
+    c.run(sec.from + 60, sec.to - 60, -(SET + 40), 150, (x, z, ff, gy) =>
+      D.oilDrums(c.w, x, gy, z, 4));
+  },
+
+  // ========================================================== BLACKMERE
+  floe(c, sec) {
+    // pressure ridges: lines of broken plate ice shoved up in low walls,
+    // running rough diagonals out from the racing surface
+    for (const side of [-1, 1])
+      c.run(sec.from, sec.to, side * (ROAD_HALF + 40), 110, (x, z, ff, gy, s) => {
+        if (nearRoad(c.path, x, z, ROAD_HALF + 24)) return;
+        for (let d = 0; d < 30; d++) {
+          const px = Math.round(x + ff.nx * side * d + ff.tx * Math.sin(d * 0.4) * 4);
+          const pz = Math.round(z + ff.nz * side * d + ff.tz * Math.sin(d * 0.4) * 4);
+          const h = 2 + Math.round(hash3(px, 3, pz) * 4);
+          for (let k = 0; k <= h; k++)
+            c.w.set(px, gy + k, pz, hash3(px, k, pz) > 0.7 ? 'moonGlass' : 'glassDark');
+        }
+      });
+    // frozen reeds where the shallows were
+    c.run(sec.from, sec.to, SET + 60, 22, (x, z, ff, gy, s) => {
+      if (nearRoad(c.path, x, z, ROAD_HALF + 30)) return;
+      for (let t2 = 0; t2 < 4; t2++)
+        c.w.box(x + Math.round((hash3(t2, x, z) - 0.5) * 14), gy,
+          z + Math.round((hash3(x, t2, z) - 0.5) * 14), 1, 4 + (t2 % 3), 1, 'grassDry');
+    });
+  },
+
+  shoreline(c, sec) {
+    // the far shore: black firs and a handful of lit cabins — the only
+    // warmth anywhere on the lake, and always out of reach
+    for (const side of [-1, 1])
+      c.run(sec.from, sec.to, side * (SET + 50), 48, (x, z, ff, gy, s) => {
+        if (nearRoad(c.path, x, z, ROAD_HALF + 26)) return;
+        const h = 20 + Math.round(hash3(Math.round(s), side, 19) * 12);
+        c.w.box(x, gy, z, 2, 5, 2, 'trunk');
+        let rad = 6;
+        for (let ty = 5; ty < h; ty += 4) {
+          c.w.box(x - rad + 1, gy + ty, z - rad + 1, rad * 2 - 1, 3, rad * 2 - 1, 'leafDark');
+          c.w.box(x - rad + 1, gy + ty + 3, z - rad + 1, rad * 2 - 1, 1, rad * 2 - 1, 'paper');
+          rad = Math.max(2, rad - 2);
+        }
+      });
+    for (let s = sec.from + 300; s < sec.to - 200; s += 700)
+      c.put(s, SET + 120, (x, z, ff, gy) => {
+        if (nearRoad(c.path, x, z, ROAD_HALF + 40)) return;
+        c.w.box(x - 8, gy, z - 6, 17, 10, 13, 'trunk');
+        c.w.box(x - 9, gy + 10, z - 7, 19, 3, 15, 'paper');       // snowed roof
+        c.w.box(x - 4, gy + 3, z - 7, 4, 4, 1, 'winWarm');        // the window
+        c.w.box(x + 4, gy + 10, z + 2, 2, 6, 2, 'brickDark');     // the chimney
+        c.anchors.stacks.push([x + 5, gy + 16, z + 3]);
+      });
+  },
+
   // ============================================================= THE WORKS
   // The ring reborn as heavy industry: pipe racks beside the road, pipe
   // bridges over it, flare stacks burning against the sky, a tank farm,
@@ -2509,7 +2699,7 @@ export function initTrackState(trackSpec) {
   const NO_WALK = new Set(['tunnel', 'motorway', 'viaduct', 'wood', 'yard',
     'containers', 'ship', 'sheds', 'mill', 'millyard',
     'pipeline', 'tankfarm', 'slagflats', 'cliff', 'dunes', 'crag',
-    'snowfield', 'firs']);
+    'snowfield', 'firs', 'span', 'drifts', 'depot', 'floe', 'shoreline']);
   const T = path.total;
   const wrapS = (s) => ((s % T) + T) % T;
   const walkable = (s) => { const sec = sectionAt(wrapS(s)); return sec && !NO_WALK.has(sec.district); };

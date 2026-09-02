@@ -115,6 +115,31 @@ export const SKIES = {
     disc: [0.88, 0.84, 0.96], stars: 0.6,
     exposure: 1.60, threshold: 0.80,
   },
+  // THE AURORA, over the frozen lake. Deep teal-black with green bleeding
+  // into the haze — the sky shader can't draw the ribbons (the flair does),
+  // but everything under an aurora is faintly green-lit, and that cast is
+  // what sells it. The clearest air in the game: a lake at -20 has none.
+  aurora: {
+    top: '#081420', horizon: '#1e4a44', haze: '#2e6a52', below: '#101a1e', ridge: '#0b1418',
+    fog: '#12241f', fogD: 0.00032, clear: '#081420',
+    hemiSky: '#3a6a5c', hemiGround: '#22201c', hemi: 1.26,
+    key: '#cfe8dc', keyI: 1.9, sun: [-100, 640, 220],
+    disc: [0.85, 0.96, 0.9], stars: 1.35,
+    exposure: 1.82, threshold: 0.74,
+  },
+
+  // THE SQUALL, on the plow road. A blizzard has no sky at all — a grey-white
+  // dome, the thickest fog anywhere (double the sodium's), and a smeared
+  // pale key from nowhere in particular. The plows' work lights are the
+  // only landmarks, which is the level design.
+  squall: {
+    top: '#3a4450', horizon: '#6a7480', haze: '#7a828c', below: '#4a525c', ridge: '#414a54',
+    fog: '#5a646e', fogD: 0.00150, clear: '#3a4450',
+    hemiSky: '#8a94a0', hemiGround: '#3e4448', hemi: 1.05,
+    key: '#dae2ea', keyI: 0.9, sun: [0, 500, 0],
+    disc: [0.9, 0.92, 0.95], stars: 0,
+    exposure: 1.45, threshold: 0.9,
+  },
 };
 
 export const skyOf = (id) => SKIES[id] || SKIES.midnight;

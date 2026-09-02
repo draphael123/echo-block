@@ -13,8 +13,10 @@ import * as THREE from '../vendor/three/three.module.js';
 // next field, so voxels land on top of each other in a completely different
 // part of the world and nothing anywhere throws. 4096 was +/-327m and the
 // Grand Circuit's kilometre lap ran past it (the bounds check said so, as
-// designed). 8192 is +/-655m; keys stay exact integers well under 2^53.
-const OFF = 8192, SPAN = 16384;
+// designed); 8192 was +/-655m and the Plow Road's blizzard sweeps ran past
+// THAT (the check said so again — this constant earns its keep). 16384 is
+// +/-1.3km; max key = 32768^3 = 3.5e13, still exact under 2^53.
+const OFF = 16384, SPAN = 32768;
 let warned = false;
 const key = (x, y, z) => {
   if (!warned && (x < -OFF || x >= OFF || y < -OFF || y >= OFF || z < -OFF || z >= OFF)) {
@@ -79,10 +81,13 @@ class ShardMap {
     this.n = n;
     this.ms = Array.from({ length: n }, () => new Map());
   }
-  get(k) { return this.ms[k % this.n].get(k); }
-  set(k, v) { this.ms[k % this.n].set(k, v); return this; }
-  has(k) { return this.ms[k % this.n].has(k); }
-  delete(k) { return this.ms[k % this.n].delete(k); }
+  // Math.abs: a key from an out-of-bounds coordinate can go negative, and a
+  // negative modulo would index shard -1 — the bounds warning should be the
+  // only symptom of a runaway build, not a TypeError on top of it.
+  get(k) { return this.ms[Math.abs(k) % this.n].get(k); }
+  set(k, v) { this.ms[Math.abs(k) % this.n].set(k, v); return this; }
+  has(k) { return this.ms[Math.abs(k) % this.n].has(k); }
+  delete(k) { return this.ms[Math.abs(k) % this.n].delete(k); }
   get size() { let t = 0; for (const m of this.ms) t += m.size; return t; }
   *keys() { for (const m of this.ms) yield* m.keys(); }
   *entries() { for (const m of this.ms) yield* m.entries(); }

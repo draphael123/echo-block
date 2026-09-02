@@ -1021,12 +1021,61 @@ function flairSlagpour(districtName) {
   return { g, update };
 }
 
+// THE AURORA: three ribbons of green light hanging high over the lake,
+// waving slowly, riding with the camera the way the real thing rides the
+// whole sky. Vertex colours fade each ribbon to nothing at its edges so
+// the additive blend has no seams to show.
+function flairAurora() {
+  const g = new THREE.Group();
+  const ribbons = [];
+  const PAL = [[0.2, 0.9, 0.5], [0.25, 0.8, 0.65], [0.45, 0.75, 0.4]];
+  for (let ri = 0; ri < 3; ri++) {
+    const SEG = 48;
+    const geo = new THREE.PlaneGeometry(3200, 150 + ri * 50, SEG, 1);
+    const col = new Float32Array((SEG + 1) * 2 * 3);
+    const posAtt = geo.attributes.position;
+    for (let vi = 0; vi < posAtt.count; vi++) {
+      const fx = (posAtt.getX(vi) / 3200) + 0.5;
+      const edge = Math.sin(fx * Math.PI);
+      const c = PAL[ri];
+      col[vi * 3] = c[0] * edge * 0.5;
+      col[vi * 3 + 1] = c[1] * edge * 0.5;
+      col[vi * 3 + 2] = c[2] * edge * 0.5;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      vertexColors: true, transparent: true, opacity: 0.5, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    m.rotation.x = Math.PI * 0.12;
+    m.rotation.y = ri * 0.5 - 0.5;
+    g.add(m);
+    ribbons.push({ m, geo, phase: ri * 2.1, baseY: 620 + ri * 90 });
+  }
+  let t = 0;
+  function update(dt) {
+    t += dt;
+    for (const rb of ribbons) {
+      const pa = rb.geo.attributes.position;
+      for (let vi = 0; vi < pa.count; vi++) {
+        const x = pa.getX(vi);
+        pa.setZ(vi, Math.sin(x * 0.004 + t * 0.35 + rb.phase) * 60
+          + Math.sin(x * 0.011 + t * 0.6 + rb.phase * 2) * 24);
+      }
+      pa.needsUpdate = true;
+      rb.m.position.set(camera.position.x, rb.baseY, camera.position.z - 500);
+      rb.m.material.opacity = 0.34 + Math.sin(t * 0.3 + rb.phase) * 0.14;
+    }
+  }
+  return { g, update };
+}
+
 function buildFlair(spec) {
   const fl = spec.flair;
   if (!fl) return null;
   const parts = [];
   if (fl.mast) parts.push(flairMast(fl.mast));
   if (fl.slagpour) parts.push(flairSlagpour(fl.slagpour));
+  if (fl.aurora) parts.push(flairAurora());
   if (fl.fireworks) parts.push(flairFireworks(fl.fireworks));
   if (fl.lanterns) parts.push(flairLanterns(fl.lanterns));
   if (fl.lighthouse) parts.push(flairLighthouse(fl.lighthouse));
@@ -1049,6 +1098,7 @@ let slickZones = [], ventZones = [];
 // growing teeth. Both are cycles the player learns to read, both are
 // player-facing like the slicks — the AI keeps its honest race.
 let waveState = null, whiteoutZone = null, whiteoutK = 0;
+let crackZones = [];
 const wScratch = pathFrame();
 // near-miss cooldowns (per hazard / per traffic car) and the race's stats —
 // the results board reads these, and so will anyone bragging
@@ -1161,6 +1211,7 @@ function reset(ceremony = false) {
   stats = { topSpeed: 0, nearMisses: 0, padsHit: 0, driftBanks: 0, bigAir: 0 };
   hazCool = hazCool.map(() => 0); trafCool = trafCool.map(() => 0);
   splits.length = 0;
+  for (const ck of crackZones) { ck.shown = false; ck.m.visible = false; }
   lampsRed();
   hud.msg.innerHTML = inGP
     ? `<b>round ${gp.round + 1} of ${GP.ROUNDS.length}</b><span class="dim">${track.name}</span>`
@@ -1427,7 +1478,10 @@ function applyTrack(spec, trk) {
   traffic = buildTraffic(track.path, buildCar, track.traffic, track.elev);
   scene.add(traffic.group);
 
-  wet = track.spec.wet || 0;
+  // iceGrip: Blackmere's whole surface is the wet system wearing skates —
+  // same grip and brake penalties, same glossy reflection, but NO rain
+  // streaks (see the rain override in the loop): it does not rain at -20
+  wet = track.spec.wet || track.spec.iceGrip || 0;
   hud.circuit.textContent = track.name
     + (mode === 'tt' ? ' — time trial' : mode === 'duel' && duelRival ? ' — duel: ' + duelRival : '');
   MAP = buildMapModel();
@@ -1463,6 +1517,28 @@ function applyTrack(spec, trk) {
   }
   whiteoutZone = spec.whiteout || null;
   whiteoutK = 0;
+  // BLACKMERE'S CRACKS: built hidden, woken by lap count in the loop
+  crackZones = (spec.cracks || []).map((ck, i) => {
+    const cf2 = pathFrame();
+    track.path.place(ck.s, ck.u, cf2);
+    const grp2 = new THREE.Group();
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(ck.r, 18),
+      new THREE.MeshBasicMaterial({ color: 0x08121c, transparent: true, opacity: 0.55, depthWrite: false }));
+    disc.rotation.x = -Math.PI / 2;
+    grp2.add(disc);
+    for (let li = 0; li < 3; li++) {
+      const ln = new THREE.Mesh(new THREE.PlaneGeometry(ck.r * 1.7, 1.6),
+        new THREE.MeshBasicMaterial({ color: 0xcfe4f0, transparent: true, opacity: 0.5, depthWrite: false }));
+      ln.rotation.x = -Math.PI / 2;
+      ln.rotation.z = li * 1.1 + (i % 3) * 0.5;
+      ln.position.y = 0.2;
+      grp2.add(ln);
+    }
+    grp2.position.set(cf2.x, track.elev(ck.s) + 2.4, cf2.z);
+    grp2.visible = false;
+    scene.add(grp2);
+    return { m: grp2, x: cf2.x, z: cf2.z, r: ck.r, lapFrom: ck.lap || (i + 1), shown: false };
+  });
   if (spec.wave) {
     const wf = pathFrame();
     const mid = (spec.wave.from + spec.wave.to) / 2;
@@ -1761,6 +1837,132 @@ function buildMover(m) {
           const st = rv.car.state;
           const dd = (st.x - cx) * tx + (st.z - cz) * tz;
           if (dd > -240 && dd < -20) st.speed *= Math.max(0, 1 - 2.2 * dt);
+        }
+      },
+    };
+  }
+
+  if (m.kind === 'plows') {
+    // THE PLOWS. Two of them, one per carved channel, crawling the whole lap
+    // and throwing a rooster-tail of snow — the things that MAKE the road,
+    // and the things you have to wade around to pass. Work lights blazing,
+    // amber beacons, in the rivals' obstacle lists.
+    const amber = new THREE.MeshBasicMaterial({ color: 0xffb04c, toneMapped: false });
+    const pfP = pathFrame();
+    const mkPlow = () => {
+      const p3 = new THREE.Group();
+      const cab = new THREE.Mesh(new THREE.BoxGeometry(26, 20, 34),
+        new THREE.MeshStandardMaterial({ color: 0xc9642a, roughness: 0.85 }));
+      cab.position.y = 12;
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(38, 12, 6),
+        new THREE.MeshStandardMaterial({ color: 0xd9b23a, roughness: 0.7, metalness: 0.3 }));
+      blade.position.set(0, 7, 24);
+      blade.rotation.x = -0.35;
+      const work = new THREE.Mesh(new THREE.BoxGeometry(20, 3, 2),
+        new THREE.MeshBasicMaterial({ color: 0xfff2cc, toneMapped: false }));
+      work.position.set(0, 23, 16);
+      const bc = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 4), amber);
+      bc.position.set(0, 24, -6);
+      p3.add(cab, blade, work, bc);
+      p3.userData.beacon = bc;
+      return p3;
+    };
+    const plows = [
+      { g: mkPlow(), u: m.us ? m.us[0] : -80, off: 0, speed: 92 },
+      { g: mkPlow(), u: m.us ? m.us[1] : 80, off: 4400, speed: 86 },
+    ];
+    for (const p3 of plows) g.add(p3.g);
+    return {
+      g,
+      obstacles() {
+        return plows.map(p3 => ({ x: p3.g.position.x, z: p3.g.position.z, r: 30 }));
+      },
+      update(dt, t) {
+        const total = track.path.total;
+        for (const p3 of plows) {
+          const sp = ((t * p3.speed + p3.off) % total + total) % total;
+          track.path.place(sp, p3.u, pfP);
+          p3.g.position.set(pfP.x, track.elev(sp) + 2, pfP.z);
+          p3.g.rotation.y = Math.atan2(pfP.tx, pfP.tz);
+          p3.g.userData.beacon.visible = ((t * 3) | 0) % 2 === 0;
+          // the rooster-tail
+          if (Math.random() < 0.4) {
+            const pf2 = puffs[puffIdx++ % PUFF_N];
+            pf2.m.position.set(
+              pfP.x - pfP.tx * 20 + (Math.random() - 0.5) * 18,
+              track.elev(sp) + 8 + Math.random() * 10,
+              pfP.z - pfP.tz * 20 + (Math.random() - 0.5) * 18);
+            pf2.m.material.color.setHex(0xeef4fa);
+            pf2.life = 0.5;
+            pf2.m.visible = true;
+          }
+          if (running && !done && !car.state.crash) {
+            const dx = car.state.x - p3.g.position.x, dz = car.state.z - p3.g.position.z;
+            if (Math.hypot(dx, dz) < 32) {
+              car.impact(0.7, true);
+              audio.impact(0.6);
+              hud.msg.textContent = 'the plow!';
+              msgUntil = time + 1.6;
+            }
+          }
+        }
+      },
+    };
+  }
+
+  if (m.kind === 'skaters') {
+    // SKATERS crossing the rink in a chain, gliding — faster than walkers,
+    // lighter than the tram, and they own the ice as much as you do.
+    const half = track.roadHalf || ROAD_HALF;
+    const chain = new THREE.Group();
+    const COLS2 = [0xb0403a, 0x33507e, 0x2f6440, 0xcbbfa4];
+    const bodies = [];
+    for (let i = 0; i < 4; i++) {
+      const sk = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(5, 11, 4),
+        new THREE.MeshStandardMaterial({ color: COLS2[i], roughness: 0.9 }));
+      body.position.y = 9;
+      const head = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 4),
+        new THREE.MeshStandardMaterial({ color: 0xc8a882, roughness: 0.9 }));
+      head.position.y = 17;
+      sk.add(body, head);
+      chain.add(sk);
+      bodies.push(sk);
+    }
+    chain.visible = false;
+    g.add(chain);
+    const P = 15;
+    let headLat = null;
+    return {
+      g,
+      obstacles() {
+        return headLat === null ? [] : [{ x: cx + nx * headLat, z: cz + nz * headLat, r: 30 }];
+      },
+      update(dt, t) {
+        const ph = t % P;
+        if (ph > 5 && ph < 9.4) {
+          const k = (ph - 5) / 4.4;
+          headLat = -(half + 30) + k * (half * 2 + 60);
+          chain.visible = true;
+          bodies.forEach((sk, i) => {
+            const lat = headLat - i * 14;
+            sk.position.set(cx + nx * lat, roadY + Math.abs(Math.sin(t * 6 + i)) * 1.2, cz + nz * lat);
+            sk.rotation.y = Math.atan2(nx, nz);
+            sk.rotation.z = Math.sin(t * 4 + i) * 0.12;   // the lean of a stride
+          });
+        } else { chain.visible = false; headLat = null; }
+        if (!running || done || headLat === null || car.state.crash) return;
+        const d = Math.abs((car.state.x - cx) * tx + (car.state.z - cz) * tz);
+        for (let i = 0; i < 4; i++) {
+          const lat = headLat - i * 14;
+          const dx = car.state.x - (cx + nx * lat), dz = car.state.z - (cz + nz * lat);
+          if (d < 12 && Math.hypot(dx, dz) < 16) {
+            car.impact(0.35, true);
+            audio.thud();
+            hud.msg.textContent = 'the skaters!';
+            msgUntil = time + 1.4;
+            break;
+          }
         }
       },
     };
@@ -2271,6 +2473,8 @@ function teardownTrack() {
   slickZones = []; ventZones = [];
   whiteoutZone = null; whiteoutK = 0;
   if (waveState) { scene.remove(waveState.g); disposeDeep(waveState.g, true); waveState = null; }
+  for (const ck of crackZones) { scene.remove(ck.m); disposeDeep(ck.m, true); }
+  crackZones = [];
   track = null; ground = null; field = null; START = null;
   smoke = null; life = null; traffic = null;
   // and the last places a dead circuit's arrays can hide: the console API's
@@ -2551,6 +2755,44 @@ function tick() {
   if (running && !done) { lapTime += dt; raceClock += dt; }
 
   const loc = track.path.locate(car.state.x, car.state.z, s);
+
+  // WINTER SURFACES, runtime half. The rink's grit line is the only grip on
+  // the frost fair; the plow road's carved channels are the only road in the
+  // snow — off them you WADE, and the drag is the mechanic.
+  if (running && !done) {
+    const sp2 = track.spec;
+    if (sp2.iceRoad && Math.abs(loc.u) > sp2.iceRoad.gritHalf)
+      car.state.slickT = Math.max(car.state.slickT || 0, 0.3);
+    if (sp2.snowRoad) {
+      let inCh = false;
+      for (const cu of sp2.snowRoad.channels)
+        if (Math.abs(loc.u - cu) <= sp2.snowRoad.half) { inCh = true; break; }
+      if (!inCh) {
+        car.state.slickT = Math.max(car.state.slickT || 0, 0.25);
+        car.state.speed *= Math.max(0, 1 - 0.55 * dt);
+        if (Math.abs(car.state.speed) > 60 && Math.random() < 0.35) {
+          const p2 = puffs[puffIdx++ % PUFF_N];
+          p2.m.position.set(car.state.x + (Math.random() - 0.5) * 16,
+            car.state.yView + 6, car.state.z + (Math.random() - 0.5) * 16);
+          p2.m.material.color.setHex(0xeef4fa);
+          p2.life = 0.4;
+          p2.m.visible = true;
+        }
+      }
+    }
+    // BLACKMERE'S CRACKS: zones of ice that give way as the race wears the
+    // lake — crack i wakes on lap i+1, so lap three's line cannot be lap
+    // one's. The visuals live in crackMeshes; this is the grip cost.
+    if (crackZones.length) {
+      for (let ci = 0; ci < crackZones.length; ci++) {
+        const cz2 = crackZones[ci];
+        if (lap < cz2.lapFrom) continue;
+        if (!cz2.shown) { cz2.shown = true; cz2.m.visible = true; audio.impact(0.25); }
+        const dd = Math.hypot(cz2.x - car.state.x, cz2.z - car.state.z);
+        if (dd < cz2.r + 6) car.state.slickT = Math.max(car.state.slickT || 0, 0.45);
+      }
+    }
+  }
 
   // The lap, recorded as it happens: 10Hz samples of where the car is. If the
   // lap turns out to be the best, the recording IS the new ghost.
@@ -2963,7 +3205,7 @@ function tick() {
   // Cut again after the second playtest round — the rain is set dressing on
   // top of a grip mechanic now, not a veil. The wet costs you in the TYRES.
   post.params.wet = wet * 0.45;
-  post.params.rain = wet * 0.22;
+  post.params.rain = track.spec.iceGrip ? 0 : wet * 0.22;
   scene.fog.density = (SKY.fogD + wet * 0.00008) * (1 + whiteoutK * 3.4);
 
   {
@@ -3087,7 +3329,7 @@ function tick() {
   // Every ROOFED district caps the camera, not just the gatehouse: the Old
   // Town GRID sits under the market hall's 112 deck, and a zoomed-out
   // camera (84 x 1.9) was inside the joists before the lights went out.
-  const ROOF_CAP = { gatehouse: 46, markethall: 62, tunnel: 64 };
+  const ROOF_CAP = { gatehouse: 46, markethall: 62, tunnel: 64, span: 40 };
   const lowCap = ROOF_CAP[sec.district] !== undefined ? ROOF_CAP[sec.district] : null;
   camDrop += (((lowCap !== null && lowCap < wantUp) ? wantUp - lowCap : 0) - camDrop) * Math.min(1, dt * 4);
   const back = (CAM.back - fSpd * fSpd * 14) * zoom, up = wantUp - camDrop;
