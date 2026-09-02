@@ -1766,6 +1766,87 @@ function buildMover(m) {
     };
   }
 
+  if (m.kind === 'haul') {
+    // SEA WORKERS DRAGGING THE CATCH. Two of them haul a shark across the
+    // road on a sledge, slowly, on their own clock — the harbour's answer
+    // to the tram. A lantern swings at the front as the warning; the rivals
+    // get the whole procession in their obstacle list.
+    const half = track.roadHalf || ROAD_HALF;
+    const grp = new THREE.Group();
+    const mkWorker = () => {
+      const wkr = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(6, 12, 5),
+        new THREE.MeshStandardMaterial({ color: 0x2e4257, roughness: 0.9 }));
+      body.position.y = 10;
+      const head = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 4),
+        new THREE.MeshStandardMaterial({ color: 0xc8a882, roughness: 0.9 }));
+      head.position.y = 18;
+      const hat = new THREE.Mesh(new THREE.BoxGeometry(5, 2, 5),
+        new THREE.MeshStandardMaterial({ color: 0xd9b23a, roughness: 0.9 }));
+      hat.position.y = 20.5;
+      wkr.add(body, head, hat);
+      return wkr;
+    };
+    const w1 = mkWorker(), w2 = mkWorker();
+    // the shark, on a sledge: grey tapered mass, one fin, a proper tail
+    const sled = new THREE.Group();
+    const grey = new THREE.MeshStandardMaterial({ color: 0x5a6672, roughness: 0.7 });
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(16, 2, 40),
+      new THREE.MeshStandardMaterial({ color: 0x3a3026, roughness: 0.95 }));
+    slab.position.y = 1;
+    const bodyMid = new THREE.Mesh(new THREE.BoxGeometry(11, 9, 22), grey);
+    bodyMid.position.y = 7;
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(8, 7, 8), grey);
+    nose.position.set(0, 6.5, 14);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(3, 10, 8), grey);
+    tail.position.set(0, 9, -14);
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(2, 7, 6), grey);
+    fin.position.set(0, 14, 2);
+    const belly = new THREE.Mesh(new THREE.BoxGeometry(9, 3, 18),
+      new THREE.MeshStandardMaterial({ color: 0xd8d4c8, roughness: 0.8 }));
+    belly.position.y = 3.5;
+    sled.add(slab, bodyMid, nose, tail, fin, belly);
+    const lantern = new THREE.Mesh(new THREE.SphereGeometry(2, 6, 5),
+      new THREE.MeshBasicMaterial({ color: 0xffc98a, toneMapped: false }));
+    grp.add(w1, w2, sled, lantern);
+    grp.visible = false;
+    g.add(grp);
+    const P = 21;
+    let activeLat = null;
+    return {
+      g,
+      obstacles() {
+        if (activeLat === null) return [];
+        return [{ x: cx + nx * activeLat, z: cz + nz * activeLat, r: 34 }];
+      },
+      update(dt, t) {
+        const ph = t % P;
+        if (ph > 7 && ph < 13.5) {
+          const k = (ph - 7) / 6.5;                  // a slow, laden crossing
+          const lat = -(half + 40) + k * (half * 2 + 80);
+          grp.visible = true;
+          activeLat = lat;
+          const bob = Math.sin(t * 8) * 0.8;
+          w1.position.set(cx + nx * (lat + 26), roadY + bob, cz + nz * (lat + 26));
+          w2.position.set(cx + nx * (lat + 14), roadY - bob, cz + nz * (lat + 14));
+          sled.position.set(cx + nx * (lat - 8), roadY, cz + nz * (lat - 8));
+          const heading = Math.atan2(nx, nz);
+          w1.rotation.y = heading; w2.rotation.y = heading; sled.rotation.y = heading;
+          lantern.position.set(cx + nx * (lat + 32), roadY + 14 + Math.sin(t * 5) * 2, cz + nz * (lat + 32));
+        } else { grp.visible = false; activeLat = null; }
+        if (!running || done || activeLat === null || car.state.crash) return;
+        const dx = car.state.x - (cx + nx * activeLat), dz = car.state.z - (cz + nz * activeLat);
+        const d = Math.abs((car.state.x - cx) * tx + (car.state.z - cz) * tz);
+        if (d < 16 && Math.hypot(dx, dz) < 40) {
+          car.impact(0.6, true);
+          audio.impact(0.5);
+          hud.msg.textContent = 'the catch!';
+          msgUntil = time + 1.6;
+        }
+      },
+    };
+  }
+
   if (m.kind === 'rockfall') {
     // THE MOUNTAIN'S LEVEL CROSSING. On a cycle, a boulder comes off the
     // ramparts' face and bounces across the carriageway — dust trickles at

@@ -23,7 +23,7 @@ export default {
   heading: 180,
 
   asks: 'sight',
-  lapMetres: 515,
+  lapMetres: 670,
   road: { half: HALF, kerb: 5, pave: 52, verge: 14, apron: 6 },
 
   // Two straights left free; shape.js solves them so the loop closes exactly.
@@ -33,11 +33,13 @@ export default {
   // in the dark, all of it in a hollow: the one corner on the circuit that
   // keeps coming after you have committed. Every circuit needs a corner with
   // a name; this is the Parade's.
+  // STRETCHED (playtest, 2026-09-01): the parade and the hook's approach both
+  // grow — anchors re-measured against the rebuild below.
   shape: {
     free: [5, 7],
     ops: [
-      { straight: 1500 }, { arc: -90, r: 260 },
-      { straight: 620 }, { arc: -50, r: 560 },
+      { straight: 2100 }, { arc: -90, r: 260 },
+      { straight: 1000 }, { arc: -50, r: 560 },
       { arc: -45, r: 300 },
       { straight: 0 }, { arc: -90, r: 340 },
       { straight: 0 }, { arc: -85, r: 440 },
@@ -66,105 +68,101 @@ export default {
   // the low corner), THE TOP is now literally that — a 74-voxel crest with
   // the park arc blind over its brow — and the cut plunges below grade the
   // way a cutting should.
+  // Re-laid for the stretched lap (total 8372; sections: parade 0-2100,
+  // chapel 2100-2508, mill lane 2508-3508, long dark 3508-3997, hook
+  // 3997-4233, crescent 4233-6381, the top 6381-6915, cut 6915-7719,
+  // last bend 7719-8372).
   profile: [
-    [0, 0], [700, 10], [1240, 22],
-    [1700, 40],                  // the chapel on its knoll
-    [2200, 8], [2520, -6],       // mill lane runs down off it
-    [2850, -26],                 // the long dark, in the hollow
-    [3150, -10],                 // the hook climbs as it tightens
-    [3600, 18], [4100, 2], [4500, 20],   // the crescent rolls
-    [4900, 64], [5170, 66],      // THE TOP — the big blind crest
-    [5480, 30], [5790, -8],      // the cut falls away in two pitches, each
-                                 // under the 22% grade audit (cosine peaks
-                                 // at pi/2 times the average — knot maths)
-    [5990, -8], [6250, 4], [6420, 0],
+    [0, 0], [900, 10], [1600, 22],
+    [2300, 40],                  // the chapel on its knoll
+    [2900, 8], [3230, -6],       // mill lane runs down off it
+    [3700, -26],                 // the long dark, in the hollow
+    [4100, -10],                 // the hook climbs as it tightens
+    [4600, 18], [5300, 2], [5800, 20],   // the crescent rolls
+    [6500, 64], [6700, 66],      // THE TOP — the big blind crest
+    [7050, 30], [7400, -8],      // the cut falls away in two pitches
+    [7600, -8], [7950, 4], [8250, 0],
   ],
 
   // Six of nine on unlit legs, one of those mid-corner on the long dark.
   hazards: [
-    { s: 700, u: H(HALF, 0.62), r: 30, kind: 'works' },
-    // the chicane: two gates, a weave — see hazards() on why it is two entries
-    { s: 1080, u: H(HALF, 0.42), r: 30, kind: 'chicane' },
-    { s: 1440, u: H(HALF, -0.42), r: 30, kind: 'chicane' },
-    { s: 2060, u: H(HALF, -0.30), r: 32, kind: 'skip' },
-    // works barriers pushed OUTBOARD (0.34/0.30/0.28 → 0.52+): near-centre
-    // anchors made the AI's crossing geometrically marginal on dark approaches
-    // — half of all field crashes were cars grinding these three lines. The
-    // barrier still takes a lane; it no longer takes the middle of the road.
-    { s: 2480, u: H(HALF, 0.52), r: 30, kind: 'works' },
-    { s: 2900, u: H(HALF, -0.34), r: 34, kind: 'broken' },
-    { s: 3320, u: H(HALF, 0.52), r: 30, kind: 'works' },
-    { s: 4300, u: H(HALF, -0.55), r: 32, kind: 'skip' },
-    // barrels, not a fourth works barrier: their tail-light flares are the
-    // only warning the cut's darkness allows, and four identical barriers
-    // read as one hazard photocopied
-    { s: 5430, u: H(HALF, 0.52), r: 30, kind: 'barrels' },
-    { s: 5850, u: H(HALF, -0.34), r: 34, kind: 'broken' },
-    // 6180, not 6250: the new lap is 6435 long and a works barrier runs
-    // span/2 past its anchor — at 6250 the tail wrapped the seam and lay
-    // across the start straight
-    { s: 6180, u: H(HALF, 0.55), r: 30, kind: 'works' },
+    { s: 900, u: H(HALF, 0.62), r: 30, kind: 'works' },
+    // the chicane: two gates 360 apart, a weave — see hazards() on why
+    { s: 1300, u: H(HALF, 0.42), r: 30, kind: 'chicane' },
+    { s: 1660, u: H(HALF, -0.42), r: 30, kind: 'chicane' },
+    { s: 2700, u: H(HALF, -0.30), r: 32, kind: 'skip' },
+    { s: 3100, u: H(HALF, 0.52), r: 30, kind: 'works' },
+    { s: 3700, u: H(HALF, -0.34), r: 34, kind: 'broken' },  // in the hollow
+    { s: 4450, u: H(HALF, 0.52), r: 30, kind: 'works' },
+    { s: 5450, u: H(HALF, -0.55), r: 32, kind: 'skip' },
+    // barrels in the cut: their tail-light flares are the only warning the
+    // darkness allows
+    { s: 7050, u: H(HALF, 0.52), r: 30, kind: 'barrels' },
+    { s: 7500, u: H(HALF, -0.34), r: 34, kind: 'broken' },
+    // a works tail runs span/2 (~203) past its anchor: 8100 keeps the tail
+    // 69 clear of the 8372 seam (the old lap wrapped it once already)
+    { s: 8100, u: H(HALF, 0.55), r: 30, kind: 'works' },
   ],
 
   // Kept clear of the parking bays, or a crosser baulks mid-road.
-  crossings: [480, 1240, 3620, 4260, 5010],
+  crossings: [600, 1500, 4800, 5600, 6600],
 
   // On the parade and in the crescent, because those are the legs where
   // somebody lives. Nobody parks on the sweeper.
   parked: [
-    [300, 1], [620, -1], [980, 1], [1120, -1], [1330, 1],
-    [2170, -1],
-    [3480, 1], [3760, -1], [4060, 1], [4380, -1], [4560, 1],
+    [350, 1], [750, -1], [1150, 1], [1450, -1], [1800, 1],
+    [2650, -1],
+    [4400, 1], [4800, -1], [5200, 1], [5700, -1], [6000, 1],
   ],
 
   // pace: how fast they walk. idle: standing, facing the road.
   life: [
-    { s: 200, side: 1, dir: 1, span: 260 },
-    { s: 520, side: -1, dir: -1, span: 280 },
-    { s: 780, side: 1, dir: -1, span: 240 },
-    { s: 900, side: -1, dir: 1, idle: true },
-    { s: 935, side: -1, dir: 1, idle: true },
-    { s: 1060, side: -1, dir: 1, span: 220 },
-    { s: 1330, side: 1, dir: 1, span: 200, pace: 46 },
-    { s: 1660, side: 1, dir: 1, span: 180 },
-    { s: 1840, side: -1, dir: -1, span: 160 },
-    { s: 2170, side: -1, dir: -1, span: 300 },      // walking home past the mill
-    { s: 3460, side: 1, dir: 1, span: 280 },
-    { s: 3780, side: -1, dir: -1, span: 300 },
-    { s: 4080, side: 1, dir: -1, span: 260 },
-    { s: 4110, side: 1, dir: 1, idle: true },
-    { s: 4420, side: -1, dir: 1, span: 240 },
-    { s: 4640, side: 1, dir: -1, span: 220, pace: 52 },
-    { s: 4880, side: -1, dir: -1, span: 200 },
-    { s: 5080, side: 1, dir: 1, span: 180 },
+    { s: 250, side: 1, dir: 1, span: 260 },
+    { s: 620, side: -1, dir: -1, span: 280 },
+    { s: 950, side: 1, dir: -1, span: 240 },
+    { s: 1120, side: -1, dir: 1, idle: true },
+    { s: 1160, side: -1, dir: 1, idle: true },
+    { s: 1350, side: -1, dir: 1, span: 220 },
+    { s: 1650, side: 1, dir: 1, span: 200, pace: 46 },
+    { s: 1950, side: 1, dir: 1, span: 180 },
+    { s: 2300, side: -1, dir: -1, span: 160 },
+    { s: 2800, side: -1, dir: -1, span: 300 },      // walking home past the mill
+    { s: 4450, side: 1, dir: 1, span: 280 },
+    { s: 4800, side: -1, dir: -1, span: 300 },
+    { s: 5150, side: 1, dir: -1, span: 260 },
+    { s: 5200, side: 1, dir: 1, idle: true },
+    { s: 5550, side: -1, dir: 1, span: 240 },
+    { s: 5850, side: 1, dir: -1, span: 220, pace: 52 },
+    { s: 6100, side: -1, dir: -1, span: 200 },
+    { s: 6600, side: 1, dir: 1, span: 180 },
   ],
 
   traffic: [
-    { s: 600, u: 100, speed: 92, dir: 1 },
-    { s: 1750, u: -100, speed: 78, dir: -1 },
-    { s: 2700, u: 94, speed: 104, dir: 1 },
-    { s: 3900, u: -94, speed: 88, dir: -1 },
-    { s: 4900, u: 104, speed: 112, dir: 1 },
-    { s: 6050, u: -104, speed: 70, dir: -1 },
+    { s: 700, u: 100, speed: 92, dir: 1 },
+    { s: 2250, u: -100, speed: 78, dir: -1 },
+    { s: 3300, u: 94, speed: 104, dir: 1 },
+    { s: 5000, u: -94, speed: 88, dir: -1 },
+    { s: 6200, u: 104, speed: 112, dir: 1 },
+    { s: 7800, u: -104, speed: 70, dir: -1 },
   ],
 
   // Street furniture, in track coordinates.
   furniture: {
-    phone: [430], shelters: [[900, -1], [4100, 1]],
-    benches: [[260, 1], [700, -1], [1150, 1], [3600, 1], [4400, -1], [4900, 1]],
-    drains: [520, 1240, 3500, 4200, 5400],
-    signs: [[1380, 1, 'stop'], [2480, -1, 'sign'], [5150, 1, 'sign'], [5790, -1, 'stop']],
+    phone: [500], shelters: [[1100, -1], [5250, 1]],
+    benches: [[300, 1], [850, -1], [1400, 1], [4600, 1], [5600, -1], [6500, 1]],
+    drains: [650, 1550, 4500, 5400, 6900],
+    signs: [[1700, 1, 'stop'], [3100, -1, 'sign'], [6600, 1, 'sign'], [7450, -1, 'stop']],
   },
 
   // THE TRAM crosses the crescent from a side street, on its own clock —
   // lit like a living room and long enough that beating it is a real call.
   // And THE PARADE ITSELF: three lit floats and their marchers working up
   // the high street in the outside lane, all race long. The name, kept.
-  moving: [{ kind: 'tram', s: 4550 }, { kind: 'parade', s: 700, u: 195, from: -80, to: 1580 }],
+  moving: [{ kind: 'tram', s: 5600 }, { kind: 'parade', s: 700, u: 195, from: 20, to: 1950 }],
   // fireworks over the hook and the top — a festival town racing at night
   flair: {
-    fireworks: [{ s: 3400, u: 340 }, { s: 5170, u: -320 }],
-    confetti: { from: 20, to: 1580, u: 195 },    // loosed over the procession
+    fireworks: [{ s: 4100, u: 340 }, { s: 6650, u: -320 }],
+    confetti: { from: 20, to: 1950, u: 195 },    // loosed over the procession
   },
 
   // 11pm. This is the circuit the sight mechanic belongs to, so its dark has
@@ -183,10 +181,10 @@ export default {
   surface: 'street',
   lampColor: '#ffa23c',
   // boost pads: neon chevrons on the straights — a reward line, not a shortcut
-  pads: [{ s: 950 }, { s: 3550 }, { s: 4780 }],
+  pads: [{ s: 1200 }, { s: 4700 }, { s: 6100 }],
   // ramps: offset from the centreline so taking one is a CHOICE — the jump
   // buys air and a moment of invulnerable clearance, the ground line is free
-  ramps: [{ s: 330, u: 70 }, { s: 3900, u: -60 }],
-  refLap: 40,
+  ramps: [{ s: 400, u: 70 }, { s: 5100, u: -60 }],
+  refLap: 48,                     // measured: racing laps 47.5 clean
   wet: 0,
 };

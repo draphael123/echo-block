@@ -46,20 +46,22 @@ export default {
   // A tighter cross-section all the way through: a real footway, but half of
   // what the Parade has, and almost no verge before the buildings start.
   asks: 'width',
-  lapMetres: 359,
+  lapMetres: 510,
   road: { half: HALF, kerb: 4, pave: 34, verge: 8, apron: 5 },
 
   // Six legs and six corners, none of them ninety degrees. The closure solver
   // makes this shape possible at all — it could not be hand-derived the way
   // the rectangle was.
+  // STRETCHED (playtest, 2026-09-01): more street between the walls —
+  // anchors re-measured against the rebuild below.
   shape: {
     free: [0, 6],
     ops: [
       { straight: 0 }, { arc: -70, r: 240 },
-      { straight: 700 }, { arc: -55, r: 330 },
-      { straight: 520 }, { arc: -95, r: 130 },    // the tightest corner in the city
+      { straight: 1100 }, { arc: -55, r: 330 },
+      { straight: 850 }, { arc: -95, r: 130 },    // the tightest corner in the city
       { straight: 0 }, { arc: -60, r: 290 },
-      { straight: 640 }, { arc: -80, r: 205 },
+      { straight: 1000 }, { arc: -80, r: 205 },
     ],
   },
 
@@ -77,34 +79,36 @@ export default {
   ],
 
   // Twice the Parade's relief over a third of the distance. A hill town.
-  // VERTICALITY PUSH (playtest note, long deferred): the descent off chapel
-  // hill was a polite 7% average — "steep" in name only. The drop now
-  // concentrates through the steps: 66 down to -22 in 650 voxels, segment
-  // averages 10-12% (cosine peaks ~19%, inside the 22% audit), so the town
-  // finally FALLS past the windows the way the name promised.
+  // Re-laid for the stretched lap (total 6371; sections: market row 0-779
+  // ROOFED, shambles 779-1072, wall street 1072-2172, mews 2172-2489,
+  // chapel hill 2489-3339, THE STEPS 3339-3554, back lane 3554-4781,
+  // green 4781-5084, gatehouse 5084-6084 ROOFED, descent 6084-6371).
+  // The verticality stays: the crest tops wall street at 84 and THE STEPS
+  // drop 30 voxels in 240 — segment ~12.5%, cosine peak ~20%, right at the
+  // edge of the audit, which is what "steep" should mean.
   profile: [
-    [0, 0], [420, 30], [860, 60], [1300, 78],
-    [1800, 66], [2150, 30], [2450, -6], [2800, -22], [3250, -30],
-    [3700, -12], [4050, 10], [4330, 6],
+    [0, 0], [600, 26], [1100, 52], [1700, 78], [2200, 84],
+    [2700, 58], [3100, 28], [3320, 12], [3560, -18], [3900, -30],
+    [4400, -24], [4900, -8], [5400, 8], [6000, 10], [6300, 4],
   ],
 
   hazards: [
-    { s: 520, u: H(0.6), r: 26, kind: 'works' },
-    { s: 1180, u: H(-0.58), r: 28, kind: 'broken' },
-    { s: 1900, u: H(0.56), r: 26, kind: 'stall' },
+    { s: 650, u: H(0.6), r: 26, kind: 'works' },     // market row
+    { s: 1600, u: H(-0.58), r: 28, kind: 'broken' }, // wall street
+    { s: 2700, u: H(0.56), r: 26, kind: 'stall' },   // chapel hill
     // no chicane here, deliberately: on a 130-half road the dodge line a
     // bollard gate demands IS the wall, and the walls are already this
     // circuit's hazard. The chicane lives on the wide roads instead.
-    { s: 2600, u: H(-0.6), r: 26, kind: 'works' },
-    { s: 3320, u: H(0.58), r: 28, kind: 'broken' },
-    { s: 4050, u: H(-0.56), r: 26, kind: 'stall' },
+    { s: 3900, u: H(-0.6), r: 26, kind: 'works' },   // back lane
+    { s: 4500, u: H(0.58), r: 28, kind: 'broken' },
+    { s: 4950, u: H(-0.56), r: 26, kind: 'stall' },  // the green
   ],
 
-  crossings: [700, 1560, 2400, 3240, 4020],
+  crossings: [700, 1560, 2900, 4300, 4950],
   parked: [
-    [240, 1], [340, -1], [620, 1], [900, -1], [1180, 1], [1460, -1],
-    [1780, 1], [1920, -1], [2280, 1], [2600, -1], [2900, 1], [3180, -1],
-    [3460, 1], [3760, -1], [4080, 1], [4340, 1], [4520, -1],
+    [240, 1], [340, -1], [620, 1], [1000, -1], [1400, 1], [1800, -1],
+    [2100, 1], [2350, -1], [2700, 1], [3000, -1], [3700, 1], [4000, -1],
+    [4300, 1], [4600, -1], [4900, 1], [6150, 1], [6300, -1],
   ],
 
   life: [
@@ -113,53 +117,53 @@ export default {
     { s: 430, side: 1, dir: -1, span: 110 },
     { s: 560, side: -1, dir: 1, idle: true },
     { s: 600, side: -1, dir: 1, idle: true },
-    { s: 720, side: 1, dir: 1, span: 130 },
-    { s: 880, side: 1, dir: 1, span: 130 },
-    { s: 1010, side: -1, dir: -1, span: 150 },
-    { s: 1180, side: -1, dir: -1, span: 140 },
-    { s: 1340, side: 1, dir: 1, span: 120 },
-    { s: 1600, side: 1, dir: 1, span: 120, pace: 44 },
-    { s: 1820, side: -1, dir: 1, span: 140 },
-    { s: 2100, side: -1, dir: 1, span: 130 },
-    { s: 2320, side: 1, dir: -1, span: 150 },
-    { s: 2500, side: 1, dir: -1, span: 120 },
-    { s: 2680, side: -1, dir: 1, idle: true },
-    { s: 2900, side: -1, dir: -1, span: 140 },
-    { s: 3150, side: 1, dir: 1, span: 130, pace: 50 },
-    { s: 3400, side: -1, dir: -1, span: 140 },
-    { s: 3700, side: 1, dir: 1, span: 120 },
-    { s: 3980, side: -1, dir: 1, span: 130 },
-    { s: 4250, side: 1, dir: -1, span: 140 },
+    { s: 850, side: 1, dir: 1, span: 130 },
+    { s: 1000, side: 1, dir: 1, span: 130 },
+    { s: 1250, side: -1, dir: -1, span: 150 },
+    { s: 1500, side: -1, dir: -1, span: 140 },
+    { s: 1750, side: 1, dir: 1, span: 120 },
+    { s: 2000, side: 1, dir: 1, span: 120, pace: 44 },
+    { s: 2300, side: -1, dir: 1, span: 140 },
+    { s: 2650, side: -1, dir: 1, span: 130 },
+    { s: 2900, side: 1, dir: -1, span: 150 },
+    { s: 3100, side: 1, dir: -1, span: 120 },
+    { s: 3250, side: -1, dir: 1, idle: true },
+    { s: 3800, side: -1, dir: -1, span: 140 },
+    { s: 4100, side: 1, dir: 1, span: 130, pace: 50 },
+    { s: 4400, side: -1, dir: -1, span: 140 },
+    { s: 4650, side: 1, dir: 1, span: 120 },
+    { s: 4900, side: -1, dir: 1, span: 130 },
+    { s: 6200, side: 1, dir: -1, span: 120 },
   ],
 
   traffic: [
     { s: 400, u: 72, speed: 64, dir: 1 },
-    { s: 1300, u: -72, speed: 58, dir: -1 },
-    { s: 2400, u: 68, speed: 70, dir: 1 },
-    { s: 3200, u: -68, speed: 66, dir: -1 },
-    { s: 4100, u: 75, speed: 72, dir: 1 },
+    { s: 1600, u: -72, speed: 58, dir: -1 },
+    { s: 2900, u: 68, speed: 70, dir: 1 },
+    { s: 4200, u: -68, speed: 66, dir: -1 },
+    { s: 5600, u: 75, speed: 72, dir: 1 },
   ],
 
   furniture: {
-    phone: [700, 3100], shelters: [[1900, -1], [3600, 1]],
-    benches: [[520, 1], [980, -1], [1620, -1], [2160, 1], [2720, 1], [3400, -1], [4100, 1]],
-    drains: [400, 1100, 1500, 2200, 2600, 3300, 4000, 4400],
-    signs: [[300, 1, 'stop'], [1400, -1, 'sign'], [2200, 1, 'sign'], [2800, 1, 'stop'], [3900, -1, 'sign']],
+    phone: [700, 4100], shelters: [[2300, -1], [4600, 1]],
+    benches: [[520, 1], [1100, -1], [1900, -1], [2700, 1], [3700, 1], [4400, -1], [4950, 1]],
+    drains: [400, 1200, 1800, 2600, 3100, 4000, 4700, 6200],
+    signs: [[300, 1, 'stop'], [1700, -1, 'sign'], [2700, 1, 'sign'], [3400, 1, 'stop'], [4600, -1, 'sign']],
   },
 
   landmarks: { waterTower: [40, 20], pylons: 0 },
 
   // THE PORTCULLIS: the gatehouse bars its own gate on a rhythm — drops
   // fast, winches up slow, red lamps say which is coming.
-  moving: [{ kind: 'portcullis', s: 3880 }],
+  moving: [{ kind: 'portcullis', s: 5550 }],
   // festival bulbs sagging across the narrow streets — never in the roofed
-  // legs (market hall, gatehouse, tunnel), where they would hang in a ceiling
+  // legs (market row 0-779, gatehouse 5084-6084), where they'd hang in a ceiling
   flair: {
-    lanterns: [650, 1750, 2450, 3350],
+    lanterns: [900, 1600, 2700, 4900],
     // washing strung between the houses where the street is narrowest, and
     // the chapel bell tolling somewhere above it all — the two sounds and
     // sights of a town that lives upstairs from its own street
-    washing: [900, 2350, 3450],
+    washing: [1000, 2650, 4300],
     bell: true,
   },
   // Dusk over the medieval quarter. The narrow streets read as silhouettes cut
@@ -181,10 +185,10 @@ export default {
   surface: 'cobble',
   lampColor: '#ffc776',
   // boost pads
-  pads: [{ s: 980 }, { s: 2950 }],
+  pads: [{ s: 1400 }, { s: 4200 }],
   // one ramp, on the wide side of wall street — the narrow town gets exactly
   // one moment of air, and you have to aim for it
-  ramps: [{ s: 860, u: 40 }],
-  refLap: 34,
+  ramps: [{ s: 1300, u: 40 }],
+  refLap: 40,                     // measured: racing laps 40.3 clean
   wet: 0,
 };
