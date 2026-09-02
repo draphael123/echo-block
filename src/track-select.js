@@ -146,7 +146,11 @@ export function mountTrackSelect({ save, onGo, onDuel, closeLabel, onClose }) {
       // TIER-LOCKED circuits show their face and name their price: the
       // Summit sits in the list from night one, greyed, saying what it
       // costs to see it — that is what a destination looks like in a menu.
-      if ((t.reqTier || 0) > (save.career?.tier || 0)) {
+      // PLAYTEST OVERRIDE (2026-09-01): the lock is off so the mountain can
+      // be tested without grinding two titles. Restore for release by
+      // removing the `false &&`. The GP exclusion is untouched — the Summit
+      // still never appears as a season round.
+      if (false && (t.reqTier || 0) > (save.career?.tier || 0)) {
         const lrow2 = document.createElement('div');
         lrow2.className = 't locked';
         lrow2.style.opacity = '0.55';
