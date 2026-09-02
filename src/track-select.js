@@ -30,6 +30,8 @@ const CSS = `
   padding: 15px 18px; margin-bottom: 8px; cursor: pointer;
   border: 1px solid #232d3f; border-radius: 6px; background: rgba(12, 17, 28, .72);
   transition: border-color .12s, background .12s, transform .14s ease;
+  /* each circuit wears its own light: the stripe is its lamp colour */
+  border-left: 3px solid var(--tint, #232d3f);
 }
 #pick .t:hover {
   border-color: #ffd9a0; background: rgba(20, 27, 42, .85);
@@ -167,6 +169,7 @@ export function mountTrackSelect({ save, onGo, onDuel, closeLabel, onClose }) {
         : '';
       const row = document.createElement('div');
       row.className = 't' + (t.id === here ? ' on' : '');
+      row.style.setProperty('--tint', t.lampColor || '#ffa23c');
       row.innerHTML = `<div><div class="nm">${medal ? `<i class="medal ${medal}"></i>` : ''}${t.name}</div>`
         + `<div class="q">${t.blurb}${tally}</div></div>`
         + `<div class="meta">${best ? `<b>${best.toFixed(2)}s</b>` : '<b>no time yet</b>'}`

@@ -337,7 +337,15 @@ function setPaused(p) {
   paused = p;
   const el = document.getElementById('pause');
   if (el) el.classList.toggle('hidden', !paused);
-  if (paused) audio.update(0, V_MAX, 0, 0, false);
+  if (paused) {
+    audio.update(0, V_MAX, 0, 0, false);
+    const pt = document.getElementById('ptrack');
+    if (pt && track) {
+      pt.textContent = track.name
+        + (mode === 'tt' ? ' · time trial' : mode === 'duel' && duelRival ? ' · duel: ' + duelRival : '')
+        + ` · lap ${Math.min(lap + 1, LAPS)}/${LAPS}`;
+    }
+  }
 }
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
@@ -468,6 +476,8 @@ const hud = {
   dyn: document.getElementById('dyn'),
   dynFill: document.getElementById('dynfill'),
   dynMode: document.getElementById('dynmode'),
+  speedFill: document.getElementById('speedfill'),
+  lapFill: document.getElementById('lapfill'),
 };
 // ------------------------------------------------------------------ minimap
 // The circuit's true shape with everybody on it. A racer glances at a map for
@@ -1204,6 +1214,10 @@ function finish() {
       + ` &nbsp;&mdash;&nbsp; ${crashes} crash${crashes === 1 ? '' : 'es'}`
       + (struck ? ` &middot; ${struck} pedestrian${struck === 1 ? '' : 's'}` : '')
       + (best ? ` &middot; best ${best.toFixed(2)}s` : '') + `</div>`
+      // the race's fastest lap, called out — and flagged when it IS the record
+      + (splits.length ? `<div class="rmeta">fastest lap <b style="color:#d8dfeb">${Math.min(...splits).toFixed(2)}s</b>`
+        + (best && Math.min(...splits) <= best ? ' <span style="color:#a58aff">&#9733; circuit record</span>' : '')
+        + `</div>` : '')
       // THE RACE, MEASURED: what you actually did out there. Numbers a
       // player will quote at somebody are the cheapest replay value there is.
       + `<div class="rmeta">top ${Math.round(stats.topSpeed * 0.08 * 3.6)} km/h`
@@ -3046,8 +3060,14 @@ function tick() {
   fill.position.set(car.state.x + 340, car.state.yView + 110, car.state.z + 260);
 
   hud.speed.textContent = `${Math.round(Math.abs(car.state.speed) * 0.08 * 3.6)}`;
-  // the readout itself knows when you are flying
+  // the readout itself knows when you are flying — and the bar under it is
+  // the same fact for the corner of your eye
   hud.speed.className = car.state.nos ? 'nos' : (fSpd > 0.86 ? 'hot' : '');
+  if (hud.speedFill) {
+    hud.speedFill.style.width = Math.round(fSpd * 100) + '%';
+    hud.speedFill.className = hud.speed.className;
+  }
+  if (hud.lapFill) hud.lapFill.style.width = Math.round((s / track.path.total) * 100) + '%';
   hud.gear.textContent = car.state.speed < -1 ? 'R' : '';
   const tier = car.state.tier || (car.state.boost > 0 ? car.state.boostTier : 0);
   hud.drift.classList.toggle('on', tier > 0 || Math.abs(car.state.slip) > 0.12);
@@ -3057,9 +3077,10 @@ function tick() {
   hud.time.textContent = lapTime.toFixed(2);
   if (hud.dyn) {
     hud.dynFill.style.width = Math.round(car.state.dyn * 100) + '%';
-    hud.dyn.className = car.state.nos ? 'engine' : '';
+    hud.dyn.className = car.state.nos ? 'engine' : (car.state.dyn > 0.985 ? 'full' : '');
     hud.dynMode.textContent = car.state.nos ? 'NOS · burning'
-      : (car.state.dyn > 0.05 ? 'NOS · hold shift' : 'NOS');
+      : car.state.dyn > 0.985 ? 'NOS · READY'
+        : (car.state.dyn > 0.05 ? 'NOS · hold shift' : 'NOS');
   }
   hud.best.textContent = best ? `best ${best.toFixed(2)}s` : '';
   hud.lap.textContent = mode === 'tt'
@@ -3075,12 +3096,18 @@ function tick() {
     // you are leading. A gap to the leader is useless information in fourth.
     const rel = at > 0 ? table[at - 1] : table[1];
     const gap = rel ? (mine - rel.progress) * 0.08 : 0;
-    hud.pos.textContent = `P${at + 1}/${table.length}  ${gap >= 0 ? '+' : ''}${gap.toFixed(0)}m`;
+    hud.pos.innerHTML = `P${at + 1}<small>/${table.length} · ${gap >= 0 ? '+' : ''}${gap.toFixed(0)}m</small>`;
     hud.pos.classList.toggle('behind', at > 0);
-    // the overtake, announced the moment it happens — with a voice
-    if (lastPlace !== null && at !== lastPlace && !msgUntil) {
-      hud.msg.innerHTML = `<b style="color:${at < lastPlace ? '#7fe08a' : '#ff8a6a'}">P${at + 1}</b>`;
-      msgUntil = time + 1.1;
+    // the overtake, announced the moment it happens — with a voice, and a
+    // physical POP on the place itself so the corner of the eye gets it too
+    if (lastPlace !== null && at !== lastPlace) {
+      hud.pos.classList.remove('pop');
+      void hud.pos.offsetWidth;                 // restart the animation
+      hud.pos.classList.add('pop');
+      if (!msgUntil) {
+        hud.msg.innerHTML = `<b style="color:${at < lastPlace ? '#7fe08a' : '#ff8a6a'}">P${at + 1}</b>`;
+        msgUntil = time + 1.1;
+      }
       audio.beep(at < lastPlace ? 780 : 320);
     }
     lastPlace = at;
@@ -3094,9 +3121,15 @@ function tick() {
       }
     } else if (hud.delta) hud.delta.textContent = '';
     // The order board. Five other cars in the dark is a set of headlights; a
-    // list of names is a field you are working through.
-    hud.board.innerHTML = table.map((r, i) =>
-      `<span class="${r.you ? 'you' : ''}">${i + 1} ${r.name}</span>`).join('');
+    // list of names is a field you are working through — each wearing their
+    // paint, because in the mirrors that is all a rival IS.
+    hud.board.innerHTML = table.map((r, i) => {
+      const rn = r.you ? null : runnerByName(r.name);
+      const paintIdx = r.you ? savefile.paint : (rn ? rn.paint : 1);
+      const sw = (BODIES[paintIdx % BODIES.length] || BODIES[0]).swatch;
+      return `<span class="${r.you ? 'you' : ''}">${i + 1} ${r.name}`
+        + `<i class="chip" style="background:${sw}"></i></span>`;
+    }).join('');
   } else {
     hud.pos.textContent = '';
     hud.board.innerHTML = '';

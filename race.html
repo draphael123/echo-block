@@ -46,6 +46,12 @@
     content: 'km/h'; font-size: 11px; font-weight: 600; color: #6d7688;
     letter-spacing: .22em; margin-left: 9px; vertical-align: 14px;
   }
+  /* the speed BAR: the number for reading, the bar for the corner of the
+     eye — it heats through amber and burns NOS-blue without being looked at */
+  #speedbar { width: 132px; height: 3px; background: #1d2432; border-radius: 2px; margin-top: 7px; overflow: hidden; }
+  #speedfill { height: 100%; width: 0; background: #8d97ab; border-radius: 2px; }
+  #speedfill.hot { background: #ffb45c; box-shadow: 0 0 8px rgba(255, 180, 92, .7); }
+  #speedfill.nos { background: #7fd4ff; box-shadow: 0 0 10px rgba(127, 212, 255, .8); }
   #gear { color: #ffc98a; font: 600 14px/1 sans-serif; letter-spacing: .3em; min-height: 15px; margin-top: 7px; }
   #drift {
     color: #ff9a5c; font: 700 10px/1 sans-serif; letter-spacing: .4em;
@@ -60,9 +66,21 @@
      where it is going. Lights-blue when feeding the beam, boost-orange when
      feeding the engine. */
   #dyn { margin-top: 8px; width: 132px; }
-  #dynbar { height: 4px; background: #1d2432; border-radius: 2px; overflow: hidden; }
+  /* quarter ticks, so "half a tank" is a glance, not a guess */
+  #dynbar {
+    height: 5px; border-radius: 2px; overflow: hidden;
+    background: repeating-linear-gradient(90deg,
+      #1d2432 0 31.5px, #0c111c 31.5px 33.5px);
+  }
   #dynfill { height: 100%; width: 0; background: #7fd4ff; border-radius: 2px; transition: width .12s; }
   #dyn.engine #dynfill { background: #ffa04c; }
+  /* a FULL tank announces itself */
+  #dyn.full #dynfill { animation: dynready 1s ease-in-out infinite; }
+  @keyframes dynready {
+    0%, 100% { box-shadow: 0 0 4px rgba(127, 212, 255, .5); }
+    50% { box-shadow: 0 0 14px rgba(127, 212, 255, 1); }
+  }
+  #dyn.full #dynmode { color: #7fd4ff; }
   #dynmode {
     font: 700 9px/1 sans-serif; letter-spacing: .34em; color: #5d84a0;
     margin-top: 4px; text-transform: uppercase;
@@ -77,8 +95,27 @@
   }
   #lap { font-size: 10px; font-weight: 600; letter-spacing: .28em; color: #7f8a9c; margin-top: 4px; }
   #best { font-size: 10px; color: #5d6678; letter-spacing: .1em; margin-top: 3px; }
-  #pos { font: 700 12px/1 sans-serif; letter-spacing: .16em; color: #9ce0a8; margin-top: 8px; }
+  /* the place is the headline of the right column; the gap is its caption */
+  #pos { font: 700 19px/1 "Helvetica Neue", sans-serif; letter-spacing: .1em; color: #9ce0a8;
+         margin-top: 8px; font-variant-numeric: tabular-nums; }
+  #pos small { font-size: 10px; font-weight: 600; letter-spacing: .16em; color: #7f8a9c; margin-left: 7px; }
   #pos.behind { color: #ff8a6a; }
+  #pos.pop { animation: pospop .45s cubic-bezier(.2,.8,.2,1); }
+  @keyframes pospop {
+    0% { transform: scale(1.45); }
+    100% { transform: none; }
+  }
+  /* the lap, drawn: a fuel-gauge strip of the current lap with sector ticks */
+  #lapbar {
+    width: 132px; height: 3px; background: #1d2432; border-radius: 2px;
+    margin: 6px 0 0 auto; position: relative; overflow: hidden;
+  }
+  #lapbar i {
+    position: absolute; top: 0; bottom: 0; width: 2px; background: #0c111c; z-index: 1;
+  }
+  #lapbar i:first-child { left: 33.3%; }
+  #lapbar i:nth-child(2) { left: 66.6%; }
+  #lapfill { height: 100%; width: 0; background: #7f8a9c; border-radius: 2px; }
   #delta { font: 700 13px/1 "Helvetica Neue", sans-serif; letter-spacing: .06em; margin-top: 4px; }
   #delta.up { color: #7fe08a; }
   #delta.down { color: #ff8a6a; }
@@ -88,6 +125,9 @@
     text-align: center; color: #b9c3d4; pointer-events: none;
     font: 500 13px/1.6 "Helvetica Neue", sans-serif;
   }
+  /* the rule that was never written: the card has been overstaying its
+     welcome through entire races since the ceremony was built */
+  #introcard.hidden { display: none; }
   /* the card ARRIVES: name first, then the details breathe in under it */
   #introcard h1 {
     margin: 0; font-size: 44px; font-weight: 300; color: #f6ecda; letter-spacing: .1em;
@@ -161,6 +201,12 @@
     color: #6d7688; text-transform: lowercase; pointer-events: none;
   }
   #board .you { color: #f6ecda; font-weight: 700; }
+  /* each driver wears their paint: in the mirrors they are a colour, so the
+     board speaks the same language */
+  #board .chip {
+    display: inline-block; width: 7px; height: 7px; border-radius: 2px;
+    margin-left: 7px; vertical-align: 0;
+  }
 
   /* where you are, top left, quiet unless the lights are out */
   #where { left: 30px; top: 24px; }
@@ -304,10 +350,12 @@
 <div id="ui">
   <div id="where"><div id="circuit"></div><div id="sect"></div></div>
   <a id="back" href="./index.html">&larr; menu</a>
-  <div id="dash"><div id="speed">0</div><div id="gear"></div><div id="drift">drift</div>
+  <div id="dash"><div id="speed">0</div><div id="speedbar"><div id="speedfill"></div></div><div id="gear"></div><div id="drift">drift</div>
     <div id="dyn"><div id="dynbar"><div id="dynfill"></div></div><div id="dynmode">dynamo &middot; lights</div></div>
   </div>
-  <div id="clock"><div id="time">0.00</div><div id="delta"></div><div id="lap"></div><div id="best"></div><div id="pos"></div></div>
+  <div id="clock"><div id="time">0.00</div><div id="delta"></div><div id="lap"></div>
+    <div id="lapbar"><i></i><i></i><div id="lapfill"></div></div>
+    <div id="best"></div><div id="pos"></div></div>
   <div id="board"></div>
   <canvas id="map" width="190" height="190"></canvas>
   <div id="msg"></div>
@@ -337,6 +385,7 @@
   <div id="podium" class="hidden"></div>
   <div id="pause" class="hidden"><div class="pausecard">
     <h2>PAUSED</h2>
+    <div id="ptrack" style="color:#6d7688;font-size:11px;letter-spacing:.2em;margin:-8px 0 12px"></div>
     <button id="p-resume">resume <i>esc</i></button>
     <button id="p-restart">restart the race <i>r</i></button>
     <button id="p-circuits">change circuit <i>t</i></button>
